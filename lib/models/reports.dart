@@ -15,15 +15,17 @@ class ReportSummary {
   final List<AgentBucket> byAgent; // admins only; [] otherwise
 
   factory ReportSummary.fromJson(Map<String, dynamic> j) => ReportSummary(
-        totals: ReportTotals.fromJson(J.map(j['totals'])),
-        byPriority:
-            J.mapList(j['by_priority']).map(PriorityBucket.fromJson).toList(),
-        byDepartment: J
-            .mapList(j['by_department'])
-            .map(DepartmentBucket.fromJson)
-            .toList(),
-        byAgent: J.mapList(j['by_agent']).map(AgentBucket.fromJson).toList(),
-      );
+    totals: ReportTotals.fromJson(J.map(j['totals'])),
+    byPriority: J
+        .mapList(j['by_priority'])
+        .map(PriorityBucket.fromJson)
+        .toList(),
+    byDepartment: J
+        .mapList(j['by_department'])
+        .map(DepartmentBucket.fromJson)
+        .toList(),
+    byAgent: J.mapList(j['by_agent']).map(AgentBucket.fromJson).toList(),
+  );
 }
 
 class ReportTotals {
@@ -46,27 +48,31 @@ class ReportTotals {
   final int total;
 
   factory ReportTotals.fromJson(Map<String, dynamic> j) => ReportTotals(
-        open: J.intOr(j['open']),
-        closed: J.intOr(j['closed']),
-        overdue: J.intOr(j['overdue']),
-        unassigned: J.intOr(j['unassigned']),
-        mineOpen: J.intOr(j['mine_open']),
-        answered: J.intOr(j['answered']),
-        total: J.intOr(j['total']),
-      );
+    open: J.intOr(j['open']),
+    closed: J.intOr(j['closed']),
+    overdue: J.intOr(j['overdue']),
+    unassigned: J.intOr(j['unassigned']),
+    mineOpen: J.intOr(j['mine_open']),
+    answered: J.intOr(j['answered']),
+    total: J.intOr(j['total']),
+  );
 }
 
 class PriorityBucket {
-  const PriorityBucket({required this.id, required this.priority, this.open = 0});
+  const PriorityBucket({
+    required this.id,
+    required this.priority,
+    this.open = 0,
+  });
   final int id;
   final String priority;
   final int open;
 
   factory PriorityBucket.fromJson(Map<String, dynamic> j) => PriorityBucket(
-        id: J.intOr(j['priority_id']),
-        priority: J.strOr(j['priority']),
-        open: J.intOr(j['open']),
-      );
+    id: J.intOr(j['priority_id']),
+    priority: J.strOr(j['priority']),
+    open: J.intOr(j['open']),
+  );
 }
 
 class DepartmentBucket {
@@ -82,11 +88,11 @@ class DepartmentBucket {
   final int overdue;
 
   factory DepartmentBucket.fromJson(Map<String, dynamic> j) => DepartmentBucket(
-        id: J.intOr(j['dept_id']),
-        dept: J.strOr(j['dept']),
-        open: J.intOr(j['open']),
-        overdue: J.intOr(j['overdue']),
-      );
+    id: J.intOr(j['dept_id']),
+    dept: J.strOr(j['dept']),
+    open: J.intOr(j['open']),
+    overdue: J.intOr(j['overdue']),
+  );
 }
 
 class AgentBucket {
@@ -102,11 +108,11 @@ class AgentBucket {
   final int overdue;
 
   factory AgentBucket.fromJson(Map<String, dynamic> j) => AgentBucket(
-        id: J.intOr(j['staff_id']),
-        name: J.strOr(j['name']),
-        open: J.intOr(j['open']),
-        overdue: J.intOr(j['overdue']),
-      );
+    id: J.intOr(j['staff_id']),
+    name: J.strOr(j['name']),
+    open: J.intOr(j['open']),
+    overdue: J.intOr(j['overdue']),
+  );
 }
 
 /// `GET /reports/volume`.
@@ -144,8 +150,8 @@ class VolumePoint {
   final int closed;
 
   factory VolumePoint.fromJson(Map<String, dynamic> j) => VolumePoint(
-        date: J.strOr(j['date']),
-        opened: J.intOr(j['opened']),
-        closed: J.intOr(j['closed']),
-      );
+    date: J.strOr(j['date']),
+    opened: J.intOr(j['opened']),
+    closed: J.intOr(j['closed']),
+  );
 }

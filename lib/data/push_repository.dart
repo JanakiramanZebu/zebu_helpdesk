@@ -10,8 +10,10 @@ class PushRepository {
     required String token,
     String platform = 'android',
   }) async {
-    final body = await _api.post('/push/devices',
-        body: {'token': token, 'platform': platform});
+    final body = await _api.post(
+      '/push/devices',
+      body: {'token': token, 'platform': platform},
+    );
     return J.boolOr(J.map(J.map(body)['data'])['registered']);
   }
 
@@ -26,16 +28,21 @@ class PushRepository {
     required String projectId,
     required String serviceAccountPath,
   }) async {
-    final body = await _api.post('/push/config', body: {
-      'project_id': projectId,
-      'service_account_path': serviceAccountPath,
-    });
+    final body = await _api.post(
+      '/push/config',
+      body: {
+        'project_id': projectId,
+        'service_account_path': serviceAccountPath,
+      },
+    );
     return J.map(J.map(body)['data']);
   }
 
   Future<Map<String, dynamic>> test({String? token}) async {
-    final body = await _api.post('/push/test',
-        body: {if (token != null) 'token': token});
+    final body = await _api.post(
+      '/push/test',
+      body: {if (token != null) 'token': token},
+    );
     return J.map(J.map(body)['data']);
   }
 }

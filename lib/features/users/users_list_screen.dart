@@ -58,8 +58,10 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
           children: [
             const Text('Users'),
             if (_total != null)
-              Text('$_total total',
-                  style: Theme.of(context).textTheme.bodySmall),
+              Text(
+                '$_total total',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
           ],
         ),
         bottom: PreferredSize(
@@ -87,14 +89,12 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
         onTotalChanged: (t) {
           if (mounted && t != _total) setState(() => _total = t);
         },
-        fetch: (page) =>
-            repo.list(q: _q.isEmpty ? null : _q, page: page),
+        fetch: (page) => repo.list(q: _q.isEmpty ? null : _q, page: page),
         itemBuilder: (context, u) => Card(
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: ListTile(
             leading: UserAvatar(name: u.name),
-            title: Text(u.name,
-                maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(u.name, maxLines: 1, overflow: TextOverflow.ellipsis),
             subtitle: Text(
               u.org != null ? '${u.email} · ${u.org!.name}' : u.email,
               maxLines: 1,
@@ -138,7 +138,9 @@ class _CreateUserSheetState extends ConsumerState<_CreateUserSheet> {
       _fieldErrors.clear();
     });
     try {
-      await ref.read(usersRepositoryProvider).create(
+      await ref
+          .read(usersRepositoryProvider)
+          .create(
             name: _name.text.trim(),
             email: _email.text.trim(),
             phone: _phone.text.trim(),
@@ -195,8 +197,10 @@ class _CreateUserSheetState extends ConsumerState<_CreateUserSheet> {
           ),
           if (_formError != null) ...[
             const SizedBox(height: 12),
-            Text(_formError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _formError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           const SizedBox(height: 16),
           FilledButton(
@@ -206,7 +210,10 @@ class _CreateUserSheetState extends ConsumerState<_CreateUserSheet> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Create user'),
           ),
         ],

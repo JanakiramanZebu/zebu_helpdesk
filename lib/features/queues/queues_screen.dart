@@ -6,6 +6,7 @@ import '../../core/api/api_exception.dart';
 import '../../core/router/routes.dart';
 import '../../models/saved_queue.dart';
 import '../../providers.dart';
+import '../../widgets/app_dialog.dart';
 import '../../widgets/states.dart';
 
 class QueuesScreen extends ConsumerStatefulWidget {
@@ -82,15 +83,15 @@ class _QueuesScreenState extends ConsumerState<QueuesScreen> {
         onPressed: _openCreate,
         child: const Icon(Icons.add),
       ),
-      body: _buildBody(),
+      body: SafeArea(child: _buildBody()),
     );
   }
 
   Widget _filterChip(String label, String? type) => ChoiceChip(
-        label: Text(label),
-        selected: _type == type,
-        onSelected: (_) => _setType(type),
-      );
+    label: Text(label),
+    selected: _type == type,
+    onSelected: (_) => _setType(type),
+  );
 
   Widget _buildBody() {
     if (_loading && _queues == null) return const LoadingView();
@@ -156,20 +157,12 @@ class _QueuesScreenState extends ConsumerState<QueuesScreen> {
   }
 
   Future<void> _confirmDelete(SavedQueue queue) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete queue?'),
-        content: Text('Delete "${queue.fullName}"? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: 'Delete queue?',
+      message: 'Delete "${queue.fullName}"? This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
     if (ok != true) return;
     try {
@@ -252,8 +245,9 @@ class _QueueEditor extends ConsumerStatefulWidget {
 }
 
 class _QueueEditorState extends ConsumerState<_QueueEditor> {
-  late final TextEditingController _name =
-      TextEditingController(text: widget.existing?.name ?? '');
+  late final TextEditingController _name = TextEditingController(
+    text: widget.existing?.name ?? '',
+  );
   final _q = TextEditingController();
 
   bool _saving = false;
@@ -310,8 +304,10 @@ class _QueueEditorState extends ConsumerState<_QueueEditor> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_isEdit ? 'Rename queue' : 'New personal queue',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            _isEdit ? 'Rename queue' : 'New personal queue',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _name,
@@ -338,7 +334,10 @@ class _QueueEditorState extends ConsumerState<_QueueEditor> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
                 : Text(_isEdit ? 'Save' : 'Create'),
           ),
         ],

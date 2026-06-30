@@ -17,11 +17,11 @@ class MetaItem {
   final String? color; // tags, task-priorities
 
   factory MetaItem.fromJson(Map<String, dynamic> j) => MetaItem(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        state: J.str(j['state']),
-        color: J.str(j['color']),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    state: J.str(j['state']),
+    color: J.str(j['color']),
+  );
 }
 
 /// Known `kind` values for `GET /meta/{kind}`.

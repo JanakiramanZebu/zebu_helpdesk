@@ -9,6 +9,7 @@ import '../../models/common.dart';
 import '../../models/ticket.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
+import '../../widgets/app_dialog.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/states.dart';
 import '../../widgets/user_avatar.dart';
@@ -112,8 +113,9 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
 
   Future<void> _accountAction(String action) async {
     try {
-      final result =
-          await ref.read(usersRepositoryProvider).account(widget.userId, action);
+      final result = await ref
+          .read(usersRepositoryProvider)
+          .account(widget.userId, action);
       final detail = result.entries
           .map((e) => '${e.key}: ${e.value}')
           .join(', ');
@@ -124,20 +126,12 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
   }
 
   Future<void> _confirmDelete() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete user?'),
-        content: const Text('This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: 'Delete user?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
     if (ok != true) return;
     try {
@@ -163,47 +157,57 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
               onSelected: _onMenu,
               itemBuilder: (_) => const [
                 PopupMenuItem(value: 'edit', child: Text('Edit')),
-                PopupMenuItem(value: 'clear-org', child: Text('Clear organization')),
+                PopupMenuItem(
+                  value: 'clear-org',
+                  child: Text('Clear organization'),
+                ),
                 PopupMenuDivider(),
-                PopupMenuItem(value: 'register', child: Text('Register account')),
+                PopupMenuItem(
+                  value: 'register',
+                  child: Text('Register account'),
+                ),
                 PopupMenuItem(value: 'lock', child: Text('Lock account')),
                 PopupMenuItem(value: 'unlock', child: Text('Unlock account')),
                 PopupMenuItem(
-                    value: 'reset-password', child: Text('Reset password')),
+                  value: 'reset-password',
+                  child: Text('Reset password'),
+                ),
                 PopupMenuDivider(),
                 PopupMenuItem(value: 'delete', child: Text('Delete')),
               ],
             ),
         ],
       ),
-      body: _loading
-          ? const LoadingView()
-          : _error != null
-              ? ErrorView(error: _error!, onRetry: _load)
-              : Column(
-                  children: [
-                    _Header(user: u!),
-                    TabBar(
+      body: SafeArea(
+        child: _loading
+            ? const LoadingView()
+            : _error != null
+            ? ErrorView(error: _error!, onRetry: _load)
+            : Column(
+                children: [
+                  _Header(user: u!),
+                  TabBar(
+                    controller: _tabs,
+                    tabs: const [
+                      Tab(text: 'Tickets'),
+                      Tab(text: 'Notes'),
+                    ],
+                  ),
+                  Expanded(
+                    child: TabBarView(
                       controller: _tabs,
-                      tabs: const [
-                        Tab(text: 'Tickets'),
-                        Tab(text: 'Notes'),
+                      children: [
+                        _UserTicketsTab(
+                          userId: widget.userId,
+                          refreshKey: _ticketsKey,
+                        ),
+                        _NotesTab(userId: widget.userId),
                       ],
                     ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabs,
-                        children: [
-                          _UserTicketsTab(
-                            userId: widget.userId,
-                            refreshKey: _ticketsKey,
-                          ),
-                          _NotesTab(userId: widget.userId),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
+      ),
     );
   }
 }
@@ -232,9 +236,12 @@ class _Header extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.name,
-                        style: theme.textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    Text(
+                      user.name,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 2),
                     Text(user.email, style: theme.textTheme.bodyMedium),
                     if (user.phone != null && user.phone!.isNotEmpty)
@@ -244,15 +251,19 @@ class _Header extends StatelessWidget {
                         padding: const EdgeInsets.only(top: 4),
                         child: Row(
                           children: [
-                            Icon(Icons.apartment,
-                                size: 14,
-                                color: theme.colorScheme.onSurfaceVariant),
+                            Icon(
+                              Icons.apartment,
+                              size: 14,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
                             const SizedBox(width: 4),
                             Flexible(
-                              child: Text(user.org!.name,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall),
+                              child: Text(
+                                user.org!.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall,
+                              ),
                             ),
                           ],
                         ),
@@ -272,9 +283,12 @@ class _Header extends StatelessWidget {
                   children: [
                     SizedBox(
                       width: 120,
-                      child: Text(e.key,
-                          style: TextStyle(
-                              color: theme.colorScheme.onSurfaceVariant)),
+                      child: Text(
+                        e.key,
+                        style: TextStyle(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     ),
                     Expanded(child: Text(e.value)),
                   ],
@@ -301,10 +315,8 @@ class _UserTicketsTab extends ConsumerWidget {
       refreshKey: refreshKey,
       emptyMessage: 'No tickets',
       fetch: (page) => repo.tickets(userId, page: page),
-      itemBuilder: (context, t) => TicketCard(
-        ticket: t,
-        onTap: () => context.push(Routes.ticket(t.id)),
-      ),
+      itemBuilder: (context, t) =>
+          TicketCard(ticket: t, onTap: () => context.push(Routes.ticket(t.id))),
     );
   }
 }
@@ -344,7 +356,9 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
       _error = null;
     });
     try {
-      final notes = await ref.read(usersRepositoryProvider).notes(widget.userId);
+      final notes = await ref
+          .read(usersRepositoryProvider)
+          .notes(widget.userId);
       if (!mounted) return;
       setState(() {
         _notes = notes;
@@ -398,34 +412,33 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
           child: _loading
               ? const LoadingView()
               : _error != null
-                  ? ErrorView(error: _error!, onRetry: _load)
-                  : _notes.isEmpty
-                      ? const EmptyView(message: 'No notes')
-                      : ListView.builder(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          itemCount: _notes.length,
-                          itemBuilder: (context, i) {
-                            final n = _notes[i];
-                            return Dismissible(
-                              key: ValueKey(n.id),
-                              direction: DismissDirection.endToStart,
-                              background: Container(
-                                alignment: Alignment.centerRight,
-                                color: Theme.of(context).colorScheme.error,
-                                padding: const EdgeInsets.only(right: 20),
-                                child: const Icon(Icons.delete,
-                                    color: Colors.white),
-                              ),
-                              onDismissed: (_) => _delete(n),
-                              child: ListTile(
-                                title: Text(n.body),
-                                subtitle: Text(
-                                  '${n.staff?.name ?? 'Staff'} · ${Fmt.ago(n.created)}',
-                                ),
-                              ),
-                            );
-                          },
+              ? ErrorView(error: _error!, onRetry: _load)
+              : _notes.isEmpty
+              ? const EmptyView(message: 'No notes')
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _notes.length,
+                  itemBuilder: (context, i) {
+                    final n = _notes[i];
+                    return Dismissible(
+                      key: ValueKey(n.id),
+                      direction: DismissDirection.endToStart,
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        color: Theme.of(context).colorScheme.error,
+                        padding: const EdgeInsets.only(right: 20),
+                        child: const Icon(Icons.delete, color: Colors.white),
+                      ),
+                      onDismissed: (_) => _delete(n),
+                      child: ListTile(
+                        title: Text(n.body),
+                        subtitle: Text(
+                          '${n.staff?.name ?? 'Staff'} · ${Fmt.ago(n.created)}',
                         ),
+                      ),
+                    );
+                  },
+                ),
         ),
         SafeArea(
           top: false,
@@ -451,7 +464,8 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
                       ? const SizedBox(
                           height: 18,
                           width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2.2))
+                          child: CircularProgressIndicator(strokeWidth: 2.2),
+                        )
                       : const Icon(Icons.send),
                 ),
               ],
@@ -552,8 +566,10 @@ class _EditUserSheetState extends ConsumerState<_EditUserSheet> {
           ),
           if (_formError != null) ...[
             const SizedBox(height: 12),
-            Text(_formError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _formError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           const SizedBox(height: 16),
           FilledButton(
@@ -563,7 +579,10 @@ class _EditUserSheetState extends ConsumerState<_EditUserSheet> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Save changes'),
           ),
         ],

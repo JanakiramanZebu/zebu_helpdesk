@@ -14,10 +14,15 @@ class OrgsRepository {
   Organization _org(dynamic body) =>
       Organization.fromJson(J.map(J.map(body)['data']));
 
-  Future<Paginated<Organization>> list(
-      {String? q, int page = 1, int limit = 25}) async {
-    final body = await _api
-        .get('/organizations', query: {'q': q, 'page': page, 'limit': limit});
+  Future<Paginated<Organization>> list({
+    String? q,
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final body = await _api.get(
+      '/organizations',
+      query: {'q': q, 'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), Organization.fromJson);
   }
 
@@ -32,9 +37,15 @@ class OrgsRepository {
 
   Future<void> delete(int id) => _api.delete('/organizations/$id');
 
-  Future<Paginated<AppUser>> users(int id, {int page = 1, int limit = 25}) async {
-    final body = await _api.get('/organizations/$id/users',
-        query: {'page': page, 'limit': limit});
+  Future<Paginated<AppUser>> users(
+    int id, {
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final body = await _api.get(
+      '/organizations/$id/users',
+      query: {'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), AppUser.fromJson);
   }
 
@@ -44,9 +55,15 @@ class OrgsRepository {
   Future<void> removeUser(int id, int uid) =>
       _api.delete('/organizations/$id/users/$uid');
 
-  Future<Paginated<Ticket>> tickets(int id, {int page = 1, int limit = 25}) async {
-    final body = await _api.get('/organizations/$id/tickets',
-        query: {'page': page, 'limit': limit});
+  Future<Paginated<Ticket>> tickets(
+    int id, {
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final body = await _api.get(
+      '/organizations/$id/tickets',
+      query: {'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), Ticket.fromJson);
   }
 
@@ -56,8 +73,10 @@ class OrgsRepository {
   }
 
   Future<StaffNote> addNote(int id, String note) async {
-    final body =
-        await _api.post('/organizations/$id/notes', body: {'note': note});
+    final body = await _api.post(
+      '/organizations/$id/notes',
+      body: {'note': note},
+    );
     return StaffNote.fromJson(J.map(J.map(body)['data']));
   }
 

@@ -77,11 +77,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final me = ref.watch(meProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
-      body: me.when(
-        loading: () => const LoadingView(),
-        error: (e, _) =>
-            ErrorView(error: e, onRetry: () => ref.invalidate(meProvider)),
-        data: (m) => _content(m),
+      body: SafeArea(
+        child: me.when(
+          loading: () => const LoadingView(),
+          error: (e, _) =>
+              ErrorView(error: e, onRetry: () => ref.invalidate(meProvider)),
+          data: (m) => _content(m),
+        ),
       ),
     );
   }
@@ -100,8 +102,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               const SizedBox(height: 12),
               Text(
                 m.name,
-                style:
-                    theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 2),
               Text('@${m.username}', style: theme.textTheme.bodyMedium),
@@ -166,17 +169,21 @@ class _EditProfileSheet extends ConsumerStatefulWidget {
 }
 
 class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
-  late final _firstname =
-      TextEditingController(text: widget.profile.firstname ?? '');
-  late final _lastname =
-      TextEditingController(text: widget.profile.lastname ?? '');
+  late final _firstname = TextEditingController(
+    text: widget.profile.firstname ?? '',
+  );
+  late final _lastname = TextEditingController(
+    text: widget.profile.lastname ?? '',
+  );
   late final _email = TextEditingController(text: widget.email);
   late final _phone = TextEditingController(text: widget.profile.phone ?? '');
   late final _mobile = TextEditingController(text: widget.profile.mobile ?? '');
-  late final _timezone =
-      TextEditingController(text: widget.profile.timezone ?? '');
-  late final _signature =
-      TextEditingController(text: widget.profile.signature ?? '');
+  late final _timezone = TextEditingController(
+    text: widget.profile.timezone ?? '',
+  );
+  late final _signature = TextEditingController(
+    text: widget.profile.signature ?? '',
+  );
 
   bool _saving = false;
   Map<String, String> _fieldErrors = const {};
@@ -232,13 +239,16 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Edit profile',
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Edit profile',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 12),
             if (_error != null) ...[
-              Text(_error!,
-                  style:
-                      TextStyle(color: Theme.of(context).colorScheme.error)),
+              Text(
+                _error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
               const SizedBox(height: 8),
             ],
             TextField(
@@ -311,7 +321,10 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2.4, color: Colors.white))
+                        strokeWidth: 2.4,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Text('Save'),
             ),
           ],
@@ -357,7 +370,9 @@ class _ChangePasswordSheetState extends ConsumerState<_ChangePasswordSheet> {
       _fieldErrors = const {};
     });
     try {
-      await ref.read(meRepositoryProvider).changePassword(
+      await ref
+          .read(meRepositoryProvider)
+          .changePassword(
             currentPassword: _current.text,
             newPassword: _next.text,
           );
@@ -382,12 +397,16 @@ class _ChangePasswordSheetState extends ConsumerState<_ChangePasswordSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Change password',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'Change password',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           if (_error != null) ...[
-            Text(_error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             const SizedBox(height: 8),
           ],
           TextField(
@@ -416,7 +435,10 @@ class _ChangePasswordSheetState extends ConsumerState<_ChangePasswordSheet> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Update password'),
           ),
         ],

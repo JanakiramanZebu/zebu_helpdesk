@@ -8,8 +8,15 @@ class FaqRepository {
   FaqRepository(this._api);
   final ApiClient _api;
 
-  Future<Paginated<Faq>> search({String? q, int page = 1, int limit = 25}) async {
-    final body = await _api.get('/faq', query: {'q': q, 'page': page, 'limit': limit});
+  Future<Paginated<Faq>> search({
+    String? q,
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final body = await _api.get(
+      '/faq',
+      query: {'q': q, 'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), Faq.fromJson);
   }
 

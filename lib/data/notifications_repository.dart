@@ -8,9 +8,14 @@ class NotificationsRepository {
   NotificationsRepository(this._api);
   final ApiClient _api;
 
-  Future<Paginated<AppNotification>> list({int page = 1, int limit = 25}) async {
-    final body =
-        await _api.get('/notifications', query: {'page': page, 'limit': limit});
+  Future<Paginated<AppNotification>> list({
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final body = await _api.get(
+      '/notifications',
+      query: {'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), AppNotification.fromJson);
   }
 
@@ -25,8 +30,10 @@ class NotificationsRepository {
   }
 
   Future<int> readObject(String type, int objectId) async {
-    final body = await _api.post('/notifications/read-object',
-        body: {'type': type, 'object_id': objectId});
+    final body = await _api.post(
+      '/notifications/read-object',
+      body: {'type': type, 'object_id': objectId},
+    );
     return J.intOr(J.map(J.map(body)['data'])['updated']);
   }
 

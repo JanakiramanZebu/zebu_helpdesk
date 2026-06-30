@@ -16,8 +16,10 @@ class CannedRepository {
       CannedResponse.fromJson(J.map(J.map(body)['data']));
 
   Future<Paginated<CannedResponse>> list({int page = 1, int limit = 25}) async {
-    final body =
-        await _api.get('/canned', query: {'page': page, 'limit': limit});
+    final body = await _api.get(
+      '/canned',
+      query: {'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), CannedResponse.fromJson);
   }
 
@@ -30,14 +32,18 @@ class CannedRepository {
     int deptId = 0,
     bool isEnabled = true,
     String? notes,
-  }) async =>
-      _canned(await _api.post('/canned', body: {
+  }) async => _canned(
+    await _api.post(
+      '/canned',
+      body: {
         'title': title,
         'response': response,
         'dept_id': deptId,
         'is_enabled': isEnabled,
         if (notes != null) 'notes': notes,
-      }));
+      },
+    ),
+  );
 
   Future<CannedResponse> update(int id, Map<String, dynamic> changes) async =>
       _canned(await _api.post('/canned/$id', body: changes));
@@ -46,8 +52,10 @@ class CannedRepository {
 
   /// Expand canned variables for a ticket.
   Future<CannedExpansion> expand(int id, {int ticketId = 0}) async {
-    final body =
-        await _api.get('/canned/$id/expand', query: {'ticket_id': ticketId});
+    final body = await _api.get(
+      '/canned/$id/expand',
+      query: {'ticket_id': ticketId},
+    );
     return CannedExpansion.fromJson(J.map(J.map(body)['data']));
   }
 
@@ -61,7 +69,7 @@ class CannedRepository {
       '/canned/$id/attachments',
       fields: {},
       files: {
-        'file': [file]
+        'file': [file],
       },
     );
     return Attachment.fromJson(J.map(J.map(body)['data']));

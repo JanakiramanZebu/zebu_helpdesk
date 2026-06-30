@@ -9,17 +9,17 @@ class LoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const CircularProgressIndicator(strokeWidth: 2.5),
-            if (message != null) ...[
-              const SizedBox(height: 12),
-              Text(message!, style: Theme.of(context).textTheme.bodyMedium),
-            ],
-          ],
-        ),
-      );
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const CircularProgressIndicator(strokeWidth: 2.5),
+        if (message != null) ...[
+          const SizedBox(height: 12),
+          Text(message!, style: Theme.of(context).textTheme.bodyMedium),
+        ],
+      ],
+    ),
+  );
 }
 
 /// Friendly error state with an optional retry.
@@ -39,8 +39,11 @@ class ErrorView extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.error_outline,
-                size: 44, color: Theme.of(context).colorScheme.error),
+            Icon(
+              Icons.error_outline,
+              size: 44,
+              color: Theme.of(context).colorScheme.error,
+            ),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center),
             if (onRetry != null) ...[
@@ -81,14 +84,18 @@ class EmptyView extends StatelessWidget {
           children: [
             Icon(icon, size: 48, color: muted),
             const SizedBox(height: 12),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             if (hint != null) ...[
               const SizedBox(height: 6),
-              Text(hint!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: muted)),
+              Text(
+                hint!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: muted),
+              ),
             ],
           ],
         ),

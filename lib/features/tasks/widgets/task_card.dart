@@ -25,17 +25,22 @@ class TaskCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text('#${task.number}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w700,
-                      )),
+                  Text(
+                    '#${task.number}',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const Spacer(),
                   if (task.blocked)
                     const Padding(
                       padding: EdgeInsets.only(right: 6),
-                      child: Icon(Icons.lock_outline,
-                          size: 16, color: Color(0xFFD32F2F)),
+                      child: Icon(
+                        Icons.lock_outline,
+                        size: 16,
+                        color: Color(0xFFD32F2F),
+                      ),
                     ),
                   StatusChip.status(task.statusName, dense: true),
                 ],
@@ -45,8 +50,9 @@ class TaskCard extends StatelessWidget {
                 task.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -68,7 +74,8 @@ class TaskCard extends StatelessWidget {
                   Text(
                     Fmt.ago(task.created),
                     style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant),
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -76,14 +83,19 @@ class TaskCard extends StatelessWidget {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.apartment,
-                        size: 13, color: theme.colorScheme.onSurfaceVariant),
+                    Icon(
+                      Icons.apartment,
+                      size: 13,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     const SizedBox(width: 3),
                     Expanded(
-                      child: Text(task.departmentName!,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall),
+                      child: Text(
+                        task.departmentName!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
                     ),
                   ],
                 ),
@@ -98,9 +110,12 @@ class TaskCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text('${task.progress}%',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant)),
+                Text(
+                  '${task.progress}%',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ],
           ),

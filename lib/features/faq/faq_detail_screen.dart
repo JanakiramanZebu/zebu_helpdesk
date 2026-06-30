@@ -52,11 +52,13 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
     final faq = _faq;
     return Scaffold(
       appBar: AppBar(title: const Text('Article')),
-      body: _loading
-          ? const LoadingView()
-          : _error != null
-              ? ErrorView(error: _error!, onRetry: _load)
-              : _buildBody(context, faq!),
+      body: SafeArea(
+        child: _loading
+            ? const LoadingView()
+            : _error != null
+            ? ErrorView(error: _error!, onRetry: _load)
+            : _buildBody(context, faq!),
+      ),
     );
   }
 
@@ -67,7 +69,9 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
       children: [
         Text(
           faq.question,
-          style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -77,7 +81,9 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
             _chip(
               context,
               faq.published ? (faq.type ?? 'Public') : (faq.type ?? 'Internal'),
-              faq.published ? theme.colorScheme.primary : theme.colorScheme.outline,
+              faq.published
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
             ),
             if (faq.category != null)
               _chip(context, faq.category!.name, theme.colorScheme.secondary),
@@ -114,26 +120,23 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
         const SizedBox(height: 20),
         Text(
           'Created ${Fmt.date(faq.created)}  ·  Updated ${Fmt.date(faq.updated)}',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
         ),
       ],
     );
   }
 
   Widget _chip(BuildContext context, String label, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: color,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
+    ),
+  );
 }

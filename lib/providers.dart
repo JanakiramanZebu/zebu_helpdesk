@@ -42,46 +42,59 @@ final authRepositoryProvider = Provider<AuthRepository>(
   ),
 );
 
-final authControllerProvider =
-    NotifierProvider<AuthController, AuthState>(AuthController.new);
+final authControllerProvider = NotifierProvider<AuthController, AuthState>(
+  AuthController.new,
+);
 
 // --- Repositories -----------------------------------------------------------
 
-final meRepositoryProvider =
-    Provider<MeRepository>((ref) => MeRepository(ref.watch(apiClientProvider)));
+final meRepositoryProvider = Provider<MeRepository>(
+  (ref) => MeRepository(ref.watch(apiClientProvider)),
+);
 
 final ticketsRepositoryProvider = Provider<TicketsRepository>(
-    (ref) => TicketsRepository(ref.watch(apiClientProvider)));
+  (ref) => TicketsRepository(ref.watch(apiClientProvider)),
+);
 
 final tasksRepositoryProvider = Provider<TasksRepository>(
-    (ref) => TasksRepository(ref.watch(apiClientProvider)));
+  (ref) => TasksRepository(ref.watch(apiClientProvider)),
+);
 
 final usersRepositoryProvider = Provider<UsersRepository>(
-    (ref) => UsersRepository(ref.watch(apiClientProvider)));
+  (ref) => UsersRepository(ref.watch(apiClientProvider)),
+);
 
 final orgsRepositoryProvider = Provider<OrgsRepository>(
-    (ref) => OrgsRepository(ref.watch(apiClientProvider)));
+  (ref) => OrgsRepository(ref.watch(apiClientProvider)),
+);
 
 final cannedRepositoryProvider = Provider<CannedRepository>(
-    (ref) => CannedRepository(ref.watch(apiClientProvider)));
+  (ref) => CannedRepository(ref.watch(apiClientProvider)),
+);
 
 final faqRepositoryProvider = Provider<FaqRepository>(
-    (ref) => FaqRepository(ref.watch(apiClientProvider)));
+  (ref) => FaqRepository(ref.watch(apiClientProvider)),
+);
 
 final queuesRepositoryProvider = Provider<QueuesRepository>(
-    (ref) => QueuesRepository(ref.watch(apiClientProvider)));
+  (ref) => QueuesRepository(ref.watch(apiClientProvider)),
+);
 
 final notificationsRepositoryProvider = Provider<NotificationsRepository>(
-    (ref) => NotificationsRepository(ref.watch(apiClientProvider)));
+  (ref) => NotificationsRepository(ref.watch(apiClientProvider)),
+);
 
 final pushRepositoryProvider = Provider<PushRepository>(
-    (ref) => PushRepository(ref.watch(apiClientProvider)));
+  (ref) => PushRepository(ref.watch(apiClientProvider)),
+);
 
 final reportsRepositoryProvider = Provider<ReportsRepository>(
-    (ref) => ReportsRepository(ref.watch(apiClientProvider)));
+  (ref) => ReportsRepository(ref.watch(apiClientProvider)),
+);
 
 final metaRepositoryProvider = Provider<MetaRepository>(
-    (ref) => MetaRepository(ref.watch(apiClientProvider)));
+  (ref) => MetaRepository(ref.watch(apiClientProvider)),
+);
 
 // --- Derived async state ----------------------------------------------------
 
@@ -98,3 +111,24 @@ final unreadCountProvider = FutureProvider<int>((ref) async {
   ref.watch(authControllerProvider);
   return ref.watch(notificationsRepositoryProvider).count();
 });
+
+// --- UI cross-tab signals ---------------------------------------------------
+
+/// A pending list filter requested from another tab (e.g. tapping a dashboard
+/// stat tile). The target list screen applies it and resets it to null.
+class ViewRequest extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void set(String? view) => state = view;
+}
+
+/// Pending Tickets-list filter requested from another tab.
+final ticketsViewRequestProvider = NotifierProvider<ViewRequest, String?>(
+  ViewRequest.new,
+);
+
+/// Pending Tasks-list filter requested from another tab.
+final tasksViewRequestProvider = NotifierProvider<ViewRequest, String?>(
+  ViewRequest.new,
+);

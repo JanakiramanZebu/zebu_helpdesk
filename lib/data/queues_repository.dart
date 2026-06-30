@@ -23,13 +23,17 @@ class QueuesRepository {
     Map<String, dynamic>? criteria,
     String? sort,
     List<String>? columns,
-  }) async =>
-      _queue(await _api.post('/queues', body: {
+  }) async => _queue(
+    await _api.post(
+      '/queues',
+      body: {
         'name': name,
         if (criteria != null) 'criteria': criteria,
         if (sort != null) 'sort': sort,
         if (columns != null) 'columns': columns,
-      }));
+      },
+    ),
+  );
 
   Future<SavedQueue> update(int id, Map<String, dynamic> changes) async =>
       _queue(await _api.post('/queues/$id', body: changes));

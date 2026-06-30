@@ -96,10 +96,10 @@ class TaskPriority {
   final String? color;
 
   factory TaskPriority.fromJson(Map<String, dynamic> j) => TaskPriority(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        color: J.str(j['color']),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    color: J.str(j['color']),
+  );
 }
 
 /// A dependency edge (`GET /tasks/{id}/dependencies`).
@@ -119,13 +119,13 @@ class TaskDependency {
   final DateTime? created;
 
   factory TaskDependency.fromJson(Map<String, dynamic> j) => TaskDependency(
-        id: J.intOr(j['id']),
-        required: J.boolOr(j['required']),
-        blocker: j['blocker'] is Map
-            ? DependencyBlocker.fromJson(J.map(j['blocker']))
-            : null,
-        created: J.dateTime(j['created']),
-      );
+    id: J.intOr(j['id']),
+    required: J.boolOr(j['required']),
+    blocker: j['blocker'] is Map
+        ? DependencyBlocker.fromJson(J.map(j['blocker']))
+        : null,
+    created: J.dateTime(j['created']),
+  );
 }
 
 class DependencyBlocker {

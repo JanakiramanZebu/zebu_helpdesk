@@ -25,17 +25,22 @@ class TicketCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text('#${ticket.number}',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.primary,
-                        fontWeight: FontWeight.w700,
-                      )),
+                  Text(
+                    '#${ticket.number}',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.primary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const Spacer(),
                   if (ticket.isOverdue)
                     const Padding(
                       padding: EdgeInsets.only(right: 6),
-                      child: Icon(Icons.warning_amber_rounded,
-                          size: 16, color: Color(0xFFD32F2F)),
+                      child: Icon(
+                        Icons.warning_amber_rounded,
+                        size: 16,
+                        color: Color(0xFFD32F2F),
+                      ),
                     ),
                   StatusChip.status(ticket.statusName, dense: true),
                 ],
@@ -45,8 +50,9 @@ class TicketCard extends StatelessWidget {
                 ticket.subject,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w600),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 10),
               Row(
@@ -68,32 +74,42 @@ class TicketCard extends StatelessWidget {
                   Text(
                     Fmt.ago(ticket.created),
                     style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant),
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
-              if (ticket.departmentName != null ||
-                  ticket.assignee != null) ...[
+              if (ticket.departmentName != null || ticket.assignee != null) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
                     if (ticket.departmentName != null) ...[
-                      Icon(Icons.apartment,
-                          size: 13, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(
+                        Icons.apartment,
+                        size: 13,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(width: 3),
-                      Text(ticket.departmentName!,
-                          style: theme.textTheme.bodySmall),
+                      Text(
+                        ticket.departmentName!,
+                        style: theme.textTheme.bodySmall,
+                      ),
                       const SizedBox(width: 12),
                     ],
                     if (ticket.assignee != null) ...[
-                      Icon(Icons.person_pin_circle_outlined,
-                          size: 13, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(
+                        Icons.person_pin_circle_outlined,
+                        size: 13,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       const SizedBox(width: 3),
                       Expanded(
-                        child: Text(ticket.assignee!,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall),
+                        child: Text(
+                          ticket.assignee!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
                       ),
                     ],
                   ],

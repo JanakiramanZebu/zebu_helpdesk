@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// A compact stat card: a big value, a label, and an icon in a tinted circle.
-/// Designed to sit in a grid on the dashboard / reports screens.
+/// A flat, compact stat card: a rounded-square icon badge on the left with the
+/// value and label stacked beside it. No shadow — just a clean hairline border
+/// and rounded corners.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -20,49 +21,65 @@ class StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final c = color ?? scheme.primary;
-    return Card(
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: c.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.7)),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: c.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: c, size: 22),
                 ),
-                child: Icon(icon, color: c, size: 22),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      value,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w700,
-                          ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: scheme.onSurface,
+                          height: 1.1,
+                        ),
+                      ),
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

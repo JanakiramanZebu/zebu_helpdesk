@@ -20,11 +20,14 @@ class StatusChip extends StatelessWidget {
   /// Derive a sensible color from a ticket/task status name.
   factory StatusChip.status(String status, {bool dense = false}) {
     final s = status.toLowerCase();
-    final color = s.contains('closed') || s.contains('completed') || s.contains('resolved')
+    final color =
+        s.contains('closed') ||
+            s.contains('completed') ||
+            s.contains('resolved')
         ? AppTheme.closed
         : s.contains('overdue')
-            ? AppTheme.overdue
-            : AppTheme.open;
+        ? AppTheme.overdue
+        : AppTheme.open;
     return StatusChip(label: status, color: color, dense: dense);
   }
 
@@ -34,9 +37,14 @@ class StatusChip extends StatelessWidget {
     final color = p.contains('emergency') || p.contains('high')
         ? AppTheme.overdue
         : p.contains('low')
-            ? AppTheme.closed
-            : AppTheme.warning;
-    return StatusChip(label: priority, color: color, dense: dense, icon: Icons.flag_outlined);
+        ? AppTheme.closed
+        : AppTheme.warning;
+    return StatusChip(
+      label: priority,
+      color: color,
+      dense: dense,
+      icon: Icons.flag_outlined,
+    );
   }
 
   @override

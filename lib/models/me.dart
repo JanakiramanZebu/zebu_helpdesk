@@ -90,18 +90,18 @@ class MeProfile {
   final bool onVacation;
 
   factory MeProfile.fromJson(Map<String, dynamic> j) => MeProfile(
-        firstname: J.str(j['firstname']),
-        lastname: J.str(j['lastname']),
-        phone: J.str(j['phone']),
-        mobile: J.str(j['mobile']),
-        signature: J.str(j['signature']),
-        timezone: J.str(j['timezone']),
-        locale: J.str(j['locale']),
-        lang: J.str(j['lang']),
-        maxPageSize: J.intOr(j['max_page_size'], 25),
-        autoRefreshRate: J.intOr(j['auto_refresh_rate']),
-        onVacation: J.boolOr(j['onvacation']),
-      );
+    firstname: J.str(j['firstname']),
+    lastname: J.str(j['lastname']),
+    phone: J.str(j['phone']),
+    mobile: J.str(j['mobile']),
+    signature: J.str(j['signature']),
+    timezone: J.str(j['timezone']),
+    locale: J.str(j['locale']),
+    lang: J.str(j['lang']),
+    maxPageSize: J.intOr(j['max_page_size'], 25),
+    autoRefreshRate: J.intOr(j['auto_refresh_rate']),
+    onVacation: J.boolOr(j['onvacation']),
+  );
 }
 
 class NamedDeptRole {
@@ -117,11 +117,11 @@ class NamedDeptRole {
   final String? roleName;
 
   factory NamedDeptRole.fromJson(Map<String, dynamic> j) => NamedDeptRole(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        roleId: J.intOrNull(j['role_id']),
-        roleName: J.str(j['role_name']),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    roleId: J.intOrNull(j['role_id']),
+    roleName: J.str(j['role_name']),
+  );
 }
 
 class FileLimits {
@@ -138,11 +138,13 @@ class FileLimits {
   bool get unrestricted => allowedFileTypes.isEmpty;
 
   factory FileLimits.fromJson(Map<String, dynamic> j) => FileLimits(
-        maxFileSize: J.intOr(j['max_file_size']),
-        allowedFileTypes:
-            J.list(j['allowed_file_types']).map((e) => e.toString()).toList(),
-        attachmentsEnabled: J.boolOr(j['attachments_enabled']),
-      );
+    maxFileSize: J.intOr(j['max_file_size']),
+    allowedFileTypes: J
+        .list(j['allowed_file_types'])
+        .map((e) => e.toString())
+        .toList(),
+    attachmentsEnabled: J.boolOr(j['attachments_enabled']),
+  );
 }
 
 /// Colleague directory profile (`GET /agents/{id}`).
@@ -168,13 +170,13 @@ class AgentProfile {
   final int openTickets;
 
   factory AgentProfile.fromJson(Map<String, dynamic> j) => AgentProfile(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        email: J.str(j['email']),
-        phone: J.str(j['phone']),
-        department: J.str(j['department']),
-        role: J.str(j['role']),
-        available: J.boolOr(j['available'], true),
-        openTickets: J.intOr(j['open_tickets']),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    email: J.str(j['email']),
+    phone: J.str(j['phone']),
+    department: J.str(j['department']),
+    role: J.str(j['role']),
+    available: J.boolOr(j['available'], true),
+    openTickets: J.intOr(j['open_tickets']),
+  );
 }

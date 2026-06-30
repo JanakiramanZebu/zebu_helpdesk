@@ -33,20 +33,20 @@ class SavedQueue {
   final List<String>? columns;
 
   factory SavedQueue.fromJson(Map<String, dynamic> j) => SavedQueue(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        fullName: J.strOr(j['full_name'], J.strOr(j['name'])),
-        type: J.strOr(j['type'], 'ticket'),
-        parentId: J.intOr(j['parent_id']),
-        public: J.boolOr(j['public']),
-        personal: J.boolOr(j['personal']),
-        editable: J.boolOr(j['editable']),
-        criteria: j['criteria'] is Map ? J.map(j['criteria']) : const {},
-        sort: J.str(j['sort']),
-        columns: j['columns'] is List
-            ? J.list(j['columns']).map((e) => e.toString()).toList()
-            : null,
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    fullName: J.strOr(j['full_name'], J.strOr(j['name'])),
+    type: J.strOr(j['type'], 'ticket'),
+    parentId: J.intOr(j['parent_id']),
+    public: J.boolOr(j['public']),
+    personal: J.boolOr(j['personal']),
+    editable: J.boolOr(j['editable']),
+    criteria: j['criteria'] is Map ? J.map(j['criteria']) : const {},
+    sort: J.str(j['sort']),
+    columns: j['columns'] is List
+        ? J.list(j['columns']).map((e) => e.toString()).toList()
+        : null,
+  );
 
   /// Flatten [criteria] into query params usable by `GET /tickets`/`/tasks`.
   Map<String, dynamic> toQuery() {

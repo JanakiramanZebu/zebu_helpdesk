@@ -16,8 +16,10 @@ class SplashScreen extends StatelessWidget {
           children: [
             SvgPicture.asset(Assets.brandLogo, width: 88, height: 88),
             const SizedBox(height: 20),
-            Text('Zebu Helpdesk',
-                style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'Zebu Helpdesk',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: 24),
             const SizedBox(
               width: 22,

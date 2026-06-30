@@ -86,8 +86,7 @@ class _OrgsListScreenState extends ConsumerState<OrgsListScreen> {
         onTotalChanged: (t) {
           if (mounted && t != _total) setState(() => _total = t);
         },
-        fetch: (page) =>
-            repo.list(q: _q.isEmpty ? null : _q, page: page),
+        fetch: (page) => repo.list(q: _q.isEmpty ? null : _q, page: page),
         itemBuilder: (context, o) {
           final subtitle = o.domain != null && o.domain!.isNotEmpty
               ? '${o.userCount} users · ${o.domain}'
@@ -96,14 +95,17 @@ class _OrgsListScreenState extends ConsumerState<OrgsListScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor:
-                    theme.colorScheme.primary.withValues(alpha: 0.14),
+                backgroundColor: theme.colorScheme.primary.withValues(
+                  alpha: 0.14,
+                ),
                 child: Icon(Icons.apartment, color: theme.colorScheme.primary),
               ),
-              title: Text(o.name,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(subtitle,
-                  maxLines: 1, overflow: TextOverflow.ellipsis),
+              title: Text(o.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               onTap: () => context.push(Routes.organization(o.id)),
             ),
           );
@@ -167,8 +169,10 @@ class _CreateOrgSheetState extends ConsumerState<_CreateOrgSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('New organization',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            'New organization',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _name,
@@ -190,8 +194,10 @@ class _CreateOrgSheetState extends ConsumerState<_CreateOrgSheet> {
           ),
           if (_formError != null) ...[
             const SizedBox(height: 12),
-            Text(_formError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _formError!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ],
           const SizedBox(height: 16),
           FilledButton(
@@ -201,7 +207,10 @@ class _CreateOrgSheetState extends ConsumerState<_CreateOrgSheet> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Create organization'),
           ),
         ],

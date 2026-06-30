@@ -18,9 +18,9 @@ class ApiClient {
     this.onSessionExpired,
     Dio? dio,
     Dio? refreshDio,
-  })  : _tokens = tokenStorage,
-        _dio = dio ?? Dio(),
-        _refreshDio = refreshDio ?? Dio() {
+  }) : _tokens = tokenStorage,
+       _dio = dio ?? Dio(),
+       _refreshDio = refreshDio ?? Dio() {
     final base = BaseOptions(
       baseUrl: AppConfig.apiRoot,
       connectTimeout: AppConfig.connectTimeout,
@@ -59,19 +59,17 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? query,
     bool auth = true,
-  }) =>
-      _send(() => _dio.get(path, queryParameters: _clean(query)), auth: auth);
+  }) => _send(() => _dio.get(path, queryParameters: _clean(query)), auth: auth);
 
   Future<dynamic> post(
     String path, {
     Object? body,
     Map<String, dynamic>? query,
     bool auth = true,
-  }) =>
-      _send(
-        () => _dio.post(path, data: body, queryParameters: _clean(query)),
-        auth: auth,
-      );
+  }) => _send(
+    () => _dio.post(path, data: body, queryParameters: _clean(query)),
+    auth: auth,
+  );
 
   Future<dynamic> put(String path, {Object? body, bool auth = true}) =>
       _send(() => _dio.put(path, data: body), auth: auth);
@@ -101,8 +99,10 @@ class ApiClient {
   /// Resolve a `302`-redirect endpoint (e.g. attachment `download`) to its
   /// signed target URL **without** following it, so callers can hand the URL to
   /// the browser / share sheet. Returns `null` if no `Location` was returned.
-  Future<String?> redirectLocation(String path,
-      {Map<String, dynamic>? query}) async {
+  Future<String?> redirectLocation(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
     final token = await _tokens.readAccessToken();
     final res = await _dio.get(
       path,
@@ -115,7 +115,8 @@ class ApiClient {
     );
     final code = res.statusCode ?? 0;
     if (code >= 300 && code < 400) return res.headers.value('location');
-    if (code >= 200 && code < 300) return null; // already the bytes; no redirect
+    if (code >= 200 && code < 300)
+      return null; // already the bytes; no redirect
     throw _exceptionFromResponse(res);
   }
 

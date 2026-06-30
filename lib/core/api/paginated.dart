@@ -27,8 +27,10 @@ class Paginated<T> {
     Map<String, dynamic> envelope,
     T Function(Map<String, dynamic>) fromJson,
   ) {
-    final items =
-        J.mapList(envelope['data']).map(fromJson).toList(growable: false);
+    final items = J
+        .mapList(envelope['data'])
+        .map(fromJson)
+        .toList(growable: false);
     final pg = J.map(envelope['pagination']);
     return Paginated<T>(
       items: items,
@@ -40,10 +42,10 @@ class Paginated<T> {
   }
 
   Paginated<T> copyWithItems(List<T> items) => Paginated<T>(
-        items: items,
-        page: page,
-        limit: limit,
-        total: total,
-        unreadCount: unreadCount,
-      );
+    items: items,
+    page: page,
+    limit: limit,
+    total: total,
+    unreadCount: unreadCount,
+  );
 }

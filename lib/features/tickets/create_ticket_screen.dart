@@ -1,13 +1,20 @@
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/format.dart';
 import '../../core/router/routes.dart';
+import '../../models/canned.dart';
 import '../../models/meta.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
 import '../../widgets/pickers.dart';
+
+/// Ticket source options (the `source` param), mirroring the web dropdown.
+const _sources = ['Phone', 'Email', 'Web', 'Other'];
 
 /// `POST /tickets` — create a ticket for an existing user.
 class CreateTicketScreen extends ConsumerStatefulWidget {
@@ -20,11 +27,20 @@ class CreateTicketScreen extends ConsumerStatefulWidget {
 class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   final _subject = TextEditingController();
   final _message = TextEditingController();
+  final _internalNote = TextEditingController();
 
   AppUser? _user;
+  final List<AppUser> _collaborators = [];
+  String _source = 'Phone';
   MetaItem? _topic;
   MetaItem? _department;
   MetaItem? _priority;
+  MetaItem? _status;
+  MetaItem? _agent;
+  MetaItem? _team;
+  DateTime? _due;
+  CannedResponse? _canned;
+  final List<PlatformFile> _files = [];
 
   bool _saving = false;
   Map<String, String> _fieldErrors = const {};
@@ -34,6 +50,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   void dispose() {
     _subject.dispose();
     _message.dispose();
+    _internalNote.dispose();
     super.dispose();
   }
 
@@ -56,17 +73,54 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       _fieldErrors = const {};
     });
     try {
-      final ticket = await ref.read(ticketsRepositoryProvider).create({
-        'user_id': _user!.id,
-        'subject': _subject.text.trim(),
-        'message': _message.text.trim(),
-        if (_topic != null) 'topic_id': _topic!.id,
-        if (_department != null) 'dept_id': _department!.id,
-        if (_priority != null) 'priority_id': _priority!.id,
-      });
+      final repo = ref.read(ticketsRepositoryProvider);
+      final ticket = await repo.create(
+        {
+          'user_id': _user!.id,
+          'subject': _subject.text.trim(),
+          'message': _message.text.trim(),
+          'source': _source,
+          if (_topic != null) 'topic_id': _topic!.id,
+          if (_department != null) 'dept_id': _department!.id,
+          if (_priority != null) 'priority_id': _priority!.id,
+          if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
+        },
+        files: [
+          for (final f in _files)
+            if (f.bytes != null)
+              MultipartFile.fromBytes(f.bytes!, filename: f.name),
+        ],
+      );
+
+      // Apply assignment / status / collaborators / note via their dedicated
+      // endpoints (best-effort, so none can fail the create itself).
+      if (_agent != null || _team != null) {
+        try {
+          await repo.assign(
+            ticket.id,
+            staffId: _agent?.id,
+            teamId: _team?.id,
+          );
+        } catch (_) {}
+      }
+      if (_status != null) {
+        try {
+          await repo.setStatus(ticket.id, _status!.id);
+        } catch (_) {}
+      }
+      for (final c in _collaborators) {
+        try {
+          await repo.addCollaborator(ticket.id, c.id);
+        } catch (_) {}
+      }
+      if (_internalNote.text.trim().isNotEmpty) {
+        try {
+          await repo.note(ticket.id, body: _internalNote.text.trim());
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       _toast('Ticket #${ticket.number} created');
-      // Replace this screen with the new ticket's detail.
       context.pushReplacement(Routes.ticket(ticket.id));
     } on ApiException catch (e) {
       setState(() {
@@ -78,8 +132,105 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     }
   }
 
+  Future<void> _pickFiles() async {
+    final res = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true, // need bytes to upload on every platform
+    );
+    if (res == null || !mounted) return;
+    setState(() {
+      for (final f in res.files) {
+        if (f.bytes != null && !_files.any((e) => e.name == f.name)) {
+          _files.add(f);
+        }
+      }
+    });
+  }
+
+  Future<void> _addCollaborator() async {
+    final u = await pickUser(context, ref);
+    if (u != null && !_collaborators.any((c) => c.id == u.id)) {
+      setState(() => _collaborators.add(u));
+    }
+  }
+
+  Future<void> _pickSource() async {
+    final s = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final o in _sources)
+              ListTile(
+                title: Text(o),
+                trailing: o == _source
+                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () => Navigator.pop(context, o),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (s != null) setState(() => _source = s);
+  }
+
+  Future<void> _pickCanned() async {
+    final c = await showModalBottomSheet<CannedResponse>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => const _CannedPickerSheet(),
+    );
+    if (c == null) return;
+    setState(() {
+      _canned = c;
+      final text = Fmt.stripHtml(c.body);
+      final current = _message.text.trim();
+      _message.text = current.isEmpty ? text : '$current\n\n$text';
+    });
+  }
+
+  Future<void> _pickDue() async {
+    final now = DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _due ?? now,
+      firstDate: now.subtract(const Duration(days: 1)),
+      lastDate: now.add(const Duration(days: 365 * 3)),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_due ?? now),
+    );
+    setState(() {
+      _due = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time?.hour ?? 17,
+        time?.minute ?? 0,
+      );
+    });
+  }
+
+  Widget _section(String title) => Padding(
+    padding: const EdgeInsets.only(top: 20, bottom: 6),
+    child: Text(
+      title,
+      style: Theme.of(
+        context,
+      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('New ticket')),
       body: SafeArea(
@@ -90,12 +241,12 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
             children: [
               if (_saving) const LinearProgressIndicator(minHeight: 2),
               if (_error != null) ...[
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
+                Text(_error!, style: TextStyle(color: scheme.error)),
                 const SizedBox(height: 12),
               ],
+
+              // --- User & collaborators ---------------------------------
+              _section('User & collaborators'),
               _PickerTile(
                 icon: Icons.person_outline,
                 label: 'Requester',
@@ -107,13 +258,55 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   if (u != null) setState(() => _user = u);
                 },
               ),
-              const SizedBox(height: 12),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.group_outlined),
+                title: const Text('Collaborators (Cc)'),
+                subtitle: Text(
+                  _collaborators.isEmpty
+                      ? 'Optional'
+                      : '${_collaborators.length} added',
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: _addCollaborator,
+                ),
+                onTap: _addCollaborator,
+              ),
+              if (_collaborators.isNotEmpty)
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final c in _collaborators)
+                      Chip(
+                        label: Text(c.name),
+                        onDeleted: () =>
+                            setState(() => _collaborators.remove(c)),
+                      ),
+                  ],
+                ),
+
+              // --- Ticket details ---------------------------------------
+              _section('Ticket details'),
               TextField(
                 controller: _subject,
                 textInputAction: TextInputAction.next,
                 decoration: InputDecoration(
                   labelText: 'Subject',
                   errorText: _fieldErrors['subject'],
+                ),
+              ),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _pickCanned,
+                icon: const Icon(Icons.bolt_outlined, size: 18),
+                label: Text(
+                  _canned == null
+                      ? 'Insert canned response'
+                      : 'Canned: ${_canned!.title}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(height: 12),
@@ -128,8 +321,54 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text('Optional', style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Text('Attachments', style: Theme.of(context).textTheme.titleSmall),
+                  const Spacer(),
+                  TextButton.icon(
+                    onPressed: _pickFiles,
+                    icon: const Icon(Icons.attach_file, size: 18),
+                    label: const Text('Add files'),
+                  ),
+                ],
+              ),
+              if (_files.isEmpty)
+                Text(
+                  'No files added',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final f in _files)
+                      Chip(
+                        avatar: const Icon(
+                          Icons.insert_drive_file_outlined,
+                          size: 18,
+                        ),
+                        label: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 180),
+                          child: Text(
+                            '${f.name}  ·  ${Fmt.fileSize(f.size)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        onDeleted: () => setState(() => _files.remove(f)),
+                      ),
+                  ],
+                ),
+
+              // --- Options ----------------------------------------------
+              _section('Options'),
+              _PickerTile(
+                icon: Icons.podcasts_outlined,
+                label: 'Source',
+                value: _source,
+                onTap: _pickSource,
+              ),
               _PickerTile(
                 icon: Icons.topic_outlined,
                 label: 'Help topic',
@@ -172,12 +411,102 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   if (m != null) setState(() => _priority = m);
                 },
               ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: _saving ? null : _submit,
-                child: const Text('Create ticket'),
+              _PickerTile(
+                icon: Icons.event_outlined,
+                label: 'Due date',
+                value: _due == null ? null : Fmt.dateTime(_due),
+                trailing: _due == null
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() => _due = null),
+                      ),
+                onTap: _pickDue,
+              ),
+              _PickerTile(
+                icon: Icons.assignment_ind_outlined,
+                label: 'Assign to agent',
+                value: _agent?.name,
+                trailing: _agent == null
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() => _agent = null),
+                      ),
+                onTap: () async {
+                  final m = await pickMeta(
+                    context,
+                    ref,
+                    MetaKind.agents,
+                    title: 'Assign to agent',
+                  );
+                  if (m != null) setState(() => _agent = m);
+                },
+              ),
+              _PickerTile(
+                icon: Icons.groups_outlined,
+                label: 'Assign to team',
+                value: _team?.name,
+                trailing: _team == null
+                    ? null
+                    : IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() => _team = null),
+                      ),
+                onTap: () async {
+                  final m = await pickMeta(
+                    context,
+                    ref,
+                    MetaKind.teams,
+                    title: 'Assign to team',
+                  );
+                  if (m != null) setState(() => _team = m);
+                },
+              ),
+              _PickerTile(
+                icon: Icons.label_outline,
+                label: 'Status',
+                value: _status?.name,
+                onTap: () async {
+                  final m = await pickMeta(
+                    context,
+                    ref,
+                    MetaKind.statuses,
+                    title: 'Status',
+                  );
+                  if (m != null) setState(() => _status = m);
+                },
+              ),
+
+              // --- Internal note ----------------------------------------
+              _section('Internal note'),
+              TextField(
+                controller: _internalNote,
+                minLines: 2,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  labelText: 'Internal note (optional)',
+                  alignLabelWithHint: true,
+                  hintText: 'Visible to staff only',
+                ),
               ),
             ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          border: Border(top: BorderSide(color: scheme.outlineVariant)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: FilledButton(
+              onPressed: _saving ? null : _submit,
+              child: const Text('Create ticket'),
+            ),
           ),
         ),
       ),
@@ -194,6 +523,7 @@ class _PickerTile extends StatelessWidget {
     this.value,
     this.hint,
     this.error,
+    this.trailing,
   });
 
   final IconData icon;
@@ -202,6 +532,7 @@ class _PickerTile extends StatelessWidget {
   final String? value;
   final String? hint;
   final String? error;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -221,8 +552,102 @@ class _PickerTile extends StatelessWidget {
           fontWeight: value != null ? FontWeight.w600 : FontWeight.normal,
         ),
       ),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: trailing ?? const Icon(Icons.chevron_right),
       onTap: onTap,
+    );
+  }
+}
+
+/// Bottom-sheet picker over the canned-response list.
+class _CannedPickerSheet extends ConsumerStatefulWidget {
+  const _CannedPickerSheet();
+
+  @override
+  ConsumerState<_CannedPickerSheet> createState() => _CannedPickerSheetState();
+}
+
+class _CannedPickerSheetState extends ConsumerState<_CannedPickerSheet> {
+  List<CannedResponse> _items = [];
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final page = await ref.read(cannedRepositoryProvider).list(limit: 50);
+      if (!mounted) return;
+      setState(() {
+        _items = page.items;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.7,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Canned responses',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ),
+            const Divider(height: 1),
+            Flexible(
+              child: _loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : _error != null
+                  ? Padding(padding: const EdgeInsets.all(24), child: Text(_error!))
+                  : _items.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No canned responses'),
+                    )
+                  : ListView.builder(
+                      itemCount: _items.length,
+                      itemBuilder: (_, i) {
+                        final c = _items[i];
+                        return ListTile(
+                          title: Text(c.title),
+                          subtitle: Text(
+                            Fmt.stripHtml(c.body),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onTap: () => Navigator.pop(context, c),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

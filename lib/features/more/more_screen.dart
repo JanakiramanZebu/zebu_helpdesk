@@ -22,6 +22,7 @@ class MoreScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('More')),
       body: ListView(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
         children: [
           // --- Profile header card ------------------------------------------
           me.when(
@@ -60,9 +61,7 @@ class MoreScreen extends ConsumerWidget {
                             children: [
                               Text(
                                 m.name,
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .titleMedium
+                                style: Theme.of(context).textTheme.titleMedium
                                     ?.copyWith(fontWeight: FontWeight.w700),
                               ),
                               const SizedBox(height: 2),
@@ -74,13 +73,11 @@ class MoreScreen extends ConsumerWidget {
                                 const SizedBox(height: 4),
                                 Text(
                                   subtitleParts.join(' · '),
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodySmall
+                                  style: Theme.of(context).textTheme.bodySmall
                                       ?.copyWith(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                       ),
                                 ),
                               ],
@@ -178,19 +175,22 @@ class MoreScreen extends ConsumerWidget {
   }
 
   static String _themeLabel(ThemeMode m) => switch (m) {
-        ThemeMode.light => 'Light',
-        ThemeMode.dark => 'Dark',
-        ThemeMode.system => 'System default',
-      };
+    ThemeMode.light => 'Light',
+    ThemeMode.dark => 'Dark',
+    ThemeMode.system => 'System default',
+  };
 
   static IconData _themeIcon(ThemeMode m) => switch (m) {
-        ThemeMode.light => Icons.light_mode_outlined,
-        ThemeMode.dark => Icons.dark_mode_outlined,
-        ThemeMode.system => Icons.brightness_auto_outlined,
-      };
+    ThemeMode.light => Icons.light_mode_outlined,
+    ThemeMode.dark => Icons.dark_mode_outlined,
+    ThemeMode.system => Icons.brightness_auto_outlined,
+  };
 
   Future<void> _chooseTheme(
-      BuildContext context, WidgetRef ref, ThemeMode current) async {
+    BuildContext context,
+    WidgetRef ref,
+    ThemeMode current,
+  ) async {
     await showModalBottomSheet<void>(
       context: context,
       useSafeArea: true,
@@ -205,16 +205,20 @@ class MoreScreen extends ConsumerWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-                child: Text('Appearance',
-                    style: Theme.of(sheetContext).textTheme.titleMedium),
+                child: Text(
+                  'Appearance',
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                ),
               ),
               for (final mode in ThemeMode.values)
                 ListTile(
                   leading: Icon(_themeIcon(mode)),
                   title: Text(_themeLabel(mode)),
                   trailing: mode == current
-                      ? Icon(Icons.check,
-                          color: Theme.of(sheetContext).colorScheme.primary)
+                      ? Icon(
+                          Icons.check,
+                          color: Theme.of(sheetContext).colorScheme.primary,
+                        )
                       : null,
                   onTap: () {
                     ref.read(themeModeProvider.notifier).set(mode);

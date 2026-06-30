@@ -6,6 +6,7 @@ import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../models/canned.dart';
 import '../../providers.dart';
+import '../../widgets/app_dialog.dart';
 import '../../widgets/attachment_tile.dart';
 import '../../widgets/paged_list_view.dart';
 
@@ -67,10 +68,9 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
             children: [
               Text(
                 c.title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
               Text(Fmt.stripHtml(c.body)),
@@ -89,8 +89,10 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 16),
-                      Text('Attachments',
-                          style: Theme.of(context).textTheme.titleSmall),
+                      Text(
+                        'Attachments',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
                       for (final a in atts) AttachmentTile(attachment: a),
                     ],
                   );
@@ -100,7 +102,8 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
               FilledButton.icon(
                 onPressed: () async {
                   await Clipboard.setData(
-                      ClipboardData(text: Fmt.stripHtml(c.body)));
+                    ClipboardData(text: Fmt.stripHtml(c.body)),
+                  );
                   if (context.mounted) Navigator.pop(context);
                   _toast('Copied');
                 },
@@ -137,20 +140,12 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
   }
 
   Future<void> _confirmDelete(CannedResponse c) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete response?'),
-        content: Text('Delete "${c.title}"? This cannot be undone.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Delete')),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: 'Delete response?',
+      message: 'Delete "${c.title}"? This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
     );
     if (ok != true) return;
     try {
@@ -201,8 +196,9 @@ class _CannedCard extends StatelessWidget {
                       Fmt.stripHtml(canned.body),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall
-                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                     if (!canned.isEnabled || canned.isGlobal) ...[
                       const SizedBox(height: 8),
@@ -237,20 +233,16 @@ class _CannedCard extends StatelessWidget {
   }
 
   Widget _chip(BuildContext context, String label, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: color,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
+    ),
+  );
 }
 
 /// Create / edit bottom sheet.
@@ -263,10 +255,12 @@ class _CannedEditor extends ConsumerStatefulWidget {
 }
 
 class _CannedEditorState extends ConsumerState<_CannedEditor> {
-  late final TextEditingController _title =
-      TextEditingController(text: widget.existing?.title ?? '');
-  late final TextEditingController _response =
-      TextEditingController(text: widget.existing?.body ?? '');
+  late final TextEditingController _title = TextEditingController(
+    text: widget.existing?.title ?? '',
+  );
+  late final TextEditingController _response = TextEditingController(
+    text: widget.existing?.body ?? '',
+  );
   late bool _enabled = widget.existing?.isEnabled ?? true;
 
   bool _saving = false;
@@ -327,8 +321,10 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_isEdit ? 'Edit response' : 'New canned response',
-              style: Theme.of(context).textTheme.titleMedium),
+          Text(
+            _isEdit ? 'Edit response' : 'New canned response',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: _title,
@@ -362,7 +358,10 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
                 : Text(_isEdit ? 'Save changes' : 'Create'),
           ),
         ],

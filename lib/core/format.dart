@@ -9,7 +9,13 @@ class Fmt {
   static final _date = DateFormat('d MMM yyyy');
   static final _dateTime = DateFormat('d MMM yyyy, h:mm a');
   static final _time = DateFormat('h:mm a');
+  static final _apiDate = DateFormat('yyyy-MM-dd');
   static final _apiDateTime = DateFormat('yyyy-MM-dd HH:mm:ss');
+  static final _compact = NumberFormat.compact(locale: 'en_US');
+
+  /// Compact count for stat tiles / badges: raw below 1,000, otherwise
+  /// abbreviated (1.2K, 12K, 1M, 1.5M). Negative values keep their sign.
+  static String count(int n) => n.abs() < 1000 ? '$n' : _compact.format(n);
 
   static String date(DateTime? d) => d == null ? '—' : _date.format(d);
   static String dateTime(DateTime? d) => d == null ? '—' : _dateTime.format(d);
@@ -18,6 +24,9 @@ class Fmt {
   /// `YYYY-MM-DD HH:MM:SS` for sending datetimes back to the API
   /// (e.g. ticket due date / task due date).
   static String apiDateTime(DateTime d) => _apiDateTime.format(d);
+
+  /// `YYYY-MM-DD` for date-only API params (e.g. `created_from`/`created_to`).
+  static String apiDate(DateTime d) => _apiDate.format(d);
 
   /// "3 hours ago" style relative time.
   static String ago(DateTime? d) =>
@@ -38,8 +47,11 @@ class Fmt {
 
   /// First/last initials from a display name.
   static String initials(String name) {
-    final parts =
-        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
     if (parts.isEmpty) return '?';
     if (parts.length == 1) {
       return parts.first.characters.first.toUpperCase();

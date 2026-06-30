@@ -7,10 +7,7 @@ import 'token_storage.dart';
 enum AuthStatus { unknown, authenticated, unauthenticated }
 
 class AuthState {
-  const AuthState({
-    this.status = AuthStatus.unknown,
-    this.agent = const {},
-  });
+  const AuthState({this.status = AuthStatus.unknown, this.agent = const {}});
 
   final AuthStatus status;
 
@@ -54,8 +51,7 @@ class AuthController extends Notifier<AuthState> {
     required String username,
     required String password,
   }) async {
-    final result =
-        await _auth.login(username: username, password: password);
+    final result = await _auth.login(username: username, password: password);
     state = AuthState(status: AuthStatus.authenticated, agent: result.agent);
   }
 

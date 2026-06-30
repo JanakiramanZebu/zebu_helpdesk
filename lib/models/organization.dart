@@ -62,8 +62,8 @@ class OrgManager {
   final String name;
 
   factory OrgManager.fromJson(Map<String, dynamic> j) => OrgManager(
-        type: J.strOr(j['type']),
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-      );
+    type: J.strOr(j['type']),
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+  );
 }

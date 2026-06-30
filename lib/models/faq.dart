@@ -28,18 +28,17 @@ class Faq {
   final DateTime? updated;
 
   factory Faq.fromJson(Map<String, dynamic> j) => Faq(
-        id: J.intOr(j['id']),
-        question: J.strOr(j['question']),
-        answer: J.str(j['answer']),
-        published: J.boolOr(j['published']),
-        type: J.str(j['type']),
-        category: NamedRef.maybe(j['category']),
-        attachments:
-            J.mapList(j['attachments']).map(Attachment.fromJson).toList(),
-        notes: J.str(j['notes']),
-        created: J.dateTime(j['created']),
-        updated: J.dateTime(j['updated']),
-      );
+    id: J.intOr(j['id']),
+    question: J.strOr(j['question']),
+    answer: J.str(j['answer']),
+    published: J.boolOr(j['published']),
+    type: J.str(j['type']),
+    category: NamedRef.maybe(j['category']),
+    attachments: J.mapList(j['attachments']).map(Attachment.fromJson).toList(),
+    notes: J.str(j['notes']),
+    created: J.dateTime(j['created']),
+    updated: J.dateTime(j['updated']),
+  );
 }
 
 /// A KB category. The detail variant embeds its [faqs].
@@ -61,11 +60,11 @@ class FaqCategory {
   final List<Faq> faqs;
 
   factory FaqCategory.fromJson(Map<String, dynamic> j) => FaqCategory(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        public: J.boolOr(j['public']),
-        type: J.str(j['type']),
-        faqCount: J.intOr(j['faq_count']),
-        faqs: J.mapList(j['faqs']).map(Faq.fromJson).toList(),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    public: J.boolOr(j['public']),
+    type: J.str(j['type']),
+    faqCount: J.intOr(j['faq_count']),
+    faqs: J.mapList(j['faqs']).map(Faq.fromJson).toList(),
+  );
 }

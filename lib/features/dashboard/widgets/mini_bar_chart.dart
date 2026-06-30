@@ -20,14 +20,11 @@ class MiniBarChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     if (data.isEmpty) {
-      return Text(
-        'No data',
-        style: TextStyle(color: scheme.onSurfaceVariant),
-      );
+      return Text('No data', style: TextStyle(color: scheme.onSurfaceVariant));
     }
-    final max = (maxValue ??
-            data.fold<int>(0, (m, e) => e.value > m ? e.value : m))
-        .clamp(1, 1 << 31);
+    final max =
+        (maxValue ?? data.fold<int>(0, (m, e) => e.value > m ? e.value : m))
+            .clamp(1, 1 << 31);
 
     return Column(
       children: [
@@ -73,10 +70,9 @@ class MiniBarChart extends StatelessWidget {
                   child: Text(
                     '${row.value}',
                     textAlign: TextAlign.right,
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

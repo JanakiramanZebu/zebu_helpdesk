@@ -26,10 +26,10 @@ class StatusRef {
   bool get isOpen => state == null ? true : state == 'open';
 
   factory StatusRef.fromJson(Map<String, dynamic> j) => StatusRef(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        state: J.str(j['state']),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    state: J.str(j['state']),
+  );
 }
 
 /// An attachment row (tickets/tasks/canned). FAQ uses a smaller shape with no
@@ -60,14 +60,14 @@ class Attachment {
   bool get isImage => (type ?? '').startsWith('image/');
 
   factory Attachment.fromJson(Map<String, dynamic> j) => Attachment(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name'], 'file'),
-        size: J.intOrNull(j['size']),
-        type: J.str(j['type']),
-        threadEntryId: J.intOrNull(j['thread_entry_id']),
-        downloadUrl: J.str(j['download_url']),
-        streamUrl: J.str(j['stream_url']),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name'], 'file'),
+    size: J.intOrNull(j['size']),
+    type: J.str(j['type']),
+    threadEntryId: J.intOrNull(j['thread_entry_id']),
+    downloadUrl: J.str(j['download_url']),
+    streamUrl: J.str(j['stream_url']),
+  );
 }
 
 /// A thread entry: message (M), response (R), or note (N).
@@ -99,17 +99,16 @@ class ThreadEntry {
   bool get isMessage => type == 'M';
 
   factory ThreadEntry.fromJson(Map<String, dynamic> j) => ThreadEntry(
-        id: J.intOr(j['id']),
-        type: J.strOr(j['type'], 'M'),
-        poster: J.strOr(j['poster']),
-        title: J.str(j['title']),
-        format: J.str(j['format']),
-        body: J.str(j['body']),
-        bodyHtml: J.str(j['body_html']),
-        attachments:
-            J.mapList(j['attachments']).map(Attachment.fromJson).toList(),
-        created: J.dateTime(j['created']),
-      );
+    id: J.intOr(j['id']),
+    type: J.strOr(j['type'], 'M'),
+    poster: J.strOr(j['poster']),
+    title: J.str(j['title']),
+    format: J.str(j['format']),
+    body: J.str(j['body']),
+    bodyHtml: J.str(j['body_html']),
+    attachments: J.mapList(j['attachments']).map(Attachment.fromJson).toList(),
+    created: J.dateTime(j['created']),
+  );
 }
 
 /// A non-noise thread event (created/assigned/transferred/...).
@@ -129,12 +128,12 @@ class ThreadEvent {
   final DateTime? created;
 
   factory ThreadEvent.fromJson(Map<String, dynamic> j) => ThreadEvent(
-        id: J.intOr(j['id']),
-        state: J.strOr(j['state']),
-        actor: J.str(j['actor']),
-        description: J.str(j['description']),
-        created: J.dateTime(j['created']),
-      );
+    id: J.intOr(j['id']),
+    state: J.strOr(j['state']),
+    actor: J.str(j['actor']),
+    description: J.str(j['description']),
+    created: J.dateTime(j['created']),
+  );
 }
 
 /// Internal staff note on a user/org.
@@ -154,12 +153,12 @@ class StaffNote {
   final DateTime? updated;
 
   factory StaffNote.fromJson(Map<String, dynamic> j) => StaffNote(
-        id: J.intOr(j['id']),
-        body: J.strOr(j['body']),
-        staff: NamedRef.maybe(j['staff']),
-        created: J.dateTime(j['created']),
-        updated: J.dateTime(j['updated']),
-      );
+    id: J.intOr(j['id']),
+    body: J.strOr(j['body']),
+    staff: NamedRef.maybe(j['staff']),
+    created: J.dateTime(j['created']),
+    updated: J.dateTime(j['updated']),
+  );
 }
 
 /// A thread collaborator (CC).
@@ -181,13 +180,13 @@ class Collaborator {
   final bool isCc;
 
   factory Collaborator.fromJson(Map<String, dynamic> j) => Collaborator(
-        id: J.intOr(j['id']),
-        userId: J.intOr(j['user_id']),
-        name: J.strOr(j['name']),
-        email: J.str(j['email']),
-        active: J.boolOr(j['active'], true),
-        isCc: J.boolOr(j['is_cc'], true),
-      );
+    id: J.intOr(j['id']),
+    userId: J.intOr(j['user_id']),
+    name: J.strOr(j['name']),
+    email: J.str(j['email']),
+    active: J.boolOr(j['active'], true),
+    isCc: J.boolOr(j['is_cc'], true),
+  );
 }
 
 /// A tag with a display color.
@@ -198,8 +197,8 @@ class Tag {
   final String color;
 
   factory Tag.fromJson(Map<String, dynamic> j) => Tag(
-        id: J.intOr(j['id']),
-        name: J.strOr(j['name']),
-        color: J.strOr(j['color'], '#666666'),
-      );
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    color: J.strOr(j['color'], '#666666'),
+  );
 }

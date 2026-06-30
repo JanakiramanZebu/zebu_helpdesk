@@ -13,8 +13,10 @@ class MetaRepository {
   Future<List<MetaItem>> get(String kind, {bool refresh = false}) async {
     if (!refresh && _cache.containsKey(kind)) return _cache[kind]!;
     final body = await _api.get('/meta/$kind');
-    final items =
-        J.mapList(J.map(body)['data']).map(MetaItem.fromJson).toList();
+    final items = J
+        .mapList(J.map(body)['data'])
+        .map(MetaItem.fromJson)
+        .toList();
     _cache[kind] = items;
     return items;
   }

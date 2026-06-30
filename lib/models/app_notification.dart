@@ -31,28 +31,28 @@ class AppNotification {
   String get displayLabel => label ?? title;
 
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
-        id: J.intOr(j['id']),
-        type: J.strOr(j['type'], 'ticket'),
-        objectId: J.intOr(j['object_id']),
-        event: J.strOr(j['event']),
-        title: J.strOr(j['title']),
-        label: J.str(j['label']),
-        body: J.str(j['body']),
-        actor: J.str(j['actor']),
-        created: J.dateTime(j['created']),
-        read: J.boolOr(j['read']),
-      );
+    id: J.intOr(j['id']),
+    type: J.strOr(j['type'], 'ticket'),
+    objectId: J.intOr(j['object_id']),
+    event: J.strOr(j['event']),
+    title: J.strOr(j['title']),
+    label: J.str(j['label']),
+    body: J.str(j['body']),
+    actor: J.str(j['actor']),
+    created: J.dateTime(j['created']),
+    read: J.boolOr(j['read']),
+  );
 
   AppNotification copyWith({bool? read}) => AppNotification(
-        id: id,
-        type: type,
-        objectId: objectId,
-        event: event,
-        title: title,
-        label: label,
-        body: body,
-        actor: actor,
-        created: created,
-        read: read ?? this.read,
-      );
+    id: id,
+    type: type,
+    objectId: objectId,
+    event: event,
+    title: title,
+    label: label,
+    body: body,
+    actor: actor,
+    created: created,
+    read: read ?? this.read,
+  );
 }

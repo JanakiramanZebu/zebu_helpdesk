@@ -25,15 +25,14 @@ class CannedResponse {
   bool get isGlobal => deptId == 0;
 
   factory CannedResponse.fromJson(Map<String, dynamic> j) => CannedResponse(
-        id: J.intOr(j['id']),
-        title: J.strOr(j['title']),
-        body: J.strOr(j['body']),
-        deptId: J.intOr(j['dept_id']),
-        isEnabled: J.boolOr(j['is_enabled'], true),
-        notes: J.str(j['notes']),
-        attachments:
-            J.mapList(j['attachments']).map(Attachment.fromJson).toList(),
-      );
+    id: J.intOr(j['id']),
+    title: J.strOr(j['title']),
+    body: J.strOr(j['body']),
+    deptId: J.intOr(j['dept_id']),
+    isEnabled: J.boolOr(j['is_enabled'], true),
+    notes: J.str(j['notes']),
+    attachments: J.mapList(j['attachments']).map(Attachment.fromJson).toList(),
+  );
 }
 
 /// The `?ticket_id=` expand payload / `GET /canned/{id}/expand`.
@@ -48,8 +47,8 @@ class CannedExpansion {
   final String expanded;
 
   factory CannedExpansion.fromJson(Map<String, dynamic> j) => CannedExpansion(
-        title: J.strOr(j['title']),
-        raw: J.strOr(j['response_raw']),
-        expanded: J.strOr(j['response_expanded']),
-      );
+    title: J.strOr(j['title']),
+    raw: J.strOr(j['response_raw']),
+    expanded: J.strOr(j['response_expanded']),
+  );
 }

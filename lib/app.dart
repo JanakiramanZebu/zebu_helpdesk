@@ -19,6 +19,14 @@ class ZebuHelpdeskApp extends ConsumerWidget {
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
       routerConfig: router,
+      // Dismiss the keyboard when tapping anywhere outside a focused field.
+      // Applied app-wide so every screen behaves consistently. Translucent hit
+      // behavior lets buttons/list items still receive their taps.
+      builder: (context, child) => GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: child,
+      ),
     );
   }
 }

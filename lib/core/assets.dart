@@ -4,6 +4,7 @@ class Assets {
 
   static const search = 'assets/icon/search.svg';
   static const bell = 'assets/icon/bell.svg';
+  static const download = 'assets/icon/download.svg';
 
   static const myntLogo = 'assets/brand/mynt_logo.svg';
   static const zebuLogo = 'assets/brand/zebu_logo.svg';

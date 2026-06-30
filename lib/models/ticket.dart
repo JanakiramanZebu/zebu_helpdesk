@@ -119,10 +119,10 @@ class Sla {
   bool get isOverdue => label?.toLowerCase() == 'overdue';
 
   factory Sla.fromJson(Map<String, dynamic> j) => Sla(
-        frac: J.doubleOrNull(j['frac']),
-        label: J.str(j['label']),
-        due: J.dateTime(j['due']),
-      );
+    frac: J.doubleOrNull(j['frac']),
+    label: J.str(j['label']),
+    due: J.dateTime(j['due']),
+  );
 }
 
 /// An editable custom dynamic field on a ticket (`GET /tickets/{id}/fields`).
@@ -188,29 +188,32 @@ class Referral {
   final String name;
 
   factory Referral.fromJson(Map<String, dynamic> j) => Referral(
-        id: J.intOr(j['id']),
-        type: J.strOr(j['type']),
-        objectId: J.intOr(j['object_id']),
-        name: J.strOr(j['name']),
-      );
+    id: J.intOr(j['id']),
+    type: J.strOr(j['type']),
+    objectId: J.intOr(j['object_id']),
+    name: J.strOr(j['name']),
+  );
 }
 
 /// Parent/child relations (`GET /tickets/{id}/relations`).
 class TicketRelations {
-  const TicketRelations({this.parent, this.mergeType, this.children = const []});
+  const TicketRelations({
+    this.parent,
+    this.mergeType,
+    this.children = const [],
+  });
 
   final RelatedTicket? parent;
   final String? mergeType; // combine | ... | null
   final List<RelatedTicket> children;
 
   factory TicketRelations.fromJson(Map<String, dynamic> j) => TicketRelations(
-        parent: j['parent'] is Map
-            ? RelatedTicket.fromJson(J.map(j['parent']))
-            : null,
-        mergeType: J.str(j['merge_type']),
-        children:
-            J.mapList(j['children']).map(RelatedTicket.fromJson).toList(),
-      );
+    parent: j['parent'] is Map
+        ? RelatedTicket.fromJson(J.map(j['parent']))
+        : null,
+    mergeType: J.str(j['merge_type']),
+    children: J.mapList(j['children']).map(RelatedTicket.fromJson).toList(),
+  );
 }
 
 class RelatedTicket {
@@ -224,8 +227,8 @@ class RelatedTicket {
   final String subject;
 
   factory RelatedTicket.fromJson(Map<String, dynamic> j) => RelatedTicket(
-        ticketId: J.intOr(j['ticket_id']),
-        number: J.strOr(j['number']),
-        subject: J.strOr(j['subject']),
-      );
+    ticketId: J.intOr(j['ticket_id']),
+    number: J.strOr(j['number']),
+    subject: J.strOr(j['subject']),
+  );
 }

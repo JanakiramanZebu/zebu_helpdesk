@@ -1,10 +1,15 @@
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/common.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
@@ -26,6 +31,10 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 4, vsync: this);
+  // Controls the outer (header) scroll view of the NestedScrollView, so its
+  // offset tells us when the collapsing header (which holds the title) has
+  // scrolled behind the pinned app bar.
+  final ScrollController _headerScroll = ScrollController();
 
   Task? _task;
   List<ThreadEntry> _thread = [];
@@ -34,16 +43,34 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   Object? _error;
   bool _loading = true;
   bool _acting = false;
+  bool _titleInBar = false;
 
   @override
   void initState() {
     super.initState();
+    _tabs.addListener(_onTab);
+    _headerScroll.addListener(_onHeaderScroll);
     _load();
+  }
+
+  void _onTab() {
+    if (mounted) setState(() {}); // toggle the composer per active tab
+  }
+
+  // Show the title in the app bar once the collapsing header has scrolled
+  // behind the pinned app bar.
+  void _onHeaderScroll() {
+    final show = _headerScroll.offset > 28;
+    if (show != _titleInBar && mounted) {
+      setState(() => _titleInBar = show);
+    }
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_onTab);
     _tabs.dispose();
+    _headerScroll.dispose();
     super.dispose();
   }
 
@@ -81,8 +108,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(msg)));
 
-  Future<void> _runAction(Future<Task> Function() action,
-      {String? success}) async {
+  Future<void> _runAction(
+    Future<Task> Function() action, {
+    String? success,
+  }) async {
     setState(() => _acting = true);
     try {
       final updated = await action();
@@ -95,49 +124,82 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     }
   }
 
+  PopupMenuButton<String> _menu(Task t) => PopupMenuButton<String>(
+    onSelected: _onMenu,
+    itemBuilder: (_) => [
+      if (t.isOpen)
+        const PopupMenuItem(value: 'close', child: Text('Close'))
+      else
+        const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
+      const PopupMenuItem(value: 'assign', child: Text('Assign')),
+      const PopupMenuItem(value: 'transfer', child: Text('Transfer dept')),
+      const PopupMenuItem(value: 'progress', child: Text('Edit progress')),
+      const PopupMenuItem(value: 'priority', child: Text('Set priority')),
+      const PopupMenuDivider(),
+      const PopupMenuItem(value: 'tags', child: Text('Tags')),
+      const PopupMenuItem(value: 'collaborators', child: Text('Collaborators')),
+    ],
+  );
+
   @override
   Widget build(BuildContext context) {
     final t = _task;
+    if (_loading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Task')),
+        body: const LoadingView(),
+      );
+    }
+    if (_error != null || t == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Task')),
+        body: ErrorView(error: _error ?? 'Not found', onRetry: _load),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(t == null ? 'Task' : '#${t.number}'),
-        actions: [
-          if (t != null)
-            PopupMenuButton<String>(
-              onSelected: _onMenu,
-              itemBuilder: (_) => [
-                if (t.isOpen)
-                  const PopupMenuItem(value: 'close', child: Text('Close'))
-                else
-                  const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-                const PopupMenuItem(value: 'assign', child: Text('Assign')),
-                const PopupMenuItem(
-                    value: 'transfer', child: Text('Transfer dept')),
-                const PopupMenuItem(
-                    value: 'progress', child: Text('Edit progress')),
-                const PopupMenuItem(value: 'priority', child: Text('Set priority')),
-                const PopupMenuDivider(),
-                const PopupMenuItem(value: 'tags', child: Text('Tags')),
-                const PopupMenuItem(
-                    value: 'collaborators', child: Text('Collaborators')),
-              ],
-            ),
-        ],
-      ),
-      body: _loading
-          ? const LoadingView()
-          : _error != null
-              ? ErrorView(error: _error!, onRetry: _load)
-              : Column(
-                  children: [
-                    if (_acting) const LinearProgressIndicator(minHeight: 2),
-                    _Header(task: t!),
+      body: Column(
+        children: [
+          Expanded(
+            child: NestedScrollView(
+              controller: _headerScroll,
+              headerSliverBuilder: (context, _) => [
+                SliverAppBar(
+                  pinned: true,
+                  title: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('#${t.number}'),
+                      if (_titleInBar)
+                        Text(
+                          t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .appBarTheme
+                                    .foregroundColor
+                                    ?.withValues(alpha: 0.8),
+                              ),
+                        ),
+                    ],
+                  ),
+                  actions: [_menu(t)],
+                ),
+                SliverToBoxAdapter(child: _CollapsingHeader(task: t)),
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _SliverTabBarDelegate(
                     TabBar(
                       controller: _tabs,
                       isScrollable: true,
                       tabAlignment: TabAlignment.start,
-                      indicatorPadding:
-                          const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                      indicatorPadding: const EdgeInsets.symmetric(
+                        vertical: 6,
+                        horizontal: 2,
+                      ),
                       tabs: const [
                         Tab(text: 'Conversation'),
                         Tab(text: 'Details'),
@@ -145,53 +207,39 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                         Tab(text: 'Dependencies'),
                       ],
                     ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: _tabs,
-                        children: [
-                          _ConversationTab(thread: _thread),
-                          _DetailsTab(task: t),
-                          _SubtasksTab(
-                            subtasks: _subtasks,
-                            onTap: (st) => context.push(Routes.task(st.id)),
-                            onAdd: _addSubtask,
-                          ),
-                          _DependenciesTab(
-                            dependencies: _dependencies,
-                            onAdd: _addDependency,
-                            onRemove: _removeDependency,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-      bottomNavigationBar: t == null
-          ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _openComposer(isNote: true),
-                        icon: const Icon(Icons.note_add_outlined, size: 18),
-                        label: const Text('Note'),
-                      ),
+              ],
+              body: Column(
+                children: [
+                  if (_acting) const LinearProgressIndicator(minHeight: 2),
+                  Expanded(
+                    child: TabBarView(
+                      controller: _tabs,
+                      children: [
+                        _ConversationTab(thread: _thread),
+                        _DetailsTab(task: t),
+                        _SubtasksTab(
+                          subtasks: _subtasks,
+                          onTap: (st) => context.push(Routes.task(st.id)),
+                          onAdd: _addSubtask,
+                        ),
+                        _DependenciesTab(
+                          dependencies: _dependencies,
+                          onAdd: _addDependency,
+                          onRemove: _removeDependency,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: () => _openComposer(isNote: false),
-                        icon: const Icon(Icons.reply, size: 18),
-                        label: const Text('Reply'),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
+          ),
+          if (_tabs.index == 0)
+            _InlineComposer(taskId: widget.taskId, onSent: _load),
+        ],
+      ),
     );
   }
 
@@ -199,47 +247,55 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     final repo = ref.read(tasksRepositoryProvider);
     switch (value) {
       case 'close':
-        await _runAction(() => repo.close(widget.taskId),
-            success: 'Task closed');
+        await _runAction(
+          () => repo.close(widget.taskId),
+          success: 'Task closed',
+        );
         await _load();
       case 'reopen':
-        await _runAction(() => repo.reopen(widget.taskId),
-            success: 'Task reopened');
+        await _runAction(
+          () => repo.reopen(widget.taskId),
+          success: 'Task reopened',
+        );
         await _load();
       case 'assign':
-        await _pickMeta(MetaKind.agents, (id) async {
-          await _runAction(() => repo.assign(widget.taskId, staffId: id),
-              success: 'Assigned');
+        await _pickMeta(MetaKind.agents, title: 'Assign to', (id) async {
+          await _runAction(
+            () => repo.assign(widget.taskId, staffId: id),
+            success: 'Assigned',
+          );
           await _load();
         });
       case 'transfer':
-        await _pickMeta(MetaKind.departments, (id) async {
-          await _runAction(() => repo.transfer(widget.taskId, id),
-              success: 'Transferred');
+        await _pickMeta(MetaKind.departments, title: 'Transfer department', (
+          id,
+        ) async {
+          await _runAction(
+            () => repo.transfer(widget.taskId, id),
+            success: 'Transferred',
+          );
           await _load();
         });
       case 'progress':
         await _editProgress();
       case 'priority':
-        await _pickMeta(MetaKind.taskPriorities, (id) async {
-          await _runAction(() => repo.edit(widget.taskId, priorityId: id),
-              success: 'Priority updated');
+        await _pickMeta(MetaKind.taskPriorities, title: 'Set priority', (
+          id,
+        ) async {
+          await _runAction(
+            () => repo.edit(widget.taskId, priorityId: id),
+            success: 'Priority updated',
+          );
           await _load();
         });
       case 'tags':
-        await showModalBottomSheet<void>(
+        await showDialog<void>(
           context: context,
-          useSafeArea: true,
-          isScrollControlled: true,
-          showDragHandle: true,
           builder: (_) => _TaskTagsSheet(taskId: widget.taskId),
         );
       case 'collaborators':
-        await showModalBottomSheet<void>(
+        await showDialog<void>(
           context: context,
-          useSafeArea: true,
-          isScrollControlled: true,
-          showDragHandle: true,
           builder: (_) => _TaskCollaboratorsSheet(taskId: widget.taskId),
         );
     }
@@ -264,8 +320,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     if (id == null) return;
     setState(() => _acting = true);
     try {
-      final deps =
-          await ref.read(tasksRepositoryProvider).addDependency(widget.taskId, id);
+      final deps = await ref
+          .read(tasksRepositoryProvider)
+          .addDependency(widget.taskId, id);
       if (mounted) setState(() => _dependencies = deps);
     } on ApiException catch (e) {
       _toast(e.message);
@@ -291,7 +348,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   }
 
   Future<void> _pickMeta(
-      String kind, Future<void> Function(int id) onPick) async {
+    String kind,
+    Future<void> Function(int id) onPick, {
+    String title = 'Select',
+  }) async {
     final List<MetaItem> items;
     try {
       items = await ref.read(metaRepositoryProvider).get(kind);
@@ -300,18 +360,18 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       return;
     }
     if (!mounted) return;
-    final chosen = await showModalBottomSheet<int>(
+    final chosen = await showDialog<int>(
       context: context,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+      builder: (_) => SimpleDialog(
+        title: Text(title),
         children: [
           for (final m in items)
-            ListTile(
-              title: Text(m.name),
-              onTap: () => Navigator.pop(context, m.id),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, m.id),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(m.name),
+              ),
             ),
         ],
       ),
@@ -325,30 +385,20 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       builder: (_) => _ProgressDialog(initial: _task?.progress ?? 0),
     );
     if (value == null) return;
-    await _runAction(() => ref.read(tasksRepositoryProvider).edit(
-          widget.taskId,
-          progress: value,
-        ),
-        success: 'Progress updated');
-    await _load();
-  }
-
-  Future<void> _openComposer({required bool isNote}) async {
-    final sent = await showModalBottomSheet<bool>(
-      context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _Composer(taskId: widget.taskId, isNote: isNote),
+    await _runAction(
+      () => ref
+          .read(tasksRepositoryProvider)
+          .edit(widget.taskId, progress: value),
+      success: 'Progress updated',
     );
-    if (sent == true) await _load();
+    await _load();
   }
 }
 
-// --- Header -----------------------------------------------------------------
+// --- Collapsing header (status + progress; scrolls away under the app bar) ---
 
-class _Header extends StatelessWidget {
-  const _Header({required this.task});
+class _CollapsingHeader extends StatelessWidget {
+  const _CollapsingHeader({required this.task});
   final Task task;
 
   @override
@@ -356,15 +406,18 @@ class _Header extends StatelessWidget {
     final theme = Theme.of(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       color: theme.colorScheme.surface,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(task.title,
-              style: theme.textTheme.titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
+          Text(
+            task.title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -374,10 +427,11 @@ class _Header extends StatelessWidget {
                 StatusChip.priority(task.priority!.name, dense: true),
               if (task.overdue)
                 const StatusChip(
-                    label: 'Overdue',
-                    color: Color(0xFFD32F2F),
-                    icon: Icons.warning_amber_rounded,
-                    dense: true),
+                  label: 'Overdue',
+                  color: Color(0xFFD32F2F),
+                  icon: Icons.warning_amber_rounded,
+                  dense: true,
+                ),
             ],
           ),
           if (task.progress > 0) ...[
@@ -390,8 +444,10 @@ class _Header extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text('Progress: ${task.progress}%',
-                style: theme.textTheme.bodySmall),
+            Text(
+              'Progress: ${task.progress}%',
+              style: theme.textTheme.bodySmall,
+            ),
           ],
           if (task.blocked) ...[
             const SizedBox(height: 12),
@@ -404,15 +460,19 @@ class _Header extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.lock_outline,
-                      size: 18, color: Color(0xFFD32F2F)),
+                  const Icon(
+                    Icons.lock_outline,
+                    size: 18,
+                    color: Color(0xFFD32F2F),
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Blocked by an open dependency',
                       style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFFD32F2F),
-                          fontWeight: FontWeight.w600),
+                        color: const Color(0xFFD32F2F),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -423,6 +483,34 @@ class _Header extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Pins the tab bar below the (collapsing) header.
+class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
+  _SliverTabBarDelegate(this.tabBar);
+  final TabBar tabBar;
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlaps) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(
+          bottom: BorderSide(color: scheme.outlineVariant, width: 1),
+        ),
+      ),
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(_SliverTabBarDelegate old) => old.tabBar != tabBar;
 }
 
 // --- Tabs -------------------------------------------------------------------
@@ -473,23 +561,25 @@ class _DetailsTab extends StatelessWidget {
                 children: [
                   SizedBox(
                     width: 110,
-                    child: Text(label,
-                        style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurfaceVariant)),
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
                   ),
                   Expanded(
-                      child: Text(value,
-                          style:
-                              const TextStyle(fontWeight: FontWeight.w500))),
+                    child: Text(
+                      value,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
+                  ),
                 ],
               ),
             ),
         if (task.customFields.isNotEmpty) ...[
           const Divider(height: 28),
-          Text('Custom fields',
-              style: Theme.of(context).textTheme.titleSmall),
+          Text('Custom fields', style: Theme.of(context).textTheme.titleSmall),
           const SizedBox(height: 8),
           for (final e in task.customFields.entries)
             Padding(
@@ -498,12 +588,14 @@ class _DetailsTab extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
-                      width: 130,
-                      child: Text(e.key,
-                          style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurfaceVariant))),
+                    width: 130,
+                    child: Text(
+                      e.key,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
                   Expanded(child: Text(e.value)),
                 ],
               ),
@@ -592,14 +684,16 @@ class _DependenciesTab extends StatelessWidget {
                     final blocker = dep.blocker;
                     return Card(
                       margin: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 5),
+                        horizontal: 12,
+                        vertical: 5,
+                      ),
                       child: ListTile(
                         leading: Icon(
                           blocker == null
                               ? Icons.link
                               : blocker.open
-                                  ? Icons.lock_outline
-                                  : Icons.check_circle_outline,
+                              ? Icons.lock_outline
+                              : Icons.check_circle_outline,
                           color: blocker != null && blocker.open
                               ? const Color(0xFFD32F2F)
                               : Theme.of(context).colorScheme.primary,
@@ -647,8 +741,10 @@ class _ProgressDialogState extends State<_ProgressDialog> {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('${_value.round()}%',
-              style: Theme.of(context).textTheme.headlineSmall),
+          Text(
+            '${_value.round()}%',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
           Slider(
             value: _value,
             min: 0,
@@ -675,94 +771,490 @@ class _ProgressDialogState extends State<_ProgressDialog> {
 
 // --- Composer (reply/note) --------------------------------------------------
 
-class _Composer extends ConsumerStatefulWidget {
-  const _Composer({required this.taskId, required this.isNote});
+class _InlineComposer extends ConsumerStatefulWidget {
+  const _InlineComposer({required this.taskId, required this.onSent});
   final int taskId;
-  final bool isNote;
+  final Future<void> Function() onSent;
 
   @override
-  ConsumerState<_Composer> createState() => _ComposerState();
+  ConsumerState<_InlineComposer> createState() => _InlineComposerState();
 }
 
-class _ComposerState extends ConsumerState<_Composer> {
-  final _body = TextEditingController();
-  bool _alert = true;
+class _InlineComposerState extends ConsumerState<_InlineComposer> {
+  final FleatherController _controller = FleatherController();
+  final FocusNode _focus = FocusNode();
+  final List<PlatformFile> _files = [];
+  bool _note = false; // false = reply, true = internal note
   bool _sending = false;
-  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_onChange);
+    _controller.addListener(_onChange);
+  }
+
+  // Rebuilds so the hint, send-enabled state and toolbar track edits/focus.
+  void _onChange() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
-    _body.dispose();
+    _focus.removeListener(_onChange);
+    _controller.removeListener(_onChange);
+    _focus.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
-    if (_body.text.trim().isEmpty) {
-      setState(() => _error = 'Message is required');
-      return;
+  bool get _isEmpty => _controller.document.toPlainText().trim().isEmpty;
+
+  void _clearDocument() {
+    final len = _controller.document.length;
+    if (len > 1) {
+      _controller.replaceText(
+        0,
+        len - 1,
+        '',
+        selection: const TextSelection.collapsed(offset: 0),
+      );
     }
+  }
+
+  Future<void> _attach(AttachSource source) async {
+    final picked = await pickAttachmentsOf(source);
+    if (picked.isEmpty || !mounted) return;
     setState(() {
-      _sending = true;
-      _error = null;
+      for (final f in picked) {
+        if (!_files.any((e) => e.name == f.name)) _files.add(f);
+      }
     });
+  }
+
+  /// Sends the document (as HTML) plus attachments. Returns true on success so
+  /// the fullscreen editor knows when to close.
+  Future<bool> _send() async {
+    final empty = _isEmpty;
+    if (empty && _files.isEmpty) return false;
+    setState(() => _sending = true);
     final repo = ref.read(tasksRepositoryProvider);
     try {
-      if (widget.isNote) {
-        await repo.note(widget.taskId, body: _body.text.trim());
+      final files = [
+        for (final f in _files)
+          if (f.bytes != null)
+            MultipartFile.fromBytes(f.bytes!, filename: f.name),
+      ];
+      final body = empty ? '' : parchmentHtml.encode(_controller.document);
+      if (_note) {
+        await repo.note(widget.taskId, body: body, files: files);
       } else {
-        await repo.reply(widget.taskId, body: _body.text.trim(), alert: _alert);
+        await repo.reply(widget.taskId, body: body, alert: true, files: files);
       }
-      if (mounted) Navigator.pop(context, true);
+      _clearDocument();
+      if (mounted) setState(() => _files.clear());
+      await widget.onSent();
+      return true;
     } on ApiException catch (e) {
-      setState(() => _error = e.message);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return false;
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
+  Future<void> _openFullscreen() async {
+    _focus.unfocus();
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _FullscreenEditor(
+          controller: _controller,
+          note: _note,
+          onSend: _send,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final accent = _note ? AppTheme.warning : scheme.primary;
+    final noteTint = AppTheme.warning.withValues(alpha: isDark ? 0.10 : 0.07);
+    final barColor = isDark ? const Color(0xFF121B22) : scheme.surface;
+    final pillColor = isDark ? const Color(0xFF1F2C34) : Colors.white;
+    final canSend = !_isEmpty || _files.isNotEmpty;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _note ? Color.alphaBlend(noteTint, barColor) : barColor,
+        border: Border(
+          top: BorderSide(
+            color: _note
+                ? accent.withValues(alpha: 0.5)
+                : scheme.outlineVariant,
+          ),
+        ),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  _ModeToggle(
+                    note: _note,
+                    onChanged: (v) => setState(() => _note = v),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: 'Expand',
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(
+                      Icons.open_in_full,
+                      size: 20,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    onPressed: _openFullscreen,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              if (_files.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final f in _files)
+                        Chip(
+                          visualDensity: VisualDensity.compact,
+                          avatar: const Icon(
+                            Icons.insert_drive_file_outlined,
+                            size: 16,
+                          ),
+                          label: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 140),
+                            child: Text(
+                              f.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          onDeleted: () => setState(() => _files.remove(f)),
+                        ),
+                    ],
+                  ),
+                ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: pillColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: _note
+                              ? accent
+                              : scheme.outlineVariant.withValues(alpha: 0.7),
+                          width: _note ? 1.4 : 1,
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Stack(
+                              children: [
+                                FleatherEditor(
+                                  controller: _controller,
+                                  focusNode: _focus,
+                                  minHeight: 24,
+                                  maxHeight: 120,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 10,
+                                  ),
+                                ),
+                                if (_isEmpty)
+                                  Positioned(
+                                    left: 0,
+                                    top: 10,
+                                    child: IgnorePointer(
+                                      child: Text(
+                                        _note
+                                            ? 'Internal note (staff only)'
+                                            : 'Add a comment',
+                                        style: TextStyle(
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          PopupMenuButton<AttachSource>(
+                            tooltip: 'Attach',
+                            position: PopupMenuPosition.over,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            icon: Transform.rotate(
+                              angle: -0.7,
+                              child: Icon(
+                                Icons.attach_file,
+                                size: 22,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                            onSelected: _attach,
+                            itemBuilder: (_) => attachMenuItems(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  _sending
+                      ? const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2.6),
+                          ),
+                        )
+                      : Material(
+                          color: canSend
+                              ? accent
+                              : scheme.onSurfaceVariant.withValues(alpha: 0.3),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            customBorder: const CircleBorder(),
+                            onTap: canSend ? _send : null,
+                            child: Padding(
+                              padding: const EdgeInsets.all(11),
+                              child: Icon(
+                                _note ? Icons.note_add : Icons.send,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+                ],
+              ),
+              if (_focus.hasFocus) ...[
+                const SizedBox(height: 2),
+                FleatherToolbar.basic(
+                  controller: _controller,
+                  hideBackgroundColor: true,
+                  hideForegroundColor: true,
+                  hideDirection: true,
+                  hideListChecks: true,
+                  hideHorizontalRule: true,
+                  hideAlignment: true,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Full-screen rich-text editor that shares the composer's [FleatherController].
+class _FullscreenEditor extends StatefulWidget {
+  const _FullscreenEditor({
+    required this.controller,
+    required this.note,
+    required this.onSend,
+  });
+
+  final FleatherController controller;
+  final bool note;
+  final Future<bool> Function() onSend;
+
+  @override
+  State<_FullscreenEditor> createState() => _FullscreenEditorState();
+}
+
+class _FullscreenEditorState extends State<_FullscreenEditor> {
+  final FocusNode _focus = FocusNode();
+  bool _sending = false;
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    setState(() => _sending = true);
+    final ok = await widget.onSend();
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).pop();
+    } else {
+      setState(() => _sending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = widget.note
+        ? AppTheme.warning
+        : Theme.of(context).colorScheme.primary;
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Collapse',
+          icon: const Icon(Icons.close_fullscreen),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(widget.note ? 'Internal note' : 'Reply'),
+        actions: [
+          _sending
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2.6),
+                  ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(backgroundColor: accent),
+                    onPressed: _send,
+                    icon: Icon(
+                      widget.note ? Icons.note_add : Icons.send,
+                      size: 18,
+                    ),
+                    label: const Text('Send'),
+                  ),
+                ),
+        ],
+      ),
+      body: Column(
         children: [
-          Text(widget.isNote ? 'Internal note' : 'Reply',
-              style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _body,
-            maxLines: 6,
-            minLines: 3,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText:
-                  widget.isNote ? 'Visible to staff only' : 'Type your reply…',
-              errorText: _error,
+          Expanded(
+            child: FleatherEditor(
+              controller: widget.controller,
+              focusNode: _focus,
+              autofocus: true,
+              expands: true,
+              padding: const EdgeInsets.all(16),
             ),
           ),
-          if (!widget.isNote)
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _alert,
-              onChanged: (v) => setState(() => _alert = v),
-              title: const Text('Send alert'),
-            ),
-          const SizedBox(height: 8),
-          FilledButton(
-            onPressed: _sending ? null : _send,
-            child: _sending
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
-                : Text(widget.isNote ? 'Add note' : 'Send reply'),
+          SafeArea(
+            top: false,
+            child: FleatherToolbar.basic(controller: widget.controller),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Segmented Reply / Internal note selector shown above the composer input.
+class _ModeToggle extends StatelessWidget {
+  const _ModeToggle({required this.note, required this.onChanged});
+
+  final bool note;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final trackColor = isDark
+        ? const Color(0xFF1E1E1E)
+        : const Color(0xFFF1F1F1);
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: trackColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _segment(
+            context: context,
+            label: 'Reply',
+            icon: Icons.reply_rounded,
+            selected: !note,
+            selectedColor: scheme.primary,
+            onTap: () => onChanged(false),
+          ),
+          _segment(
+            context: context,
+            label: 'Internal note',
+            icon: Icons.sticky_note_2_outlined,
+            selected: note,
+            selectedColor: AppTheme.warning,
+            onTap: () => onChanged(true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _segment({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required Color selectedColor,
+    required VoidCallback onTap,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? selectedColor : Colors.transparent,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: selected ? Colors.white : scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? Colors.white : scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -827,8 +1319,10 @@ class _SubtaskSheetState extends ConsumerState<_SubtaskSheet> {
           Text('New subtask', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 12),
           if (_error != null) ...[
-            Text(_error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             const SizedBox(height: 8),
           ],
           TextField(
@@ -854,7 +1348,10 @@ class _SubtaskSheetState extends ConsumerState<_SubtaskSheet> {
                     height: 20,
                     width: 20,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2.4, color: Colors.white))
+                      strokeWidth: 2.4,
+                      color: Colors.white,
+                    ),
+                  )
                 : const Text('Create subtask'),
           ),
         ],
@@ -945,8 +1442,8 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
     super.dispose();
   }
 
-  void _snack(String m) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _load() async {
     try {
@@ -970,8 +1467,9 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
     if (name.isEmpty) return;
     setState(() => _busy = true);
     try {
-      final tags =
-          await ref.read(tasksRepositoryProvider).addTag(widget.taskId, name: name);
+      final tags = await ref
+          .read(tasksRepositoryProvider)
+          .addTag(widget.taskId, name: name);
       _name.clear();
       if (mounted) setState(() => _tags = tags);
     } on ApiException catch (e) {
@@ -984,8 +1482,9 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
   Future<void> _remove(int tagId) async {
     setState(() => _busy = true);
     try {
-      final tags =
-          await ref.read(tasksRepositoryProvider).removeTag(widget.taskId, tagId);
+      final tags = await ref
+          .read(tasksRepositoryProvider)
+          .removeTag(widget.taskId, tagId);
       if (mounted) setState(() => _tags = tags);
     } on ApiException catch (e) {
       if (mounted) _snack(e.message);
@@ -996,61 +1495,66 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('Tags', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_tags.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('No tags yet'),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
+    return AlertDialog(
+      title: const Text('Tags'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_tags.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('No tags yet'),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  for (final t in _tags)
+                    Chip(
+                      label: Text(t.name),
+                      onDeleted: _busy ? null : () => _remove(t.id),
+                    ),
+                ],
+              ),
+            const SizedBox(height: 12),
+            Row(
               children: [
-                for (final t in _tags)
-                  Chip(
-                    label: Text(t.name),
-                    onDeleted: _busy ? null : () => _remove(t.id),
-                  ),
-              ],
-            ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _name,
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _add(),
-                  decoration: const InputDecoration(
-                    hintText: 'Add a tag by name',
-                    isDense: true,
+                Expanded(
+                  child: TextField(
+                    controller: _name,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _add(),
+                    decoration: const InputDecoration(
+                      hintText: 'Add a tag by name',
+                      isDense: true,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _busy ? null : _add,
-                child: const Text('Add'),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(width: 8),
+                FilledButton(
+                  onPressed: _busy ? null : _add,
+                  child: const Text('Add'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Done'),
+        ),
+      ],
     );
   }
 }
@@ -1078,13 +1582,14 @@ class _TaskCollaboratorsSheetState
     _load();
   }
 
-  void _snack(String m) => ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m) =>
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
 
   Future<void> _load() async {
     try {
-      final c =
-          await ref.read(tasksRepositoryProvider).collaborators(widget.taskId);
+      final c = await ref
+          .read(tasksRepositoryProvider)
+          .collaborators(widget.taskId);
       if (mounted) {
         setState(() {
           _collabs = c;
@@ -1131,57 +1636,54 @@ class _TaskCollaboratorsSheetState
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          16, 0, 16, 16 + MediaQuery.of(context).padding.bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return AlertDialog(
+      title: Row(
         children: [
-          Row(
-            children: [
-              Text('Collaborators',
-                  style: Theme.of(context).textTheme.titleMedium),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: _busy ? null : _add,
-                icon: const Icon(Icons.person_add_alt, size: 18),
-                label: const Text('Add'),
-              ),
-            ],
+          const Expanded(child: Text('Collaborators')),
+          TextButton.icon(
+            onPressed: _busy ? null : _add,
+            icon: const Icon(Icons.person_add_alt, size: 18),
+            label: const Text('Add'),
           ),
-          const SizedBox(height: 4),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (_collabs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('No collaborators'),
-            )
-          else
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final c in _collabs)
-                    ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(c.name),
-                      subtitle: c.email != null ? Text(c.email!) : null,
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: _busy ? null : () => _remove(c.id),
-                      ),
-                    ),
-                ],
-              ),
-            ),
         ],
       ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: _loading
+            ? const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : _collabs.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('No collaborators'),
+              )
+            : ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 320),
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final c in _collabs)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(c.name),
+                        subtitle: c.email != null ? Text(c.email!) : null,
+                        trailing: IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: _busy ? null : () => _remove(c.id),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Done'),
+        ),
+      ],
     );
   }
 }

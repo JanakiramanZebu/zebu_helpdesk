@@ -28,7 +28,11 @@ class AttachmentTile extends StatelessWidget {
     return ListTile(
       dense: true,
       leading: Icon(_icon, color: scheme.primary),
-      title: Text(attachment.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      title: Text(
+        attachment.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
       subtitle: attachment.size != null
           ? Text(Fmt.fileSize(attachment.size))
           : null,

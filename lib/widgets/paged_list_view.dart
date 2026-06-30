@@ -18,10 +18,26 @@ class PagedListView<T> extends StatefulWidget {
     this.header,
     this.onTotalChanged,
     this.fabClearance = false,
+    this.itemFilter,
+    this.itemSort,
+    this.onItems,
   });
 
   final Future<Paginated<T>> Function(int page) fetch;
   final Widget Function(BuildContext context, T item) itemBuilder;
+
+  /// Optional client-side predicate applied to loaded items before display.
+  /// Re-evaluated on every build, so changing it (e.g. as the user types or
+  /// switches tabs) narrows the visible list instantly without a refetch.
+  final bool Function(T item)? itemFilter;
+
+  /// Optional client-side comparator applied to the (filtered) items before
+  /// display, so changing the sort reorders instantly without a refetch.
+  final int Function(T a, T b)? itemSort;
+
+  /// Notified (after frame) with the currently-visible, filtered items — lets
+  /// the host implement select-all / selection over what's on screen.
+  final ValueChanged<List<T>>? onItems;
   final String emptyMessage;
   final String? emptyHint;
   final IconData emptyIcon;
@@ -73,8 +89,7 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
   }
 
   void _onScroll() {
-    if (_scroll.position.pixels >=
-        _scroll.position.maxScrollExtent - 320) {
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 320) {
       _load();
     }
   }
@@ -123,10 +138,34 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
     // FAB clearance where requested so content never hides behind chrome.
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final listPadding = widget.padding.add(
-      EdgeInsets.only(bottom: bottomInset + (widget.fabClearance ? 80 : 0)),
+      EdgeInsets.only(bottom: bottomInset + (widget.fabClearance ? 150 : 0)),
     );
 
-    final body = (_items.isEmpty)
+    final filter = widget.itemFilter;
+    var items = filter == null
+        ? _items
+        : _items.where(filter).toList(growable: false);
+    if (widget.itemSort != null) {
+      items = List<T>.of(items)..sort(widget.itemSort);
+    }
+
+    // If a client-side filter hides most of a page, the user may never scroll
+    // far enough to trigger pagination — keep pulling pages until we have a
+    // screenful of matches (or run out).
+    if (filter != null && _hasMore && !_loading && items.length < 8) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
+
+    if (widget.onItems != null) {
+      final snapshot = List<T>.unmodifiable(items);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onItems!(snapshot);
+      });
+    }
+
+    final body = (items.isEmpty)
         ? ListView(
             children: [
               if (widget.header != null) widget.header!,
@@ -143,7 +182,8 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
         : ListView.builder(
             controller: _scroll,
             padding: listPadding,
-            itemCount: _items.length +
+            itemCount:
+                items.length +
                 (widget.header != null ? 1 : 0) +
                 (_hasMore ? 1 : 0),
             itemBuilder: (context, index) {
@@ -152,7 +192,7 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
                 if (i == 0) return widget.header!;
                 i -= 1;
               }
-              if (i >= _items.length) {
+              if (i >= items.length) {
                 return const Padding(
                   padding: EdgeInsets.all(16),
                   child: Center(
@@ -164,7 +204,7 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
                   ),
                 );
               }
-              return widget.itemBuilder(context, _items[i]);
+              return widget.itemBuilder(context, items[i]);
             },
           );
 

@@ -37,22 +37,22 @@ class AppTheme {
   static ThemeData _build(Brightness brightness) {
     final isLight = brightness == Brightness.light;
 
-    final scheme = ColorScheme.fromSeed(
-      seedColor: brand,
-      brightness: brightness,
-    ).copyWith(
-      primary: isLight ? brand : brandLight,
-      onPrimary: Colors.white,
-      primaryContainer: isLight ? _primaryContainerLight : const Color(0xFF1D242F),
-      onPrimaryContainer: isLight ? brandDark : _primaryContainerLight,
-      secondary: const Color(0xFF0052CC),
-      error: isLight ? overdue : const Color(0xFFFF6B6B),
-      surface: isLight ? _surfaceLight : _surfaceDark,
-      onSurface: isLight ? _textLight : Colors.white,
-      onSurfaceVariant: isLight ? _textMutedLight : _textMutedDark,
-      outline: isLight ? const Color(0xFFC7CDD4) : const Color(0xFF4A4A4A),
-      outlineVariant: isLight ? _outlineLight : _outlineDark,
-    );
+    final scheme =
+        ColorScheme.fromSeed(seedColor: brand, brightness: brightness).copyWith(
+          primary: isLight ? brand : brandLight,
+          onPrimary: Colors.white,
+          primaryContainer: isLight
+              ? _primaryContainerLight
+              : const Color(0xFF1D242F),
+          onPrimaryContainer: isLight ? brandDark : _primaryContainerLight,
+          secondary: const Color(0xFF0052CC),
+          error: isLight ? overdue : const Color(0xFFFF6B6B),
+          surface: isLight ? _surfaceLight : _surfaceDark,
+          onSurface: isLight ? _textLight : Colors.white,
+          onSurfaceVariant: isLight ? _textMutedLight : _textMutedDark,
+          outline: isLight ? const Color(0xFFC7CDD4) : const Color(0xFF4A4A4A),
+          outlineVariant: isLight ? _outlineLight : _outlineDark,
+        );
 
     final base = ThemeData(
       colorScheme: scheme,
@@ -101,19 +101,21 @@ class AppTheme {
           borderRadius: BorderRadius.circular(8),
           borderSide: const BorderSide(color: brand, width: 1.6),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: brand,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(50),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          textStyle: GoogleFonts.inter(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
           ),
-          textStyle:
-              GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -121,18 +123,20 @@ class AppTheme {
           foregroundColor: isLight ? brand : brandLight,
           minimumSize: const Size.fromHeight(50),
           side: BorderSide(color: scheme.outlineVariant),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          textStyle: GoogleFonts.inter(
+            fontSize: 15,
+            fontWeight: FontWeight.w600,
           ),
-          textStyle:
-              GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: isLight ? brand : brandLight,
-          textStyle:
-              GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+          textStyle: GoogleFonts.inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -150,16 +154,19 @@ class AppTheme {
         ),
         labelColor: isLight ? brand : brandLight,
         unselectedLabelColor: scheme.onSurfaceVariant,
-        labelStyle: GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w600),
-        unselectedLabelStyle:
-            GoogleFonts.inter(fontSize: 13.5, fontWeight: FontWeight.w500),
+        labelStyle: GoogleFonts.inter(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w600,
+        ),
+        unselectedLabelStyle: GoogleFonts.inter(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+        ),
         labelPadding: const EdgeInsets.symmetric(horizontal: 16),
         overlayColor: const WidgetStatePropertyAll(Colors.transparent),
       ),
       chipTheme: base.chipTheme.copyWith(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         side: BorderSide.none,
       ),
       navigationBarTheme: NavigationBarThemeData(
@@ -182,7 +189,10 @@ class AppTheme {
   }
 
   /// Resolve a hex string like `#e53935` to a [Color] (fallbacks to grey).
-  static Color hexColor(String? hex, [Color fallback = const Color(0xFF666666)]) {
+  static Color hexColor(
+    String? hex, [
+    Color fallback = const Color(0xFF666666),
+  ]) {
     if (hex == null) return fallback;
     var h = hex.replaceAll('#', '').trim();
     if (h.length == 6) h = 'FF$h';

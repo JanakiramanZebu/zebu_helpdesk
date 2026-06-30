@@ -28,10 +28,13 @@ class MeRepository {
     bool? available,
     bool? onVacation,
   }) async {
-    final body = await _api.post('/me/availability', body: {
-      if (available != null) 'available': available,
-      if (onVacation != null) 'onvacation': onVacation,
-    });
+    final body = await _api.post(
+      '/me/availability',
+      body: {
+        if (available != null) 'available': available,
+        if (onVacation != null) 'onvacation': onVacation,
+      },
+    );
     final data = J.map(J.map(body)['data']);
     return (
       available: J.boolOr(data['available']),
@@ -42,11 +45,10 @@ class MeRepository {
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) =>
-      _api.post('/me/password', body: {
-        'current_password': currentPassword,
-        'new_password': newPassword,
-      });
+  }) => _api.post(
+    '/me/password',
+    body: {'current_password': currentPassword, 'new_password': newPassword},
+  );
 
   /// Re-roll the local avatar; returns the new avatar URL.
   Future<String?> rerollAvatar() async {

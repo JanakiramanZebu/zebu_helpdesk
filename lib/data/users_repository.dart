@@ -12,8 +12,15 @@ class UsersRepository {
 
   AppUser _user(dynamic body) => AppUser.fromJson(J.map(J.map(body)['data']));
 
-  Future<Paginated<AppUser>> list({String? q, int page = 1, int limit = 25}) async {
-    final body = await _api.get('/users', query: {'q': q, 'page': page, 'limit': limit});
+  Future<Paginated<AppUser>> list({
+    String? q,
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final body = await _api.get(
+      '/users',
+      query: {'q': q, 'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), AppUser.fromJson);
   }
 
@@ -24,21 +31,31 @@ class UsersRepository {
     required String name,
     required String email,
     String? phone,
-  }) async =>
-      _user(await _api.post('/users', body: {
+  }) async => _user(
+    await _api.post(
+      '/users',
+      body: {
         'name': name,
         'email': email,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
-      }));
+      },
+    ),
+  );
 
   Future<AppUser> update(int id, Map<String, dynamic> changes) async =>
       _user(await _api.post('/users/$id', body: changes));
 
   Future<void> delete(int id) => _api.delete('/users/$id');
 
-  Future<Paginated<Ticket>> tickets(int id, {int page = 1, int limit = 25}) async {
-    final body =
-        await _api.get('/users/$id/tickets', query: {'page': page, 'limit': limit});
+  Future<Paginated<Ticket>> tickets(
+    int id, {
+    int page = 1,
+    int limit = 25,
+  }) async {
+    final body = await _api.get(
+      '/users/$id/tickets',
+      query: {'page': page, 'limit': limit},
+    );
     return Paginated.fromEnvelope(J.map(body), Ticket.fromJson);
   }
 
@@ -64,7 +81,10 @@ class UsersRepository {
 
   /// action: register | lock | unlock | reset-password.
   Future<Map<String, dynamic>> account(int id, String action) async {
-    final body = await _api.post('/users/$id/account', body: {'action': action});
+    final body = await _api.post(
+      '/users/$id/account',
+      body: {'action': action},
+    );
     return J.map(J.map(body)['data']);
   }
 }

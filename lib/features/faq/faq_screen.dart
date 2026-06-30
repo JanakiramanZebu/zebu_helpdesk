@@ -76,7 +76,7 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
           ),
         ),
       ),
-      body: _q.isEmpty ? _buildCategories() : _buildSearch(),
+      body: SafeArea(child: _q.isEmpty ? _buildCategories() : _buildSearch()),
     );
   }
 
@@ -141,7 +141,9 @@ class _CategoryTileState extends ConsumerState<_CategoryTile> {
     if (_faqs != null || _loading) return;
     setState(() => _loading = true);
     try {
-      final full = await ref.read(faqRepositoryProvider).category(widget.category.id);
+      final full = await ref
+          .read(faqRepositoryProvider)
+          .category(widget.category.id);
       if (!mounted) return;
       setState(() {
         _faqs = full.faqs;
@@ -164,7 +166,10 @@ class _CategoryTileState extends ConsumerState<_CategoryTile> {
       child: ExpansionTile(
         shape: const Border(),
         leading: const Icon(Icons.folder_outlined),
-        title: Text(cat.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+        title: Text(
+          cat.name,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
         trailing: Text(
           '${cat.faqCount}',
           style: Theme.of(context).textTheme.bodyMedium,
@@ -187,10 +192,13 @@ class _CategoryTileState extends ConsumerState<_CategoryTile> {
           else if (_error != null)
             Padding(
               padding: const EdgeInsets.all(12),
-              child: ErrorView(error: _error!, onRetry: () {
-                setState(() => _error = null);
-                _ensureLoaded();
-              }),
+              child: ErrorView(
+                error: _error!,
+                onRetry: () {
+                  setState(() => _error = null);
+                  _ensureLoaded();
+                },
+              ),
             )
           else if ((_faqs ?? const []).isEmpty)
             const Padding(
@@ -230,7 +238,9 @@ class _FaqRow extends StatelessWidget {
             _chip(
               context,
               faq.published ? 'Public' : 'Internal',
-              faq.published ? theme.colorScheme.primary : theme.colorScheme.outline,
+              faq.published
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.outline,
             ),
             if (faq.category != null)
               _chip(context, faq.category!.name, theme.colorScheme.secondary),
@@ -248,18 +258,14 @@ class _FaqRow extends StatelessWidget {
   }
 
   Widget _chip(BuildContext context, String label, Color color) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            color: color,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
+    ),
+  );
 }
