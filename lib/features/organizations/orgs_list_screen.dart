@@ -4,9 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/organization.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/paged_list_view.dart';
 
 class OrgsListScreen extends ConsumerStatefulWidget {
@@ -28,16 +31,11 @@ class _OrgsListScreenState extends ConsumerState<OrgsListScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.success(context, msg);
 
   Future<void> _openCreate() async {
-    final created = await showModalBottomSheet<bool>(
+    final created = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => const _CreateOrgSheet(),
     );
     if (created == true) {
@@ -57,8 +55,7 @@ class _OrgsListScreenState extends ConsumerState<OrgsListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Organizations'),
-            if (_total != null)
-              Text('$_total total', style: theme.textTheme.bodySmall),
+            if (_total != null) AppText.paraText(context, '$_total total'),
           ],
         ),
         bottom: PreferredSize(
@@ -100,8 +97,14 @@ class _OrgsListScreenState extends ConsumerState<OrgsListScreen> {
                 ),
                 child: Icon(Icons.apartment, color: theme.colorScheme.primary),
               ),
-              title: Text(o.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              subtitle: Text(
+              title: AppText.subText(
+                context,
+                o.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: AppText.paraText(
+                context,
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -161,19 +164,12 @@ class _CreateOrgSheetState extends ConsumerState<_CreateOrgSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: 'New organization',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'New organization',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
           TextField(
             controller: _name,
             autofocus: true,
@@ -194,9 +190,10 @@ class _CreateOrgSheetState extends ConsumerState<_CreateOrgSheet> {
           ),
           if (_formError != null) ...[
             const SizedBox(height: 12),
-            Text(
+            AppText.subText(
+              context,
               _formError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              color: Theme.of(context).colorScheme.error,
             ),
           ],
           const SizedBox(height: 16),

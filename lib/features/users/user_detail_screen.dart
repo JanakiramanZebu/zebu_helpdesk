@@ -5,11 +5,14 @@ import 'package:go_router/go_router.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/common.dart';
 import '../../models/ticket.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/states.dart';
 import '../../widgets/user_avatar.dart';
@@ -65,9 +68,7 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   Future<void> _onMenu(String value) async {
     switch (value) {
@@ -88,11 +89,8 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
   Future<void> _openEdit() async {
     final u = _user;
     if (u == null) return;
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => _EditUserSheet(user: u),
     );
     if (saved == true) {
@@ -236,16 +234,11 @@ class _Header extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      user.name,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    AppText.titleText(context, user.name, fw: 2),
                     const SizedBox(height: 2),
-                    Text(user.email, style: theme.textTheme.bodyMedium),
+                    AppText.subText(context, user.email),
                     if (user.phone != null && user.phone!.isNotEmpty)
-                      Text(user.phone!, style: theme.textTheme.bodySmall),
+                      AppText.paraText(context, user.phone!),
                     if (user.org != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
@@ -258,11 +251,11 @@ class _Header extends StatelessWidget {
                             ),
                             const SizedBox(width: 4),
                             Flexible(
-                              child: Text(
+                              child: AppText.paraText(
+                                context,
                                 user.org!.name,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall,
                               ),
                             ),
                           ],
@@ -283,14 +276,13 @@ class _Header extends StatelessWidget {
                   children: [
                     SizedBox(
                       width: 120,
-                      child: Text(
+                      child: AppText.subText(
+                        context,
                         e.key,
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
+                        color: theme.colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    Expanded(child: Text(e.value)),
+                    Expanded(child: AppText.subText(context, e.value)),
                   ],
                 ),
               ),
@@ -373,9 +365,7 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.error(context, msg);
 
   Future<void> _add() async {
     final text = _note.text.trim();
@@ -431,8 +421,9 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
                       ),
                       onDismissed: (_) => _delete(n),
                       child: ListTile(
-                        title: Text(n.body),
-                        subtitle: Text(
+                        title: AppText.subText(context, n.body),
+                        subtitle: AppText.paraText(
+                          context,
                           '${n.staff?.name ?? 'Staff'} · ${Fmt.ago(n.created)}',
                         ),
                       ),
@@ -528,16 +519,12 @@ class _EditUserSheetState extends ConsumerState<_EditUserSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: 'Edit user',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Edit user', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
           TextField(
             controller: _name,
             textCapitalization: TextCapitalization.words,
@@ -566,9 +553,10 @@ class _EditUserSheetState extends ConsumerState<_EditUserSheet> {
           ),
           if (_formError != null) ...[
             const SizedBox(height: 12),
-            Text(
+            AppText.subText(
+              context,
               _formError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              color: Theme.of(context).colorScheme.error,
             ),
           ],
           const SizedBox(height: 16),

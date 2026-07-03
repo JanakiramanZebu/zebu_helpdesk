@@ -4,9 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/api/api_exception.dart';
+import '../core/theme/app_text.dart';
 import '../models/meta.dart';
 import '../models/user.dart';
 import '../providers.dart';
+import 'app_snack.dart';
+import 'app_sheet.dart';
+import 'states.dart';
 
 /// Where an attachment comes from. Surfaced as a popup menu on the composer.
 enum AttachSource { photos, camera, files }
@@ -64,7 +68,7 @@ class _AttachTile extends StatelessWidget {
           child: Icon(icon, color: color, size: 19),
         ),
         const SizedBox(width: 12),
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w500)),
+        AppText.subText(context, label, fw: 0),
       ],
     );
   }
@@ -104,48 +108,78 @@ Future<List<PlatformFile>> pickAttachmentsOf(AttachSource source) async {
   }
 }
 
+/// A single option row inside a picker sheet. When [selected], the label is
+/// rendered in the brand colour and bold so the current choice stands out.
+class PickerOptionTile extends StatelessWidget {
+  const PickerOptionTile({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.subtitle,
+  });
+
+  final String label;
+  final String? subtitle;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ListTile(
+      title: AppText.subText(
+        context,
+        label,
+        color: selected ? scheme.primary : scheme.onSurface,
+        fw: selected ? 2 : 3,
+      ),
+      subtitle: subtitle == null ? null : AppText.subText(context, subtitle!),
+      onTap: onTap,
+    );
+  }
+}
+
 /// Bottom-sheet picker over a `GET /meta/{kind}` list. Returns the chosen id.
+/// Pass [selectedId] to highlight the current choice.
 Future<MetaItem?> pickMeta(
   BuildContext context,
   WidgetRef ref,
   String kind, {
   String title = 'Select',
+  int? selectedId,
 }) async {
   final List<MetaItem> items;
   try {
     items = await ref.read(metaRepositoryProvider).get(kind);
   } on ApiException catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppSnack.error(context, e.message);
     }
     return null;
   }
   if (!context.mounted) return null;
-  return showModalBottomSheet<MetaItem>(
+  return showAppSheet<MetaItem>(
     context: context,
-    useSafeArea: true,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (_) => DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.6,
-      maxChildSize: 0.9,
-      builder: (_, controller) => ListView(
-        controller: controller,
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-          ),
-          for (final m in items)
-            ListTile(
-              title: Text(m.name),
-              onTap: () => Navigator.pop(context, m),
-            ),
-        ],
+    builder: (_) => AppSheet(
+      title: title,
+      scrollable: false,
+      padding: EdgeInsets.zero,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.6,
+        ),
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final m in items)
+              PickerOptionTile(
+                label: m.name,
+                selected: m.id == selectedId,
+                onTap: () => Navigator.pop(context, m),
+              ),
+          ],
+        ),
       ),
     ),
   );
@@ -153,11 +187,8 @@ Future<MetaItem?> pickMeta(
 
 /// Bottom-sheet user search/picker (`GET /users?q=`). Returns the chosen user.
 Future<AppUser?> pickUser(BuildContext context, WidgetRef ref) =>
-    showModalBottomSheet<AppUser>(
+    showAppSheet<AppUser>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => const _UserPickerSheet(),
     );
 
@@ -172,7 +203,8 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
   final _ctrl = TextEditingController();
   List<AppUser> _results = [];
   bool _loading = false;
-  String? _error;
+  Object? _error;
+  String _lastQuery = '';
 
   @override
   void initState() {
@@ -187,6 +219,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
   }
 
   Future<void> _search(String q) async {
+    _lastQuery = q;
     setState(() {
       _loading = true;
       _error = null;
@@ -203,7 +236,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = e;
         _loading = false;
       });
     }
@@ -211,38 +244,18 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: 'Select requester',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Select requester',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          TextField(
+          SheetSearchField(
             controller: _ctrl,
             autofocus: true,
-            textInputAction: TextInputAction.search,
+            hintText: 'Search by name or email',
             onSubmitted: _search,
-            decoration: InputDecoration(
-              hintText: 'Search by name or email',
-              prefixIcon: const Icon(Icons.search),
-              isDense: true,
-              suffixIcon: _ctrl.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () {
-                        _ctrl.clear();
-                        _search('');
-                      },
-                    )
-                  : null,
-            ),
+            onClear: () => _search(''),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -250,16 +263,20 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                ? Center(child: Text(_error!))
+                ? ErrorView(
+                    error: _error!,
+                    compact: true,
+                    onRetry: () => _search(_lastQuery),
+                  )
                 : _results.isEmpty
-                ? const Center(child: Text('No users found'))
+                ? Center(child: AppText.subText(context, 'No users found'))
                 : ListView.builder(
                     itemCount: _results.length,
                     itemBuilder: (_, i) {
                       final u = _results[i];
                       return ListTile(
-                        title: Text(u.name),
-                        subtitle: Text(u.email),
+                        title: AppText.subText(context, u.name),
+                        subtitle: AppText.subText(context, u.email),
                         onTap: () => Navigator.pop(context, u),
                       );
                     },

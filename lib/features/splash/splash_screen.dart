@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../core/assets.dart';
+import '../../core/theme/app_text.dart';
 
 /// Shown while the auth controller bootstraps the session.
 class SplashScreen extends StatelessWidget {
@@ -16,10 +17,7 @@ class SplashScreen extends StatelessWidget {
           children: [
             SvgPicture.asset(Assets.brandLogo, width: 88, height: 88),
             const SizedBox(height: 20),
-            Text(
-              'Zebu Helpdesk',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            AppText.custmText(context, 'Zebu Helpdesk', fs: 22),
             const SizedBox(height: 24),
             const SizedBox(
               width: 22,

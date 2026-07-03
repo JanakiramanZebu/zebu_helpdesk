@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/faq.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
@@ -166,14 +167,8 @@ class _CategoryTileState extends ConsumerState<_CategoryTile> {
       child: ExpansionTile(
         shape: const Border(),
         leading: const Icon(Icons.folder_outlined),
-        title: Text(
-          cat.name,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        trailing: Text(
-          '${cat.faqCount}',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
+        title: AppText.subText(context, cat.name, fw: 1),
+        trailing: AppText.subText(context, '${cat.faqCount}'),
         onExpansionChanged: (open) {
           if (open) _ensureLoaded();
         },
@@ -201,9 +196,9 @@ class _CategoryTileState extends ConsumerState<_CategoryTile> {
               ),
             )
           else if ((_faqs ?? const []).isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('No articles in this category.'),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: AppText.subText(context, 'No articles in this category.'),
             )
           else
             for (final faq in _faqs!) _FaqRow(faq: faq, dense: true),
@@ -223,11 +218,12 @@ class _FaqRow extends StatelessWidget {
     final theme = Theme.of(context);
     final tile = ListTile(
       dense: dense,
-      title: Text(
+      title: AppText.subText(
+        context,
         faq.question,
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontWeight: FontWeight.w500),
+        fw: 0,
       ),
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 6),
@@ -263,9 +259,6 @@ class _FaqRow extends StatelessWidget {
       color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(6),
     ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
-    ),
+    child: AppText.paraText(context, label, color: color, fw: 0),
   );
 }

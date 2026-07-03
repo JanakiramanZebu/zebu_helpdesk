@@ -21,6 +21,8 @@ class PagedListView<T> extends StatefulWidget {
     this.itemFilter,
     this.itemSort,
     this.onItems,
+    this.skeleton,
+    this.separated = false,
   });
 
   final Future<Paginated<T>> Function(int page) fetch;
@@ -54,6 +56,14 @@ class PagedListView<T> extends StatefulWidget {
   /// last item.
   final bool fabClearance;
 
+  /// Optional placeholder shown instead of a centered spinner while the first
+  /// page loads (e.g. shimmering skeleton rows). Falls back to [LoadingView].
+  final Widget? skeleton;
+
+  /// When true, draws a hairline divider between items and shows an
+  /// always-visible scrollbar — for edge-to-edge (Gmail-style) list rows.
+  final bool separated;
+
   @override
   State<PagedListView<T>> createState() => _PagedListViewState<T>();
 }
@@ -66,6 +76,19 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
   bool _hasMore = true;
   Object? _error;
   bool _initial = true;
+
+  /// The last item list handed to [PagedListView.onItems]; used to skip
+  /// redundant notifications on rebuilds where the visible items are unchanged.
+  List<T>? _lastNotified;
+
+  /// Shallow identity comparison of two item lists.
+  bool _sameItems(List<T> a, List<T>? b) {
+    if (b == null || a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
 
   @override
   void initState() {
@@ -129,7 +152,7 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
 
   @override
   Widget build(BuildContext context) {
-    if (_initial && _loading) return const LoadingView();
+    if (_initial && _loading) return widget.skeleton ?? const LoadingView();
     if (_error != null && _items.isEmpty) {
       return ErrorView(error: _error!, onRetry: () => _load(reset: true));
     }
@@ -158,8 +181,12 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
       });
     }
 
-    if (widget.onItems != null) {
+    // Notify the host of the visible items — but only when they actually
+    // changed, so we don't schedule a redundant post-frame callback (and a
+    // possible host setState) on every rebuild while scrolling.
+    if (widget.onItems != null && !_sameItems(items, _lastNotified)) {
       final snapshot = List<T>.unmodifiable(items);
+      _lastNotified = snapshot;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) widget.onItems!(snapshot);
       });
@@ -204,10 +231,39 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
                   ),
                 );
               }
-              return widget.itemBuilder(context, items[i]);
+              final row = widget.itemBuilder(context, items[i]);
+              // Edge-to-edge lists get a hairline divider between rows
+              // (indented past the leading avatar), Gmail-style.
+              final child = (widget.separated && i < items.length - 1)
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        row,
+                        Divider(
+                          height: 1,
+                          thickness: 1,
+                          indent: 66,
+                          color: Theme.of(context).colorScheme.outlineVariant
+                              .withValues(alpha: 0.7),
+                        ),
+                      ],
+                    )
+                  : row;
+              // Isolate each row's repaints so scrolling doesn't repaint the
+              // whole viewport — smoother scrolling on long lists.
+              return RepaintBoundary(child: child);
             },
           );
 
-    return RefreshIndicator(onRefresh: refresh, child: body);
+    final list = RefreshIndicator(onRefresh: refresh, child: body);
+    // The empty-state list doesn't use _scroll, so only attach the scrollbar
+    // when there are items (a Scrollbar with an unattached controller asserts).
+    if (items.isEmpty) return list;
+    // Always show the right-side scrollbar (both card and compact layouts).
+    return Scrollbar(
+      controller: _scroll,
+      thumbVisibility: true,
+      child: list,
+    );
   }
 }

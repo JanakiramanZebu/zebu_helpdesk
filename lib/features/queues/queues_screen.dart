@@ -4,9 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/saved_queue.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/states.dart';
 
 class QueuesScreen extends ConsumerStatefulWidget {
@@ -28,9 +31,7 @@ class _QueuesScreenState extends ConsumerState<QueuesScreen> {
     _load();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   Future<void> _load() async {
     setState(() {
@@ -135,22 +136,16 @@ class _QueuesScreenState extends ConsumerState<QueuesScreen> {
   }
 
   Future<void> _openCreate() async {
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => const _QueueEditor(),
     );
     if (saved == true) _load();
   }
 
   Future<void> _openEdit(SavedQueue queue) async {
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => _QueueEditor(existing: queue),
     );
     if (saved == true) _load();
@@ -212,11 +207,10 @@ class _QueueCard extends StatelessWidget {
               : Icons.confirmation_number_outlined,
           color: theme.colorScheme.primary,
         ),
-        title: Text(
-          queue.fullName,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: summary.isEmpty ? null : Text(summary.toString()),
+        title: AppText.subText(context, queue.fullName, fw: 1),
+        subtitle: summary.isEmpty
+            ? null
+            : AppText.paraText(context, summary.toString()),
         trailing: queue.editable
             ? PopupMenuButton<String>(
                 onSelected: (v) {
@@ -284,9 +278,7 @@ class _QueueEditorState extends ConsumerState<_QueueEditor> {
         if (e.fields.isNotEmpty) {
           _fieldErrors.addAll(e.fields);
         } else {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text(e.message)));
+          AppSnack.error(context, e.message);
         }
       });
     } finally {
@@ -296,19 +288,12 @@ class _QueueEditorState extends ConsumerState<_QueueEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: _isEdit ? 'Rename queue' : 'New personal queue',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _isEdit ? 'Rename queue' : 'New personal queue',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
           TextField(
             controller: _name,
             decoration: InputDecoration(

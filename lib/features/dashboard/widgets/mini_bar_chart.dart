@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_text.dart';
+
 /// A dependency-free horizontal bar list. Each row shows a label on the left,
 /// a proportional filled track in the middle, and the value on the right.
 class MiniBarChart extends StatelessWidget {
@@ -20,7 +22,7 @@ class MiniBarChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     if (data.isEmpty) {
-      return Text('No data', style: TextStyle(color: scheme.onSurfaceVariant));
+      return AppText.subText(context, 'No data', color: scheme.onSurfaceVariant);
     }
     final max =
         (maxValue ?? data.fold<int>(0, (m, e) => e.value > m ? e.value : m))
@@ -35,11 +37,12 @@ class MiniBarChart extends StatelessWidget {
               children: [
                 SizedBox(
                   width: labelWidth,
-                  child: Text(
+                  child: AppText.paraText(
+                    context,
                     row.label,
+                    color: scheme.onSurface,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -67,12 +70,12 @@ class MiniBarChart extends StatelessWidget {
                 const SizedBox(width: 8),
                 SizedBox(
                   width: 36,
-                  child: Text(
+                  child: AppText.paraText(
+                    context,
                     '${row.value}',
-                    textAlign: TextAlign.right,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    color: scheme.onSurface,
+                    fw: 1,
+                    align: TextAlign.right,
                   ),
                 ),
               ],

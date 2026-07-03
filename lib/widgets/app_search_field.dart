@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/assets.dart';
+import '../core/theme/app_text.dart';
 
 /// Mynt Plus-style search field: a soft grey-filled pill with a leading SVG
 /// search glyph, an inline clear button, and an optional trailing action
@@ -80,11 +81,11 @@ class _AppSearchFieldState extends State<AppSearchField> {
               textInputAction: TextInputAction.search,
               onChanged: widget.onChanged,
               onSubmitted: widget.onSubmitted,
-              style: const TextStyle(fontSize: 14),
+              style: AppText.style(context, fontSize: 14),
               decoration: InputDecoration(
                 isDense: true,
                 hintText: widget.hintText,
-                hintStyle: TextStyle(fontSize: 14, color: muted),
+                hintStyle: AppText.style(context, fontSize: 14, color: muted),
                 border: InputBorder.none,
                 enabledBorder: InputBorder.none,
                 focusedBorder: InputBorder.none,

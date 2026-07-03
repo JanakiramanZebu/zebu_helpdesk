@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/format.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../models/task.dart';
-import '../../../widgets/selection_check.dart';
-import '../../../widgets/status_chip.dart';
-import '../../../widgets/user_avatar.dart';
+import '../../../widgets/entity_list_row.dart';
 
-/// The original task card design, with optional multi-select chrome: a leading
-/// checkbox and a highlighted border when [selected].
+/// A task list row. Thin adapter over the shared [EntityListRow] — maps a
+/// [Task] to an [EntityRowData] so tasks and tickets share one row design.
 class TaskRow extends StatelessWidget {
   const TaskRow({
     super.key,
@@ -16,6 +15,7 @@ class TaskRow extends StatelessWidget {
     this.selectionMode = false,
     this.selected = false,
     this.onToggle,
+    this.compact = false,
   });
 
   final Task task;
@@ -24,137 +24,46 @@ class TaskRow extends StatelessWidget {
   final bool selected;
   final VoidCallback? onToggle;
 
+  /// When true, renders a dense single-line row (more items per screen).
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final assignee = task.assignee ?? 'Unassigned';
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      color: selected ? scheme.primary.withValues(alpha: 0.06) : null,
-      shape: selected
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: scheme.primary, width: 1.4),
-            )
-          : null,
-      child: InkWell(
-        onTap: selectionMode ? onToggle : onTap,
-        onLongPress: onToggle,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              if (selectionMode) ...[
-                SelectionCheck(selected: selected),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          '#${task.number}',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (task.blocked)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 6),
-                            child: Icon(
-                              Icons.lock_outline,
-                              size: 16,
-                              color: Color(0xFFD32F2F),
-                            ),
-                          ),
-                        StatusChip.status(task.statusName, dense: true),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      task.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        UserAvatar(name: assignee, radius: 12),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            assignee,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ),
-                        if (task.priority != null) ...[
-                          StatusChip.priority(task.priority!.name, dense: true),
-                          const SizedBox(width: 6),
-                        ],
-                        Text(
-                          Fmt.ago(task.created),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (task.departmentName != null) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.apartment,
-                            size: 13,
-                            color: scheme.onSurfaceVariant,
-                          ),
-                          const SizedBox(width: 3),
-                          Expanded(
-                            child: Text(
-                              task.departmentName!,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    if (task.progress > 0) ...[
-                      const SizedBox(height: 10),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: LinearProgressIndicator(
-                          value: (task.progress / 100).clamp(0, 1),
-                          minHeight: 6,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${task.progress}%',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    return EntityListRow(
+      onTap: onTap,
+      selectionMode: selectionMode,
+      selected: selected,
+      onToggle: onToggle,
+      compact: compact,
+      data: EntityRowData(
+        number: task.number,
+        title: task.title,
+        statusName: task.statusName,
+        personName: assignee,
+        createdAgo: Fmt.ago(task.created),
+        createdTooltip: 'Created ${Fmt.dateTime(task.created)}',
+        priorityLabel: task.priority?.name,
+        accentColor: AppTheme.priorityAccent(task.priority?.name, scheme),
+        danger: task.blocked,
+        dangerLabel: 'Blocked',
+        dangerIcon: Icons.lock_outline,
+        progress: task.progress,
+        subtitleParts: [
+          if (task.progress > 0) '${task.progress}%',
+        ],
+        metaChips: [
+          if ((task.departmentName ?? '').isNotEmpty)
+            EntityMetaChip(icon: Icons.apartment, label: task.departmentName!),
+          if (task.duedate != null)
+            EntityMetaChip(
+              icon: Icons.event_outlined,
+              label: Fmt.date(task.duedate),
+              danger: task.overdue,
+            ),
+        ],
       ),
     );
   }

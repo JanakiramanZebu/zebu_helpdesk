@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/format.dart';
+import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/reports.dart';
 import 'report_range_selector.dart';
@@ -60,12 +61,7 @@ class ReportSummaryCard extends StatelessWidget {
                 ],
               )
             else
-              Text(
-                'Last ${report.days} days',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              AppText.subText(context, 'Last ${report.days} days', fw: 1),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -89,12 +85,10 @@ class ReportSummaryCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Text(
+            AppText.paraText(
+              context,
               'Avg ${avgOpened.toStringAsFixed(1)} opened · '
               '${avgClosed.toStringAsFixed(1)} closed per day',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
             ),
           ],
         ),
@@ -118,24 +112,12 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Expanded(
       child: Column(
         children: [
-          Text(
-            value,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
+          AppText.custmText(context, value, fs: 24, fw: 2, color: color),
           const SizedBox(height: 2),
-          Text(
-            label,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          AppText.paraText(context, label),
         ],
       ),
     );

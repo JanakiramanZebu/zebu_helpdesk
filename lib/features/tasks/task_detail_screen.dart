@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+﻿import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +9,15 @@ import 'package:parchment/codecs.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/common.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
+import '../../widgets/app_dialog.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
@@ -56,6 +60,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   void _onTab() {
     if (mounted) setState(() {}); // toggle the composer per active tab
   }
+
+  /// Whether the composer (only shown for the Conversation tab, index 0) should
+  /// be visible. Uses the controller's live [animation] value rather than
+  /// [index] so the field hides the instant a swipe starts moving away â€” a
+  /// small threshold means it disappears as soon as the drag begins, matching
+  /// the immediate hide you get when tapping another tab.
+  bool get _onConversationTab => (_tabs.animation?.value ?? 0) < 0.05;
 
   // Show the title in the app bar once the collapsing header has scrolled
   // behind the pinned app bar.
@@ -104,9 +115,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
   void _apply(Task updated) => setState(() => _task = updated);
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   Future<void> _runAction(
     Future<Task> Function() action, {
@@ -127,19 +136,36 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   PopupMenuButton<String> _menu(Task t) => PopupMenuButton<String>(
     onSelected: _onMenu,
     itemBuilder: (_) => [
+      // Workflow.
       if (t.isOpen)
-        const PopupMenuItem(value: 'close', child: Text('Close'))
+        _menuItem('close', Icons.check_circle_outline, 'Close')
       else
-        const PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-      const PopupMenuItem(value: 'assign', child: Text('Assign')),
-      const PopupMenuItem(value: 'transfer', child: Text('Transfer dept')),
-      const PopupMenuItem(value: 'progress', child: Text('Edit progress')),
-      const PopupMenuItem(value: 'priority', child: Text('Set priority')),
+        _menuItem('reopen', Icons.replay, 'Reopen'),
+      _menuItem('progress', Icons.percent, 'Edit progress'),
       const PopupMenuDivider(),
-      const PopupMenuItem(value: 'tags', child: Text('Tags')),
-      const PopupMenuItem(value: 'collaborators', child: Text('Collaborators')),
+      // Assignment & attributes.
+      _menuItem('assign', Icons.assignment_ind_outlined, 'Assign'),
+      _menuItem('transfer', Icons.apartment_outlined, 'Transfer dept'),
+      _menuItem('priority', Icons.flag_outlined, 'Set priority'),
+      const PopupMenuDivider(),
+      // Metadata.
+      _menuItem('collaborators', Icons.group_outlined, 'Collaborators'),
     ],
   );
+
+  /// A â‹®-menu row with a leading icon.
+  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(width: 12),
+          AppText.subText(context, label),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -172,17 +198,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                     children: [
                       Text('#${t.number}'),
                       if (_titleInBar)
-                        Text(
+                        AppText.paraText(
+                          context,
                           t.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .appBarTheme
-                                    .foregroundColor
-                                    ?.withValues(alpha: 0.8),
-                              ),
+                          color: Theme.of(context)
+                              .appBarTheme
+                              .foregroundColor
+                              ?.withValues(alpha: 0.8),
                         ),
                     ],
                   ),
@@ -218,7 +242,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                       controller: _tabs,
                       children: [
                         _ConversationTab(thread: _thread),
-                        _DetailsTab(task: t),
+                        _DetailsTab(task: t, onEdit: _onMenu),
                         _SubtasksTab(
                           subtasks: _subtasks,
                           onTap: (st) => context.push(Routes.task(st.id)),
@@ -236,8 +260,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               ),
             ),
           ),
-          if (_tabs.index == 0)
-            _InlineComposer(taskId: widget.taskId, onSent: _load),
+          // Rebuild on every swipe frame (the controller's own listener only
+          // fires on settled index changes) so the composer hides the instant
+          // the user drags away from the Conversation tab.
+          ListenableBuilder(
+            listenable: _tabs.animation!,
+            builder: (context, _) => _onConversationTab
+                ? _InlineComposer(taskId: widget.taskId, onSent: _load)
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
@@ -246,6 +277,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   Future<void> _onMenu(String value) async {
     final repo = ref.read(tasksRepositoryProvider);
     switch (value) {
+      case 'status':
+        // From the Details tab's Status row: pick Open/Completed rather than
+        // toggling instantly, so a mis-tap can't silently change state.
+        await _pickStatus();
       case 'close':
         await _runAction(
           () => repo.close(widget.taskId),
@@ -267,9 +302,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           await _load();
         });
       case 'transfer':
-        await _pickMeta(MetaKind.departments, title: 'Transfer department', (
-          id,
-        ) async {
+        await _pickMeta(MetaKind.departments, title: 'Transfer department',
+            selectedId: _task?.departmentId, (id) async {
           await _runAction(
             () => repo.transfer(widget.taskId, id),
             success: 'Transferred',
@@ -279,20 +313,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       case 'progress':
         await _editProgress();
       case 'priority':
-        await _pickMeta(MetaKind.taskPriorities, title: 'Set priority', (
-          id,
-        ) async {
+        await _pickMeta(MetaKind.taskPriorities, title: 'Set priority',
+            selectedId: _task?.priority?.id, (id) async {
           await _runAction(
             () => repo.edit(widget.taskId, priorityId: id),
             success: 'Priority updated',
           );
           await _load();
         });
-      case 'tags':
-        await showDialog<void>(
-          context: context,
-          builder: (_) => _TaskTagsSheet(taskId: widget.taskId),
-        );
       case 'collaborators':
         await showDialog<void>(
           context: context,
@@ -302,11 +330,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   }
 
   Future<void> _addSubtask() async {
-    final created = await showModalBottomSheet<bool>(
+    final created = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => _SubtaskSheet(taskId: widget.taskId),
     );
     if (created == true) await _load();
@@ -351,6 +376,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     String kind,
     Future<void> Function(int id) onPick, {
     String title = 'Select',
+    int? selectedId,
   }) async {
     final List<MetaItem> items;
     try {
@@ -362,18 +388,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     if (!mounted) return;
     final chosen = await showDialog<int>(
       context: context,
-      builder: (_) => SimpleDialog(
-        title: Text(title),
-        children: [
-          for (final m in items)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, m.id),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(m.name),
-              ),
-            ),
-        ],
+      builder: (_) => _MetaPickerDialog(
+        title: title,
+        items: items,
+        selectedId: selectedId,
       ),
     );
     if (chosen != null) await onPick(chosen);
@@ -393,6 +411,35 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     );
     await _load();
   }
+
+  /// Task status is binary (Open / Completed) driven by reopen/close. Present
+  /// it as a picker so the change is deliberate; apply only if it differs.
+  Future<void> _pickStatus() async {
+    final isOpen = _task?.isOpen ?? true;
+    final wantOpen = await showDialog<bool>(
+      context: context,
+      builder: (_) => AppDialog(
+        title: 'Status',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PickerOptionTile(
+              label: 'Open',
+              selected: isOpen,
+              onTap: () => Navigator.pop(context, true),
+            ),
+            PickerOptionTile(
+              label: 'Completed',
+              selected: !isOpen,
+              onTap: () => Navigator.pop(context, false),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (wantOpen == null || wantOpen == isOpen) return; // dismissed / unchanged
+    await _onMenu(wantOpen ? 'reopen' : 'close');
+  }
 }
 
 // --- Collapsing header (status + progress; scrolls away under the app bar) ---
@@ -411,11 +458,10 @@ class _CollapsingHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          AppText.titleText(
+            context,
             task.title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
+            fw: 2,
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -444,9 +490,10 @@ class _CollapsingHeader extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
+            AppText.paraText(
+              context,
               'Progress: ${task.progress}%',
-              style: theme.textTheme.bodySmall,
+              color: theme.colorScheme.onSurface,
             ),
           ],
           if (task.blocked) ...[
@@ -467,12 +514,11 @@ class _CollapsingHeader extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
+                    child: AppText.paraText(
+                      context,
                       'Blocked by an open dependency',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: const Color(0xFFD32F2F),
-                        fontWeight: FontWeight.w600,
-                      ),
+                      color: const Color(0xFFD32F2F),
+                      fw: 1,
                     ),
                   ),
                 ],
@@ -533,75 +579,195 @@ class _ConversationTab extends StatelessWidget {
 }
 
 class _DetailsTab extends StatelessWidget {
-  const _DetailsTab({required this.task});
+  const _DetailsTab({required this.task, required this.onEdit});
   final Task task;
+
+  /// Routes an edit intent (matching the â‹®-menu action keys) back to the host.
+  final ValueChanged<String> onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final rows = <(String, String?)>[
-      ('Number', task.number),
-      ('Status', task.statusName),
-      ('Department', task.departmentName),
-      ('Assignee', task.assignee),
-      ('Priority', task.priority?.name),
-      ('Progress', '${task.progress}%'),
-      ('Created', Fmt.dateTime(task.created)),
-      ('Updated', Fmt.dateTime(task.updated)),
-      ('Due', Fmt.dateTime(task.duedate)),
-    ];
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        for (final (label, value) in rows)
-          if (value != null && value.isNotEmpty && value != '—')
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 110,
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      value,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
-              ),
+        // Editable attributes â€” tap to open the matching picker/editor.
+        _DetailSection(
+          title: 'Attributes',
+          children: [
+            _DetailRow(
+              icon: Icons.published_with_changes,
+              label: 'Status',
+              value: task.statusName,
+              onTap: () => onEdit('status'),
             ),
+            _DetailRow(
+              icon: Icons.flag_outlined,
+              label: 'Priority',
+              value: task.priority?.name,
+              placeholder: 'Set priority',
+              onTap: () => onEdit('priority'),
+            ),
+            _DetailRow(
+              icon: Icons.percent,
+              label: 'Progress',
+              value: '${task.progress}%',
+              onTap: () => onEdit('progress'),
+            ),
+            _DetailRow(
+              icon: Icons.apartment_outlined,
+              label: 'Department',
+              value: task.departmentName,
+              placeholder: 'Transfer',
+              onTap: () => onEdit('transfer'),
+            ),
+            _DetailRow(
+              icon: Icons.assignment_ind_outlined,
+              label: 'Assignee',
+              value: task.assignee,
+              placeholder: 'Assign',
+              onTap: () => onEdit('assign'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // Read-only metadata.
+        _DetailSection(
+          title: 'Information',
+          children: [
+            _DetailRow(
+              icon: Icons.tag,
+              label: 'Number',
+              value: task.number,
+            ),
+            _DetailRow(
+              icon: Icons.schedule,
+              label: 'Created',
+              value: Fmt.dateTime(task.created),
+            ),
+            _DetailRow(
+              icon: Icons.update,
+              label: 'Updated',
+              value: Fmt.dateTime(task.updated),
+            ),
+            _DetailRow(
+              icon: Icons.event_outlined,
+              label: 'Due',
+              value: Fmt.dateTime(task.duedate),
+            ),
+          ],
+        ),
         if (task.customFields.isNotEmpty) ...[
-          const Divider(height: 28),
-          Text('Custom fields', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          for (final e in task.customFields.entries)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 130,
-                    child: Text(
-                      e.key,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  Expanded(child: Text(e.value)),
-                ],
-              ),
-            ),
+          const SizedBox(height: 16),
+          _DetailSection(
+            title: 'Custom fields',
+            children: [
+              for (final e in task.customFields.entries)
+                _DetailRow(
+                  icon: Icons.list_alt_outlined,
+                  label: e.key,
+                  value: e.value,
+                ),
+            ],
+          ),
         ],
       ],
+    );
+  }
+}
+
+/// A titled card grouping a set of [_DetailRow]s.
+class _DetailSection extends StatelessWidget {
+  const _DetailSection({required this.title, required this.children});
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: AppText.custmText(
+            context,
+            title.toUpperCase(),
+            fs: 10,
+            color: scheme.onSurfaceVariant,
+            fw: 2,
+            letterSpacing: 0.5,
+          ),
+        ),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                if (i != 0) const Divider(height: 1, indent: 52),
+                children[i],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A single detail row. When [onTap] is set it renders as tappable (chevron +
+/// ripple); otherwise it's static. A null/empty [value] shows [placeholder]
+/// in a muted style.
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.placeholder,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final String? placeholder;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final has = value != null && value!.isNotEmpty && value != 'â€”';
+    // Static rows with no value at all render nothing.
+    if (!has && onTap == null) return const SizedBox.shrink();
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 96,
+              child: AppText.subText(
+                context,
+                label,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            Expanded(
+              child: AppText.subText(
+                context,
+                has ? value! : (placeholder ?? 'â€”'),
+                fw: has ? 1 : 3,
+                color: has ? scheme.onSurface : scheme.primary,
+              ),
+            ),
+            if (onTap != null)
+              Icon(Icons.chevron_right, size: 20, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -698,14 +864,18 @@ class _DependenciesTab extends StatelessWidget {
                               ? const Color(0xFFD32F2F)
                               : Theme.of(context).colorScheme.primary,
                         ),
-                        title: Text(
+                        title: AppText.subText(
+                          context,
                           blocker == null
                               ? 'Dependency #${dep.id}'
                               : '#${blocker.number} ${blocker.title}',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        subtitle: Text(dep.required ? 'Required' : 'Optional'),
+                        subtitle: AppText.subText(
+                          context,
+                          dep.required ? 'Required' : 'Optional',
+                        ),
                         trailing: IconButton(
                           icon: const Icon(Icons.close),
                           tooltip: 'Remove',
@@ -736,15 +906,33 @@ class _ProgressDialogState extends State<_ProgressDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Edit progress'),
-      content: Column(
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return AppDialog(
+      title: 'Edit progress',
+      actionLabel: 'Save',
+      onAction: () => Navigator.pop(context, _value.round()),
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
+          AppText.custmText(
+            context,
             '${_value.round()}%',
-            style: Theme.of(context).textTheme.headlineSmall,
+            fs: 20,
+            fw: 1,
+            color: scheme.primary,
           ),
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: (_value / 100).clamp(0, 1),
+              minHeight: 10,
+              backgroundColor: scheme.outlineVariant.withValues(alpha: 0.3),
+            ),
+          ),
+          const SizedBox(height: 24),
           Slider(
             value: _value,
             min: 0,
@@ -752,19 +940,121 @@ class _ProgressDialogState extends State<_ProgressDialog> {
             divisions: 100,
             label: '${_value.round()}%',
             onChanged: (v) => setState(() => _value = v),
+            activeColor: scheme.primary,
+            inactiveColor: scheme.outlineVariant.withValues(alpha: 0.3),
           ),
         ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _value.round()),
-          child: const Text('Save'),
-        ),
-      ],
+    );
+  }
+}
+
+// --- Meta picker dialog (with search) ----------------------------------------
+
+class _MetaPickerDialog extends StatefulWidget {
+  const _MetaPickerDialog({
+    required this.title,
+    required this.items,
+    this.selectedId,
+  });
+
+  final String title;
+  final List<MetaItem> items;
+  final int? selectedId;
+
+  @override
+  State<_MetaPickerDialog> createState() => _MetaPickerDialogState();
+}
+
+class _MetaPickerDialogState extends State<_MetaPickerDialog> {
+  final _searchCtrl = TextEditingController();
+  late List<MetaItem> _filtered = widget.items;
+
+  /// Only show the search field for lists long enough to warrant it; short
+  /// pick-lists (priorities, statuses, â€¦) don't need one.
+  bool get _searchable => widget.items.length > 8;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(_updateFilter);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.removeListener(_updateFilter);
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _updateFilter() {
+    final query = _searchCtrl.text.toLowerCase();
+    setState(() {
+      _filtered = widget.items
+          .where((item) => item.name.toLowerCase().contains(query))
+          .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AppDialog(
+      title: widget.title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_searchable) ...[
+            SheetSearchField(
+              controller: _searchCtrl,
+              hintText: 'Search',
+            ),
+            const SizedBox(height: 12),
+          ],
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: _filtered.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: AppText.subText(
+                      context,
+                      'No results found',
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final item in _filtered)
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => Navigator.pop(context, item.id),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: AppText.subText(
+                                context,
+                                item.name,
+                                color: item.id == widget.selectedId
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface,
+                                fw: item.id == widget.selectedId ? 2 : 3,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -857,9 +1147,7 @@ class _InlineComposerState extends ConsumerState<_InlineComposer> {
       return true;
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(e.message)));
+        AppSnack.error(context, e.message);
       }
       return false;
     } finally {
@@ -947,7 +1235,8 @@ class _InlineComposerState extends ConsumerState<_InlineComposer> {
                           ),
                           label: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 140),
-                            child: Text(
+                            child: AppText.subText(
+                              context,
                               f.name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -994,13 +1283,12 @@ class _InlineComposerState extends ConsumerState<_InlineComposer> {
                                     left: 0,
                                     top: 10,
                                     child: IgnorePointer(
-                                      child: Text(
+                                      child: AppText.subText(
+                                        context,
                                         _note
                                             ? 'Internal note (staff only)'
                                             : 'Add a comment',
-                                        style: TextStyle(
-                                          color: scheme.onSurfaceVariant,
-                                        ),
+                                        color: scheme.onSurfaceVariant,
                                       ),
                                     ),
                                   ),
@@ -1244,13 +1532,12 @@ class _ModeToggle extends StatelessWidget {
                 color: selected ? Colors.white : scheme.onSurfaceVariant,
               ),
               const SizedBox(width: 6),
-              Text(
+              AppText.custmText(
+                context,
                 label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected ? Colors.white : scheme.onSurfaceVariant,
-                ),
+                fs: 13,
+                fw: selected ? 1 : 0,
+                color: selected ? Colors.white : scheme.onSurfaceVariant,
               ),
             ],
           ),
@@ -1308,20 +1595,17 @@ class _SubtaskSheetState extends ConsumerState<_SubtaskSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: 'New subtask',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('New subtask', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
           if (_error != null) ...[
-            Text(
+            AppText.subText(
+              context,
               _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 8),
           ],
@@ -1390,9 +1674,11 @@ class _DependencyDialogState extends State<_DependencyDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add dependency'),
-      content: TextField(
+    return AppDialog(
+      title: 'Add dependency',
+      actionLabel: 'Add',
+      onAction: _submit,
+      child: TextField(
         controller: _ctrl,
         keyboardType: TextInputType.number,
         autofocus: true,
@@ -1403,158 +1689,6 @@ class _DependencyDialogState extends State<_DependencyDialog> {
           errorText: _error,
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('Add')),
-      ],
-    );
-  }
-}
-
-// --- Tags sheet -------------------------------------------------------------
-
-class _TaskTagsSheet extends ConsumerStatefulWidget {
-  const _TaskTagsSheet({required this.taskId});
-  final int taskId;
-
-  @override
-  ConsumerState<_TaskTagsSheet> createState() => _TaskTagsSheetState();
-}
-
-class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
-  final _name = TextEditingController();
-  List<Tag> _tags = [];
-  bool _loading = true;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  void _snack(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
-
-  Future<void> _load() async {
-    try {
-      final tags = await ref.read(tasksRepositoryProvider).tags(widget.taskId);
-      if (mounted) {
-        setState(() {
-          _tags = tags;
-          _loading = false;
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        _snack(e.message);
-      }
-    }
-  }
-
-  Future<void> _add() async {
-    final name = _name.text.trim();
-    if (name.isEmpty) return;
-    setState(() => _busy = true);
-    try {
-      final tags = await ref
-          .read(tasksRepositoryProvider)
-          .addTag(widget.taskId, name: name);
-      _name.clear();
-      if (mounted) setState(() => _tags = tags);
-    } on ApiException catch (e) {
-      if (mounted) _snack(e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _remove(int tagId) async {
-    setState(() => _busy = true);
-    try {
-      final tags = await ref
-          .read(tasksRepositoryProvider)
-          .removeTag(widget.taskId, tagId);
-      if (mounted) setState(() => _tags = tags);
-    } on ApiException catch (e) {
-      if (mounted) _snack(e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Tags'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_tags.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No tags yet'),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  for (final t in _tags)
-                    Chip(
-                      label: Text(t.name),
-                      onDeleted: _busy ? null : () => _remove(t.id),
-                    ),
-                ],
-              ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _name,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _add(),
-                    decoration: const InputDecoration(
-                      hintText: 'Add a tag by name',
-                      isDense: true,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _busy ? null : _add,
-                  child: const Text('Add'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }
@@ -1582,8 +1716,7 @@ class _TaskCollaboratorsSheetState
     _load();
   }
 
-  void _snack(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m) => AppSnack.error(context, m);
 
   Future<void> _load() async {
     try {
@@ -1636,54 +1769,48 @@ class _TaskCollaboratorsSheetState
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
+    return AppDialog(
+      title: 'Collaborators',
+      actionLabel: 'Add collaborator',
+      onAction: _busy ? null : _add,
+      actionEnabled: !_busy,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Expanded(child: Text('Collaborators')),
-          TextButton.icon(
-            onPressed: _busy ? null : _add,
-            icon: const Icon(Icons.person_add_alt, size: 18),
-            label: const Text('Add'),
-          ),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_collabs.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AppText.subText(context, 'No collaborators'),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final c in _collabs)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: AppText.subText(context, c.name),
+                      subtitle: c.email != null
+                          ? AppText.subText(context, c.email!)
+                          : null,
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: _busy ? null : () => _remove(c.id),
+                      ),
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: _loading
-            ? const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : _collabs.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No collaborators'),
-              )
-            : ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final c in _collabs)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(c.name),
-                        subtitle: c.email != null ? Text(c.email!) : null,
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: _busy ? null : () => _remove(c.id),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }

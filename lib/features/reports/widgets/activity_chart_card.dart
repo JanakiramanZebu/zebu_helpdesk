@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_text.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/reports.dart';
 import '../../../widgets/states.dart';
@@ -20,7 +21,6 @@ class ActivityChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final series = report.series;
 
     return Card(
@@ -33,12 +33,7 @@ class ActivityChartCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Row(
                 children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  AppText.subText(context, title, fw: 1),
                   const Spacer(),
                   _Legend(color: AppTheme.open, label: 'Opened'),
                   const SizedBox(width: 14),
@@ -95,7 +90,11 @@ class _Legend extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 6),
-        Text(label, style: Theme.of(context).textTheme.bodySmall),
+        AppText.paraText(
+          context,
+          label,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
       ],
     );
   }

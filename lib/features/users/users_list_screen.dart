@@ -4,9 +4,12 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/user_avatar.dart';
 
@@ -29,16 +32,11 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.success(context, msg);
 
   Future<void> _openCreate() async {
-    final created = await showModalBottomSheet<bool>(
+    final created = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => const _CreateUserSheet(),
     );
     if (created == true) {
@@ -57,11 +55,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Users'),
-            if (_total != null)
-              Text(
-                '$_total total',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+            if (_total != null) AppText.paraText(context, '$_total total'),
           ],
         ),
         bottom: PreferredSize(
@@ -94,8 +88,14 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           child: ListTile(
             leading: UserAvatar(name: u.name),
-            title: Text(u.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(
+            title: AppText.subText(
+              context,
+              u.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: AppText.paraText(
+              context,
               u.org != null ? '${u.email} · ${u.org!.name}' : u.email,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -158,16 +158,12 @@ class _CreateUserSheetState extends ConsumerState<_CreateUserSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: 'New user',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('New user', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 12),
           TextField(
             controller: _name,
             autofocus: true,
@@ -197,9 +193,10 @@ class _CreateUserSheetState extends ConsumerState<_CreateUserSheet> {
           ),
           if (_formError != null) ...[
             const SizedBox(height: 12),
-            Text(
+            AppText.subText(
+              context,
               _formError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              color: Theme.of(context).colorScheme.error,
             ),
           ],
           const SizedBox(height: 16),

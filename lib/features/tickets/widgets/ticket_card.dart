@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/format.dart';
+import '../../../core/theme/app_text.dart';
 import '../../../models/ticket.dart';
 import '../../../widgets/status_chip.dart';
 import '../../../widgets/user_avatar.dart';
@@ -25,12 +26,11 @@ class TicketCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text(
+                  AppText.paraText(
+                    context,
                     '#${ticket.number}',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
+                    color: theme.colorScheme.primary,
+                    fw: 2,
                   ),
                   const Spacer(),
                   if (ticket.isOverdue)
@@ -46,13 +46,12 @@ class TicketCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              Text(
+              AppText.subText(
+                context,
                 ticket.subject,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                fw: 1,
               ),
               const SizedBox(height: 10),
               Row(
@@ -60,22 +59,22 @@ class TicketCard extends StatelessWidget {
                   UserAvatar(name: requester, radius: 12),
                   const SizedBox(width: 6),
                   Expanded(
-                    child: Text(
+                    child: AppText.paraText(
+                      context,
                       requester,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
+                      color: theme.colorScheme.onSurface,
                     ),
                   ),
                   if (ticket.priority != null) ...[
                     StatusChip.priority(ticket.priority!, dense: true),
                     const SizedBox(width: 6),
                   ],
-                  Text(
+                  AppText.paraText(
+                    context,
                     Fmt.ago(ticket.created),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ],
               ),
@@ -90,9 +89,10 @@ class TicketCard extends StatelessWidget {
                         color: theme.colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 3),
-                      Text(
+                      AppText.paraText(
+                        context,
                         ticket.departmentName!,
-                        style: theme.textTheme.bodySmall,
+                        color: theme.colorScheme.onSurface,
                       ),
                       const SizedBox(width: 12),
                     ],
@@ -104,11 +104,12 @@ class TicketCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 3),
                       Expanded(
-                        child: Text(
+                        child: AppText.paraText(
+                          context,
                           ticket.assignee!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.bodySmall,
+                          color: theme.colorScheme.onSurface,
                         ),
                       ),
                     ],

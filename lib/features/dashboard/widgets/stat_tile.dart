@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_text.dart';
+
 /// A flat, compact stat card: a rounded-square icon badge on the left with the
 /// value and label stacked beside it. No shadow — just a clean hairline border
-/// and rounded corners.
+/// and rounded corners. When tappable, a subtle chevron hints at drill-down.
 class StatTile extends StatelessWidget {
   const StatTile({
     super.key,
@@ -36,6 +38,8 @@ class StatTile extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
+          splashColor: c.withValues(alpha: 0.10),
+          highlightColor: c.withValues(alpha: 0.05),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 12),
             child: Row(
@@ -56,28 +60,34 @@ class StatTile extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
+                      AppText.custmText(
+                        context,
                         value,
+                        fs: 26,
+                        fw: 2,
+                        color: scheme.onSurface,
+                        height: 1.05,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w800,
-                          color: scheme.onSurface,
-                          height: 1.1,
-                        ),
                       ),
-                      Text(
+                      const SizedBox(height: 1),
+                      AppText.paraText(
+                        context,
                         label,
+                        color: scheme.onSurfaceVariant,
+                        fw: 0,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w500,
-                        ),
                       ),
                     ],
                   ),
                 ),
+                if (onTap != null)
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 18,
+                    color: scheme.onSurfaceVariant.withValues(alpha: 0.45),
+                  ),
               ],
             ),
           ),

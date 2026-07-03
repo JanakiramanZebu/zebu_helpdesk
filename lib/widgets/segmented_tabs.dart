@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_text.dart';
+
 /// Mynt Plus *portfolio*-style filter tabs: a horizontally scrollable row of
 /// labels with an animated underline under the selected item (brand-colored,
 /// bold) sitting on a full-width hairline baseline. The selected tab is always
@@ -111,11 +113,10 @@ class _SegmentedTabsState extends State<SegmentedTabs> {
                     children: [
                       AnimatedDefaultTextStyle(
                         duration: const Duration(milliseconds: 180),
-                        style: TextStyle(
+                        style: AppText.style(
+                          context,
                           fontSize: 14.5,
-                          fontWeight: selected
-                              ? FontWeight.w700
-                              : FontWeight.w500,
+                          fw: selected ? 2 : 0,
                           color: color,
                         ),
                         child: Text(item.label),
@@ -156,10 +157,13 @@ class _Badge extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(9),
       ),
-      child: Text(
+      child: AppText.custmText(
+        context,
         count > 999 ? '999+' : '$count',
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: fg),
+        fs: 11,
+        fw: 2,
+        align: TextAlign.center,
+        color: fg,
       ),
     );
   }

@@ -4,6 +4,7 @@ class Routes {
 
   static const splash = '/splash';
   static const login = '/login';
+  static const forgotPassword = '/forgot-password';
 
   static const dashboard = '/';
   static const tickets = '/tickets';

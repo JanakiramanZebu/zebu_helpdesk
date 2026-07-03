@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/format.dart';
+import '../core/theme/app_text.dart';
 
 /// Circular initials avatar with a deterministic color per name.
 class UserAvatar extends StatelessWidget {
@@ -14,13 +15,12 @@ class UserAvatar extends StatelessWidget {
     return CircleAvatar(
       radius: radius,
       backgroundColor: color.withValues(alpha: 0.18),
-      child: Text(
+      child: AppText.custmText(
+        context,
         Fmt.initials(name),
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w700,
-          fontSize: radius * 0.8,
-        ),
+        fs: radius * 0.8,
+        fw: 2,
+        color: color,
       ),
     );
   }

@@ -63,6 +63,18 @@ class AppTheme {
 
     return base.copyWith(
       textTheme: GoogleFonts.interTextTheme(base.textTheme),
+      // Use the modern, lighter Material 3 "fade forwards" page transition on
+      // every platform — smoother and less janky than the default zoom on
+      // lower-end Android.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+          TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+        },
+      ),
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0.5,
@@ -180,12 +192,161 @@ class AppTheme {
       listTileTheme: const ListTileThemeData(
         contentPadding: EdgeInsets.symmetric(horizontal: 16),
       ),
+      // Jira/Asana/ClickUp-style modal sheets: large 24px top radius, a soft
+      // grabber, flat surface fill and a dimmed scrim. Applies to every
+      // showModalBottomSheet call across the app.
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        modalBackgroundColor: scheme.surface,
+        modalBarrierColor: Colors.black.withValues(alpha: isLight ? 0.32 : 0.55),
+        elevation: 0,
+        modalElevation: 0,
+        showDragHandle: true,
+        dragHandleColor: scheme.onSurfaceVariant.withValues(alpha: 0.35),
+        dragHandleSize: const Size(36, 4),
+        clipBehavior: Clip.antiAlias,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+      ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant,
         space: 1,
         thickness: 1,
       ),
+      // Floating, rounded, surface-toned SnackBars in Inter — the on-brand base
+      // for any bar not built via the AppSnack helper.
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: isLight ? const Color(0xFF232A34) : _surfaceDark,
+        contentTextStyle: GoogleFonts.inter(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: Colors.white,
+        ),
+        actionTextColor: brandLight,
+        elevation: 6,
+        insetPadding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+      // On-brand date picker: rounded surface card, brand-blue header + selected
+      // day, Inter typography, brand-tinted "today" ring and action buttons.
+      datePickerTheme: DatePickerThemeData(
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        headerBackgroundColor: isLight ? brand : brandLight,
+        headerForegroundColor: Colors.white,
+        headerHeadlineStyle: GoogleFonts.inter(
+          fontSize: 30,
+          fontWeight: FontWeight.w700,
+        ),
+        headerHelpStyle: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+        ),
+        weekdayStyle: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: scheme.onSurfaceVariant,
+        ),
+        dayStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500),
+        dayForegroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Colors.white
+              : scheme.onSurface,
+        ),
+        dayBackgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? brand : null,
+        ),
+        todayForegroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Colors.white
+              : brand,
+        ),
+        todayBorder: const BorderSide(color: brand, width: 1.4),
+        yearStyle: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500),
+        yearForegroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Colors.white
+              : scheme.onSurface,
+        ),
+        yearBackgroundColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected) ? brand : null,
+        ),
+        cancelButtonStyle: TextButton.styleFrom(
+          foregroundColor: scheme.onSurfaceVariant,
+        ),
+        confirmButtonStyle: TextButton.styleFrom(
+          foregroundColor: isLight ? brand : brandLight,
+        ),
+      ),
+      // Matching on-brand time picker.
+      timePickerTheme: TimePickerThemeData(
+        backgroundColor: scheme.surface,
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        dialBackgroundColor: isLight
+            ? const Color(0xFFF1F3F8)
+            : const Color(0xFF24242B),
+        dialHandColor: brand,
+        hourMinuteColor: WidgetStateColor.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? (isLight ? _primaryContainerLight : const Color(0xFF1D242F))
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        ),
+        hourMinuteTextColor: WidgetStateColor.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? (isLight ? brand : brandLight)
+              : scheme.onSurface,
+        ),
+        hourMinuteTextStyle: GoogleFonts.inter(
+          fontSize: 44,
+          fontWeight: FontWeight.w600,
+        ),
+        dayPeriodColor: WidgetStateColor.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? (isLight ? _primaryContainerLight : const Color(0xFF1D242F))
+              : Colors.transparent,
+        ),
+        dayPeriodTextColor: WidgetStateColor.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? (isLight ? brand : brandLight)
+              : scheme.onSurfaceVariant,
+        ),
+        dayPeriodBorderSide: BorderSide(color: scheme.outlineVariant),
+        helpTextStyle: GoogleFonts.inter(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: scheme.onSurfaceVariant,
+        ),
+        confirmButtonStyle: TextButton.styleFrom(
+          foregroundColor: isLight ? brand : brandLight,
+        ),
+        cancelButtonStyle: TextButton.styleFrom(
+          foregroundColor: scheme.onSurfaceVariant,
+        ),
+      ),
     );
+  }
+
+  /// Accent color for a priority name (high/emergency = red, low = grey,
+  /// else amber). Used for the left accent bar on list cards. Falls back to a
+  /// neutral outline tone when no priority is set.
+  static Color priorityAccent(String? priority, ColorScheme scheme) {
+    if (priority == null || priority.isEmpty) return scheme.outlineVariant;
+    final p = priority.toLowerCase();
+    if (p.contains('emergency') || p.contains('high')) return overdue;
+    if (p.contains('low')) return closed;
+    return warning;
   }
 
   /// Resolve a hex string like `#e53935` to a [Color] (fallbacks to grey).

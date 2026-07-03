@@ -1,17 +1,25 @@
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../data/tasks_repository.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
+import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/pickers.dart';
+import '../../widgets/rich_message_field.dart';
+import '../../widgets/states.dart';
 
 /// `POST /tasks` — create a task.
 class CreateTaskScreen extends ConsumerStatefulWidget {
@@ -23,7 +31,7 @@ class CreateTaskScreen extends ConsumerStatefulWidget {
 
 class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   final _title = TextEditingController();
-  final _description = TextEditingController();
+  final _description = FleatherController();
 
   MetaItem? _department;
   MetaItem? _priority;
@@ -42,16 +50,18 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.success(context, msg);
+
+  /// Plain-text view of the rich description, for empty/required checks.
+  String get _descriptionText =>
+      _description.document.toPlainText().trim();
 
   Future<void> _submit() async {
     if (_department == null) {
       setState(() => _error = 'Pick a department first');
       return;
     }
-    if (_title.text.trim().isEmpty || _description.text.trim().isEmpty) {
+    if (_title.text.trim().isEmpty || _descriptionText.isEmpty) {
       setState(() => _error = 'Title and description are required');
       return;
     }
@@ -65,7 +75,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
         {
           'dept_id': _department!.id,
           'title': _title.text.trim(),
-          'description': _description.text.trim(),
+          'description': parchmentHtml.encode(_description.document),
           if (_priority != null) 'priority_id': _priority!.id,
           if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
           if (_parent != null) 'parent_id': _parent!.id,
@@ -106,11 +116,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
 
   Future<void> _pickDue() async {
     final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _due ?? now,
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 365 * 3)),
+    final date = await pickDate(
+      context,
+      initial: _due ?? now,
+      first: now.subtract(const Duration(days: 1)),
+      last: now.add(const Duration(days: 365 * 3)),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
@@ -140,9 +150,10 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
             children: [
               if (_saving) const LinearProgressIndicator(minHeight: 2),
               if (_error != null) ...[
-                Text(
+                AppText.subText(
+                  context,
                   _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                  color: Theme.of(context).colorScheme.error,
                 ),
                 const SizedBox(height: 12),
               ],
@@ -155,22 +166,19 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
+              RichMessageField(
                 controller: _description,
-                minLines: 4,
-                maxLines: 10,
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  alignLabelWithHint: true,
-                  errorText: _fieldErrors['description'],
-                ),
+                label: 'Description',
+                hintText: 'Describe the task…',
+                errorText: _fieldErrors['description'],
               ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Text(
+                  AppText.subText(
+                    context,
                     'Attachments',
-                    style: Theme.of(context).textTheme.titleSmall,
+                    fw: 1,
                   ),
                   const Spacer(),
                   TextButton.icon(
@@ -181,11 +189,10 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 ],
               ),
               if (_files.isEmpty)
-                Text(
+                AppText.subText(
+                  context,
                   'No files added',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 )
               else
                 Wrap(
@@ -214,19 +221,16 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.apartment_outlined),
-                title: const Text('Department'),
-                subtitle: Text(
+                title: AppText.subText(context, 'Department'),
+                subtitle: AppText.subText(
+                  context,
                   _department?.name ?? 'Required',
-                  style: TextStyle(
-                    color: _fieldErrors['dept_id'] != null
-                        ? Theme.of(context).colorScheme.error
-                        : _department != null
-                        ? Theme.of(context).colorScheme.onSurface
-                        : Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: _department != null
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                  ),
+                  color: _fieldErrors['dept_id'] != null
+                      ? Theme.of(context).colorScheme.error
+                      : _department != null
+                      ? Theme.of(context).colorScheme.onSurface
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                  fw: _department != null ? 1 : null,
                 ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
@@ -235,6 +239,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                     ref,
                     MetaKind.departments,
                     title: 'Department',
+                    selectedId: _department?.id,
                   );
                   if (m != null) setState(() => _department = m);
                 },
@@ -242,8 +247,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.flag_outlined),
-                title: const Text('Priority'),
-                subtitle: Text(_priority?.name ?? 'Optional'),
+                title: AppText.subText(context, 'Priority'),
+                subtitle: AppText.subText(context, _priority?.name ?? 'Optional'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   final m = await pickMeta(
@@ -251,6 +256,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                     ref,
                     MetaKind.taskPriorities,
                     title: 'Priority',
+                    selectedId: _priority?.id,
                   );
                   if (m != null) setState(() => _priority = m);
                 },
@@ -258,8 +264,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.event_outlined),
-                title: const Text('Due date'),
-                subtitle: Text(_due == null ? 'Optional' : Fmt.dateTime(_due)),
+                title: AppText.subText(context, 'Due date'),
+                subtitle: AppText.subText(
+                  context,
+                  _due == null ? 'Optional' : Fmt.dateTime(_due),
+                ),
                 trailing: _due == null
                     ? const Icon(Icons.chevron_right)
                     : IconButton(
@@ -271,8 +280,9 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.account_tree_outlined),
-                title: const Text('Parent task'),
-                subtitle: Text(
+                title: AppText.subText(context, 'Parent task'),
+                subtitle: AppText.subText(
+                  context,
                   _parent == null
                       ? 'Optional'
                       : '#${_parent!.number} · ${_parent!.title}',
@@ -286,11 +296,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                         onPressed: () => setState(() => _parent = null),
                       ),
                 onTap: () async {
-                  final t = await showModalBottomSheet<Task>(
+                  final t = await showAppSheet<Task>(
                     context: context,
-                    useSafeArea: true,
-                    isScrollControlled: true,
-                    showDragHandle: true,
                     builder: (_) => const _ParentTaskSheet(),
                   );
                   if (t != null) setState(() => _parent = t);
@@ -336,7 +343,8 @@ class _ParentTaskSheetState extends ConsumerState<_ParentTaskSheet> {
   final _ctrl = TextEditingController();
   List<Task> _results = [];
   bool _loading = false;
-  String? _error;
+  Object? _error;
+  String _lastQuery = '';
 
   @override
   void initState() {
@@ -351,6 +359,7 @@ class _ParentTaskSheetState extends ConsumerState<_ParentTaskSheet> {
   }
 
   Future<void> _search(String q) async {
+    _lastQuery = q;
     setState(() {
       _loading = true;
       _error = null;
@@ -367,7 +376,7 @@ class _ParentTaskSheetState extends ConsumerState<_ParentTaskSheet> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.message;
+        _error = e;
         _loading = false;
       });
     }
@@ -375,38 +384,18 @@ class _ParentTaskSheetState extends ConsumerState<_ParentTaskSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: 'Select parent task',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Select parent task',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          TextField(
+          SheetSearchField(
             controller: _ctrl,
             autofocus: true,
-            textInputAction: TextInputAction.search,
+            hintText: 'Search task by number or title',
             onSubmitted: _search,
-            decoration: InputDecoration(
-              hintText: 'Search task by number or title',
-              prefixIcon: const Icon(Icons.search),
-              isDense: true,
-              suffixIcon: _ctrl.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () {
-                        _ctrl.clear();
-                        _search('');
-                      },
-                    )
-                  : null,
-            ),
+            onClear: () => _search(''),
           ),
           const SizedBox(height: 8),
           SizedBox(
@@ -414,20 +403,28 @@ class _ParentTaskSheetState extends ConsumerState<_ParentTaskSheet> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                ? Center(child: Text(_error!))
+                ? ErrorView(
+                    error: _error!,
+                    compact: true,
+                    onRetry: () => _search(_lastQuery),
+                  )
                 : _results.isEmpty
-                ? const Center(child: Text('No tasks found'))
+                ? Center(child: AppText.subText(context, 'No tasks found'))
                 : ListView.builder(
                     itemCount: _results.length,
                     itemBuilder: (_, i) {
                       final t = _results[i];
                       return ListTile(
-                        title: Text(
+                        title: AppText.subText(
+                          context,
                           t.title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        subtitle: Text('#${t.number} · ${t.statusName}'),
+                        subtitle: AppText.subText(
+                          context,
+                          '#${t.number} · ${t.statusName}',
+                        ),
                         onTap: () => Navigator.pop(context, t),
                       );
                     },

@@ -2,17 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/assets.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/reports.dart';
 import '../../providers.dart';
 import '../../widgets/states.dart';
-import '../../widgets/svg_icon.dart';
 import '../reports/widgets/activity_chart_card.dart';
 import '../reports/widgets/report_summary_card.dart';
 import 'widgets/mini_bar_chart.dart';
+import 'widgets/stat_grid_skeleton.dart';
 import 'widgets/stat_tile.dart';
 
 class DashboardScreen extends ConsumerStatefulWidget {
@@ -139,15 +139,68 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  Widget _sectionLabel(String title) => Padding(
-    padding: const EdgeInsets.only(left: 4, top: 4, bottom: 10),
-    child: Text(
-      title,
-      style: Theme.of(
-        context,
-      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-    ),
-  );
+  Widget _sectionLabel(String title, {String? actionLabel, VoidCallback? onAction}) =>
+      Padding(
+        padding: const EdgeInsets.only(left: 4, top: 4, bottom: 10),
+        child: Row(
+          children: [
+            Expanded(child: AppText.titleText(context, title, fw: 2)),
+            if (actionLabel != null && onAction != null)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onAction,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AppText.paraText(
+                        context,
+                        actionLabel,
+                        color: AppTheme.brand,
+                        fw: 1,
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: AppTheme.brand,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+
+  /// A responsive 2-column stat grid. Tiles are laid out in [Row]s wrapped in
+  /// [IntrinsicHeight] so each tile sizes to its own content (value + label +
+  /// padding) and both tiles in a row share the taller height — no hard-coded
+  /// box height to over- or under-shoot, and it respects text scaling.
+  Widget _statGrid(List<Widget> tiles) {
+    const spacing = 10.0;
+    final rows = <Widget>[];
+    for (var i = 0; i < tiles.length; i += 2) {
+      final left = tiles[i];
+      final right = i + 1 < tiles.length ? tiles[i + 1] : null;
+      rows.add(
+        Padding(
+          padding: EdgeInsets.only(top: i == 0 ? 0 : spacing),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: left),
+                const SizedBox(width: spacing),
+                Expanded(child: right ?? const SizedBox.shrink()),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    return Column(children: rows);
+  }
 
   /// Priority bar color, mirroring StatusChip.priority semantics.
   Color _priorityColor(String priority) {
@@ -160,9 +213,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final me = ref.watch(meProvider);
-    final unread = ref.watch(unreadCountProvider);
 
-    final theme = Theme.of(context);
     final greeting = me.when(
       data: (m) {
         final first = m.name.trim().split(RegExp(r'\s+')).first;
@@ -180,35 +231,18 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              greeting,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
+            AppText.headText(context, greeting, fw: 2),
             const SizedBox(height: 2),
-            Text(
-              "Here's your helpdesk overview",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            AppText.paraText(context, "Here's your helpdesk overview"),
           ],
         ),
-        actions: [
-          _NotificationBell(
-            count: unread.maybeWhen(data: (c) => c, orElse: () => 0),
-            onTap: () => context.push(Routes.notifications),
-          ),
-          const SizedBox(width: 6),
-        ],
       ),
       body: RefreshIndicator(onRefresh: _load, child: _buildBody(context)),
     );
   }
 
   Widget _buildBody(BuildContext context) {
-    if (_loading) return const LoadingView();
+    if (_loading) return _buildSkeleton(context);
     if (_error != null) return ErrorView(error: _error!, onRetry: _load);
     final summary = _summary;
     if (summary == null) return ErrorView(error: 'No data', onRetry: _load);
@@ -224,62 +258,55 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         12 + MediaQuery.of(context).padding.bottom,
       ),
       children: [
-        _sectionLabel('Tickets'),
-        SizedBox(
-          height: 250,
-          child: GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 2.5,
-            children: [
-              StatTile(
-                label: 'Open',
-                value: Fmt.count(t.open),
-                icon: Icons.inbox_outlined,
-                color: AppTheme.open,
-                onTap: () => _openTickets('open'),
-              ),
-              StatTile(
-                label: 'Unassigned',
-                value: Fmt.count(t.unassigned),
-                icon: Icons.person_off_outlined,
-                color: AppTheme.warning,
-                onTap: () => _openTickets('unassigned'),
-              ),
-              StatTile(
-                label: 'Overdue',
-                value: Fmt.count(t.overdue),
-                icon: Icons.schedule_outlined,
-                color: AppTheme.overdue,
-                onTap: () => _openTickets('overdue'),
-              ),
-              StatTile(
-                label: 'Mine Open',
-                value: Fmt.count(t.mineOpen),
-                icon: Icons.assignment_ind_outlined,
-                color: AppTheme.brand,
-                onTap: () => _openTickets('mine'),
-              ),
-              StatTile(
-                label: 'Answered',
-                value: Fmt.count(t.answered),
-                icon: Icons.mark_email_read_outlined,
-                color: AppTheme.open,
-                onTap: () => _openTickets('answered'),
-              ),
-              StatTile(
-                label: 'Closed',
-                value: Fmt.count(t.closed),
-                icon: Icons.check_circle_outline,
-                color: AppTheme.closed,
-                onTap: () => _openTickets('closed'),
-              ),
-            ],
-          ),
+        _sectionLabel(
+          'Tickets',
+          actionLabel: 'View all',
+          onAction: () => _openTickets('open'),
         ),
+        _statGrid([
+          StatTile(
+            label: 'Open',
+            value: Fmt.count(t.open),
+            icon: Icons.inbox_outlined,
+            color: AppTheme.open,
+            onTap: () => _openTickets('open'),
+          ),
+          StatTile(
+            label: 'Unassigned',
+            value: Fmt.count(t.unassigned),
+            icon: Icons.person_off_outlined,
+            color: AppTheme.warning,
+            onTap: () => _openTickets('unassigned'),
+          ),
+          StatTile(
+            label: 'Overdue',
+            value: Fmt.count(t.overdue),
+            icon: Icons.schedule_outlined,
+            color: AppTheme.overdue,
+            onTap: () => _openTickets('overdue'),
+          ),
+          StatTile(
+            label: 'Mine Open',
+            value: Fmt.count(t.mineOpen),
+            icon: Icons.assignment_ind_outlined,
+            color: AppTheme.brand,
+            onTap: () => _openTickets('mine'),
+          ),
+          StatTile(
+            label: 'Answered',
+            value: Fmt.count(t.answered),
+            icon: Icons.mark_email_read_outlined,
+            color: AppTheme.open,
+            onTap: () => _openTickets('answered'),
+          ),
+          StatTile(
+            label: 'Closed',
+            value: Fmt.count(t.closed),
+            icon: Icons.check_circle_outline,
+            color: AppTheme.closed,
+            onTap: () => _openTickets('closed'),
+          ),
+        ]),
         const SizedBox(height: 16),
         if (_volume != null) ...[
           ReportSummaryCard(
@@ -291,65 +318,76 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           const SizedBox(height: 12),
           ActivityChartCard(report: _volume!),
         ],
-        if (_tasksOpen != null) ...[
-          const SizedBox(height: 20),
-          _sectionLabel('Tasks'),
-          SizedBox(
-            height: 250,
-            child: GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 2.5,
-              children: [
-                StatTile(
-                  label: 'Open',
-                  value: Fmt.count(_tasksOpen ?? 0),
-                  icon: Icons.radio_button_unchecked,
-                  color: AppTheme.open,
-                  onTap: () => _openTasks('open'),
-                ),
-                StatTile(
-                  label: 'Mine',
-                  value: Fmt.count(_tasksMine ?? 0),
-                  icon: Icons.assignment_ind_outlined,
-                  color: AppTheme.brand,
-                  onTap: () => _openTasks('mine'),
-                ),
-                StatTile(
-                  label: 'Overdue',
-                  value: Fmt.count(_tasksOverdue ?? 0),
-                  icon: Icons.schedule_outlined,
-                  color: AppTheme.overdue,
-                  onTap: () => _openTasks('overdue'),
-                ),
-                StatTile(
-                  label: 'Collaborator',
-                  value: Fmt.count(_tasksCollaborator ?? 0),
-                  icon: Icons.groups_outlined,
-                  color: AppTheme.warning,
-                  onTap: () => _openTasks('collaborator'),
-                ),
-                StatTile(
-                  label: 'All',
-                  value: Fmt.count(_tasksAll ?? 0),
-                  icon: Icons.all_inbox_outlined,
-                  color: AppTheme.brandDark,
-                  onTap: () => _openTasks('all'),
-                ),
-                StatTile(
-                  label: 'Closed',
-                  value: Fmt.count(_tasksClosed ?? 0),
-                  icon: Icons.task_alt,
-                  color: AppTheme.closed,
-                  onTap: () => _openTasks('closed'),
-                ),
-              ],
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 350),
+          switchInCurve: Curves.easeOutCubic,
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SizeTransition(
+              sizeFactor: animation,
+              axisAlignment: -1,
+              child: child,
             ),
           ),
-        ],
+          child: _tasksOpen == null
+              ? const SizedBox.shrink()
+              : Column(
+                  key: const ValueKey('tasks-section'),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 20),
+                    _sectionLabel(
+                      'Tasks',
+                      actionLabel: 'View all',
+                      onAction: () => _openTasks('all'),
+                    ),
+                    _statGrid([
+                      StatTile(
+                        label: 'Open',
+                        value: Fmt.count(_tasksOpen ?? 0),
+                        icon: Icons.radio_button_unchecked,
+                        color: AppTheme.open,
+                        onTap: () => _openTasks('open'),
+                      ),
+                      StatTile(
+                        label: 'Mine',
+                        value: Fmt.count(_tasksMine ?? 0),
+                        icon: Icons.assignment_ind_outlined,
+                        color: AppTheme.brand,
+                        onTap: () => _openTasks('mine'),
+                      ),
+                      StatTile(
+                        label: 'Overdue',
+                        value: Fmt.count(_tasksOverdue ?? 0),
+                        icon: Icons.schedule_outlined,
+                        color: AppTheme.overdue,
+                        onTap: () => _openTasks('overdue'),
+                      ),
+                      StatTile(
+                        label: 'Collaborator',
+                        value: Fmt.count(_tasksCollaborator ?? 0),
+                        icon: Icons.groups_outlined,
+                        color: AppTheme.warning,
+                        onTap: () => _openTasks('collaborator'),
+                      ),
+                      StatTile(
+                        label: 'All',
+                        value: Fmt.count(_tasksAll ?? 0),
+                        icon: Icons.all_inbox_outlined,
+                        color: AppTheme.brandDark,
+                        onTap: () => _openTasks('all'),
+                      ),
+                      StatTile(
+                        label: 'Closed',
+                        value: Fmt.count(_tasksClosed ?? 0),
+                        icon: Icons.task_alt,
+                        color: AppTheme.closed,
+                        onTap: () => _openTasks('closed'),
+                      ),
+                    ]),
+                  ],
+                ),
+        ),
         if (summary.byPriority.isNotEmpty) ...[
           const SizedBox(height: 8),
           _Section(
@@ -393,6 +431,25 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       ],
     );
   }
+
+  /// Dashboard-shaped shimmer shown during the initial load, mirroring the two
+  /// stat grids so the layout doesn't jump when data arrives.
+  Widget _buildSkeleton(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        12,
+        12,
+        12,
+        12 + MediaQuery.of(context).padding.bottom,
+      ),
+      children: const [
+        StatGridSkeleton(),
+        SizedBox(height: 24),
+        StatGridSkeleton(),
+      ],
+    );
+  }
 }
 
 class _Section extends StatelessWidget {
@@ -408,61 +465,11 @@ class _Section extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600),
-            ),
+            AppText.subText(context, title, fw: 1),
             const SizedBox(height: 12),
             child,
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _NotificationBell extends StatelessWidget {
-  const _NotificationBell({required this.count, required this.onTap});
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return IconButton(
-      onPressed: onTap,
-      tooltip: 'Notifications',
-      icon: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          SvgIcon(Assets.bell, size: 22),
-          if (count > 0)
-            Positioned(
-              top: -5,
-              right: -6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                constraints: const BoxConstraints(minWidth: 17),
-                decoration: BoxDecoration(
-                  color: AppTheme.overdue,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: scheme.surface, width: 1.5),
-                ),
-                child: Text(
-                  count > 99 ? '99+' : '$count',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    height: 1.25,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

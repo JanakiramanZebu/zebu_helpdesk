@@ -10,6 +10,7 @@ import 'data/me_repository.dart';
 import 'data/meta_repository.dart';
 import 'data/notifications_repository.dart';
 import 'data/orgs_repository.dart';
+import 'data/password_reset_repository.dart';
 import 'data/push_repository.dart';
 import 'data/queues_repository.dart';
 import 'data/reports_repository.dart';
@@ -44,6 +45,12 @@ final authRepositoryProvider = Provider<AuthRepository>(
 
 final authControllerProvider = NotifierProvider<AuthController, AuthState>(
   AuthController.new,
+);
+
+/// Agent self-service "forgot password" flow (`/auth/forgot-password` +
+/// `/auth/reset-password`). Public endpoints — no bearer required.
+final passwordResetRepositoryProvider = Provider<PasswordResetRepository>(
+  (ref) => PasswordResetRepository(ref.watch(apiClientProvider)),
 );
 
 // --- Repositories -----------------------------------------------------------

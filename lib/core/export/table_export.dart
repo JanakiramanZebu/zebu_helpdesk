@@ -7,20 +7,108 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../widgets/svg_icon.dart';
+import '../assets.dart';
+
 /// The file formats a list screen can export to via [exportTable].
 enum ExportFormat {
-  pdf(label: 'PDF', ext: 'pdf', icon: Icons.picture_as_pdf_outlined),
-  excel(label: 'Excel', ext: 'xlsx', icon: Icons.grid_on_outlined);
+  pdf(
+    label: 'PDF',
+    ext: 'pdf',
+    icon: Icons.picture_as_pdf_outlined,
+    tint: Color(0xFFE53935),
+  ),
+  excel(
+    label: 'Excel',
+    ext: 'xlsx',
+    icon: Icons.grid_on_outlined,
+    tint: Color(0xFF1E8E3E),
+  );
 
   const ExportFormat({
     required this.label,
     required this.ext,
     required this.icon,
+    required this.tint,
   });
 
   final String label;
   final String ext;
   final IconData icon;
+
+  /// Brand-ish accent for the format's glyph in the download menu.
+  final Color tint;
+}
+
+/// App-bar download control: a download glyph that opens a styled popup menu
+/// offering each [ExportFormat], or a spinner while [busy]. Shared by the
+/// tickets and tasks list screens so the menu looks identical everywhere.
+class ExportMenuButton extends StatelessWidget {
+  const ExportMenuButton({
+    super.key,
+    required this.busy,
+    required this.onSelected,
+  });
+
+  final bool busy;
+  final ValueChanged<ExportFormat> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    if (busy) {
+      return const IconButton(
+        tooltip: 'Downloading…',
+        onPressed: null,
+        icon: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2.4),
+        ),
+      );
+    }
+
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<ExportFormat>(
+      tooltip: 'Download',
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 8),
+      elevation: 8,
+      color: scheme.surface,
+      shadowColor: Colors.black.withValues(alpha: 0.18),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      icon: const SvgIcon(Assets.download, size: 22),
+      onSelected: onSelected,
+      itemBuilder: (context) => [
+        for (final f in ExportFormat.values)
+          PopupMenuItem<ExportFormat>(
+            value: f,
+            height: 48,
+            child: Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: f.tint.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(f.icon, size: 18, color: f.tint),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Download ${f.label}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// Build a tabular document (PDF or Excel) from [columns]/[rows], write it to a

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 
 import '../../../core/format.dart';
+import '../../../core/theme/app_text.dart';
 import '../../../models/common.dart';
 import '../../../widgets/attachment_tile.dart';
+import '../../../widgets/thread_html.dart';
 import '../../../widgets/user_avatar.dart';
 
 /// Renders a single thread entry (message / response / note) as a chat bubble.
@@ -41,12 +42,7 @@ class ThreadEntryTile extends StatelessWidget {
             children: [
               UserAvatar(name: entry.poster, radius: 11),
               const SizedBox(width: 6),
-              Text(
-                entry.poster,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              AppText.paraText(context, entry.poster, fw: 1),
               const SizedBox(width: 6),
               if (isNote)
                 const StatusChipDot(label: 'Note', color: Color(0xFFF9A825)),
@@ -66,16 +62,13 @@ class ThreadEntryTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (entry.title != null && entry.title!.isNotEmpty) ...[
-                  Text(
-                    entry.title!,
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
+                  AppText.subText(context, entry.title!, fw: 1),
                   const SizedBox(height: 4),
                 ],
                 if (isEmpty)
-                  const Text('(no content)')
+                  AppText.subText(context, '(no content)')
                 else
-                  HtmlWidget(html, textStyle: theme.textTheme.bodyMedium),
+                  ThreadHtml(html: html, textStyle: theme.textTheme.bodyMedium),
                 if (entry.attachments.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   for (final a in entry.attachments)
@@ -85,12 +78,7 @@ class ThreadEntryTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 3),
-          Text(
-            Fmt.ago(entry.created),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
+          AppText.paraText(context, Fmt.ago(entry.created)),
         ],
       ),
     );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' show DateFormat;
 
+import '../../../core/theme/app_text.dart';
+
 /// One plotted line (e.g. "Opened" or "Closed").
 class ChartSeries {
   const ChartSeries({
@@ -41,8 +43,7 @@ class ActivityLineChart extends StatelessWidget {
           dates: dates,
           gridColor: theme.colorScheme.outlineVariant,
           labelColor: theme.colorScheme.onSurfaceVariant,
-          labelStyle:
-              theme.textTheme.bodySmall ?? const TextStyle(fontSize: 11),
+          labelStyle: AppText.style(context, fontSize: 12),
         ),
       ),
     );

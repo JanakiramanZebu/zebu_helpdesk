@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/canned.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/attachment_tile.dart';
 import '../../widgets/paged_list_view.dart';
 
@@ -20,9 +23,7 @@ class CannedScreen extends ConsumerStatefulWidget {
 class _CannedScreenState extends ConsumerState<CannedScreen> {
   int _reload = 0;
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   void _refresh() => setState(() => _reload++);
 
@@ -52,33 +53,27 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
 
   Future<void> _openDetail(CannedResponse c) async {
     final repo = ref.read(cannedRepositoryProvider);
-    await showModalBottomSheet<void>(
+    await showAppSheet<void>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => DraggableScrollableSheet(
-        expand: false,
-        initialChildSize: 0.7,
-        maxChildSize: 0.95,
-        builder: (context, scroll) {
-          return ListView(
-            controller: scroll,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-            children: [
-              Text(
-                c.title,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const SizedBox(height: 12),
-              Text(Fmt.stripHtml(c.body)),
+      builder: (_) => AppSheet(
+        title: c.title,
+        scrollable: false,
+        padding: EdgeInsets.zero,
+        child: DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.7,
+          maxChildSize: 0.95,
+          builder: (context, scroll) {
+            return ListView(
+              controller: scroll,
+              padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+              children: [
+                AppText.subText(context, Fmt.stripHtml(c.body)),
               if (c.notes != null && c.notes!.trim().isNotEmpty) ...[
                 const SizedBox(height: 16),
-                Text('Notes', style: Theme.of(context).textTheme.titleSmall),
+                AppText.subText(context, 'Notes', fw: 1),
                 const SizedBox(height: 6),
-                Text(c.notes!),
+                AppText.subText(context, c.notes!),
               ],
               FutureBuilder(
                 future: repo.attachments(c.id),
@@ -89,10 +84,7 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SizedBox(height: 16),
-                      Text(
-                        'Attachments',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
+                      AppText.subText(context, 'Attachments', fw: 1),
                       for (final a in atts) AttachmentTile(attachment: a),
                     ],
                   );
@@ -113,27 +105,22 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
             ],
           );
         },
+        ),
       ),
     );
   }
 
   Future<void> _openCreate() async {
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => const _CannedEditor(),
     );
     if (saved == true) _refresh();
   }
 
   Future<void> _openEdit(CannedResponse c) async {
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => _CannedEditor(existing: c),
     );
     if (saved == true) _refresh();
@@ -187,18 +174,14 @@ class _CannedCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      canned.title,
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
+                    AppText.subText(context, canned.title, fw: 2),
                     const SizedBox(height: 4),
-                    Text(
+                    AppText.paraText(
+                      context,
                       Fmt.stripHtml(canned.body),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                     if (!canned.isEnabled || canned.isGlobal) ...[
                       const SizedBox(height: 8),
@@ -238,10 +221,7 @@ class _CannedCard extends StatelessWidget {
       color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(6),
     ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
-    ),
+    child: AppText.paraText(context, label, color: color, fw: 0),
   );
 }
 
@@ -301,9 +281,7 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
         if (e.fields.isNotEmpty) {
           _fieldErrors.addAll(e.fields);
         } else {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text(e.message)));
+          AppSnack.error(context, e.message);
         }
       });
     } finally {
@@ -313,19 +291,12 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: _isEdit ? 'Edit response' : 'New canned response',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            _isEdit ? 'Edit response' : 'New canned response',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
           TextField(
             controller: _title,
             decoration: InputDecoration(

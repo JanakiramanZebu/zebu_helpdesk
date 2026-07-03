@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/format.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../models/ticket.dart';
-import '../../../widgets/selection_check.dart';
-import '../../../widgets/status_chip.dart';
-import '../../../widgets/user_avatar.dart';
+import '../../../widgets/entity_list_row.dart';
 
-/// The original ticket card design, with optional multi-select chrome: a
-/// leading checkbox and a highlighted border when [selected].
+/// A ticket list row. Thin adapter over the shared [EntityListRow] — maps a
+/// [Ticket] to an [EntityRowData] so tickets and tasks share one row design.
 class TicketRow extends StatelessWidget {
   const TicketRow({
     super.key,
@@ -16,6 +15,7 @@ class TicketRow extends StatelessWidget {
     this.selectionMode = false,
     this.selected = false,
     this.onToggle,
+    this.compact = false,
   });
 
   final Ticket ticket;
@@ -24,136 +24,44 @@ class TicketRow extends StatelessWidget {
   final bool selected;
   final VoidCallback? onToggle;
 
+  /// When true, renders a dense single-line row (more items per screen).
+  final bool compact;
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final requester = ticket.requester ?? 'Unknown';
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      color: selected ? scheme.primary.withValues(alpha: 0.06) : null,
-      shape: selected
-          ? RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: scheme.primary, width: 1.4),
-            )
-          : null,
-      child: InkWell(
-        onTap: selectionMode ? onToggle : onTap,
-        onLongPress: onToggle,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              if (selectionMode) ...[
-                SelectionCheck(selected: selected),
-                const SizedBox(width: 12),
-              ],
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          '#${ticket.number}',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.primary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const Spacer(),
-                        if (ticket.isOverdue)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 6),
-                            child: Icon(
-                              Icons.warning_amber_rounded,
-                              size: 16,
-                              color: Color(0xFFD32F2F),
-                            ),
-                          ),
-                        StatusChip.status(ticket.statusName, dense: true),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      ticket.subject,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        UserAvatar(name: requester, radius: 12),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            requester,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ),
-                        if (ticket.priority != null) ...[
-                          StatusChip.priority(ticket.priority!, dense: true),
-                          const SizedBox(width: 6),
-                        ],
-                        Text(
-                          Fmt.ago(ticket.created),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (ticket.departmentName != null ||
-                        ticket.assignee != null) ...[
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          if (ticket.departmentName != null) ...[
-                            Icon(
-                              Icons.apartment,
-                              size: 13,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              ticket.departmentName!,
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            const SizedBox(width: 12),
-                          ],
-                          if (ticket.assignee != null) ...[
-                            Icon(
-                              Icons.person_pin_circle_outlined,
-                              size: 13,
-                              color: scheme.onSurfaceVariant,
-                            ),
-                            const SizedBox(width: 3),
-                            Expanded(
-                              child: Text(
-                                ticket.assignee!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
+    return EntityListRow(
+      onTap: onTap,
+      selectionMode: selectionMode,
+      selected: selected,
+      onToggle: onToggle,
+      compact: compact,
+      data: EntityRowData(
+        number: ticket.number,
+        title: ticket.subject,
+        statusName: ticket.statusName,
+        personName: requester,
+        createdAgo: Fmt.ago(ticket.created),
+        createdTooltip: 'Created ${Fmt.dateTime(ticket.created)}',
+        priorityLabel: ticket.priority,
+        accentColor: AppTheme.priorityAccent(ticket.priority, scheme),
+        danger: ticket.isOverdue,
+        dangerLabel: 'Overdue',
+        subtitleParts: [
+          if ((ticket.departmentName ?? '').isNotEmpty) ticket.departmentName!,
+        ],
+        metaChips: [
+          if ((ticket.departmentName ?? '').isNotEmpty)
+            EntityMetaChip(icon: Icons.apartment, label: ticket.departmentName!),
+          if (ticket.due != null)
+            EntityMetaChip(
+              icon: Icons.event_outlined,
+              label: Fmt.date(ticket.due),
+              danger: ticket.isOverdue,
+            ),
+        ],
       ),
     );
   }

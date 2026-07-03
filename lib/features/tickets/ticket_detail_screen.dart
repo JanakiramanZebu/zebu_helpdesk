@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+﻿import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
@@ -7,12 +7,16 @@ import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/common.dart';
 import '../../models/meta.dart';
 import '../../models/ticket.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
+import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
@@ -52,6 +56,13 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   void _onTab() {
     if (mounted) setState(() {}); // toggle the composer per active tab
   }
+
+  /// Whether the composer (only shown for the Conversation tab, index 0) should
+  /// be visible. Uses the controller's live [animation] value rather than
+  /// [index] so the field hides the instant a swipe starts moving away â€” a
+  /// small threshold means it disappears as soon as the drag begins, matching
+  /// the immediate hide you get when tapping another tab.
+  bool get _onConversationTab => (_tabs.animation?.value ?? 0) < 0.05;
 
   // Show the subject in the app bar once the collapsing header (which holds
   // the subject) has scrolled behind the pinned app bar.
@@ -98,9 +109,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
 
   void _apply(Ticket updated) => setState(() => _ticket = updated);
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   Future<void> _runAction(
     Future<Ticket> Function() action, {
@@ -120,24 +129,53 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
 
   PopupMenuButton<String> _menu() => PopupMenuButton<String>(
     onSelected: _onMenu,
-    itemBuilder: (_) => [
-      const PopupMenuItem(value: 'status', child: Text('Change status')),
-      const PopupMenuItem(value: 'assign', child: Text('Assign')),
-      const PopupMenuItem(value: 'claim', child: Text('Claim')),
-      const PopupMenuItem(value: 'release', child: Text('Release')),
-      const PopupMenuItem(value: 'transfer', child: Text('Transfer dept')),
-      const PopupMenuItem(value: 'priority', child: Text('Set priority')),
-      const PopupMenuItem(value: 'topic', child: Text('Change topic')),
-      const PopupMenuItem(value: 'owner', child: Text('Change owner')),
-      const PopupMenuItem(value: 'duedate', child: Text('Set due date')),
-      const PopupMenuItem(value: 'mark', child: Text('Mark answered/overdue')),
+    itemBuilder: (context) => [
+      // Workflow / status.
+      _menuItem('status', Icons.published_with_changes, 'Change status'),
+      _menuItem('mark', Icons.rule, 'Mark answered/overdue'),
       const PopupMenuDivider(),
-      const PopupMenuItem(value: 'tags', child: Text('Tags')),
-      const PopupMenuItem(value: 'collaborators', child: Text('Collaborators')),
+      // Assignment.
+      _menuItem('assign', Icons.assignment_ind_outlined, 'Assign'),
+      _menuItem('claim', Icons.how_to_reg_outlined, 'Claim'),
+      _menuItem('release', Icons.logout, 'Release'),
+      _menuItem('owner', Icons.manage_accounts_outlined, 'Change owner'),
       const PopupMenuDivider(),
-      const PopupMenuItem(value: 'delete', child: Text('Delete')),
+      // Attributes.
+      _menuItem('transfer', Icons.apartment_outlined, 'Transfer dept'),
+      _menuItem('priority', Icons.flag_outlined, 'Set priority'),
+      _menuItem('topic', Icons.topic_outlined, 'Change topic'),
+      _menuItem('duedate', Icons.event_outlined, 'Set due date'),
+      const PopupMenuDivider(),
+      // Metadata.
+      _menuItem('collaborators', Icons.group_outlined, 'Collaborators'),
+      const PopupMenuDivider(),
+      _menuItem(
+        'delete',
+        Icons.delete_outline,
+        'Delete',
+        color: Theme.of(context).colorScheme.error,
+      ),
     ],
   );
+
+  /// A â‹®-menu row with a leading icon; [color] tints destructive actions.
+  PopupMenuItem<String> _menuItem(
+    String value,
+    IconData icon,
+    String label, {
+    Color? color,
+  }) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: color),
+          const SizedBox(width: 12),
+          Text(label, style: color == null ? null : TextStyle(color: color)),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -170,17 +208,15 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                     children: [
                       Text('#${t.number}'),
                       if (_subjectInBar)
-                        Text(
+                        AppText.paraText(
+                          context,
                           t.subject,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: Theme.of(context)
-                                    .appBarTheme
-                                    .foregroundColor
-                                    ?.withValues(alpha: 0.8),
-                              ),
+                          color: Theme.of(context)
+                              .appBarTheme
+                              .foregroundColor
+                              ?.withValues(alpha: 0.8),
                         ),
                     ],
                   ),
@@ -215,7 +251,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                       controller: _tabs,
                       children: [
                         _ConversationTab(thread: _thread),
-                        _DetailsTab(ticket: t),
+                        _DetailsTab(ticket: t, onEdit: _onMenu),
                         _ActivityTab(events: _events),
                       ],
                     ),
@@ -224,8 +260,15 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
               ),
             ),
           ),
-          if (_tabs.index == 0)
-            _InlineComposer(ticketId: widget.ticketId, onSent: _load),
+          // Rebuild on every swipe frame (the controller's own listener only
+          // fires on settled index changes) so the composer hides the instant
+          // the user drags away from the Conversation tab.
+          ListenableBuilder(
+            listenable: _tabs.animation!,
+            builder: (context, _) => _onConversationTab
+                ? _InlineComposer(ticketId: widget.ticketId, onSent: _load)
+                : const SizedBox.shrink(),
+          ),
         ],
       ),
     );
@@ -262,9 +305,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
           );
         });
       case 'transfer':
-        await _pickMeta(MetaKind.departments, title: 'Transfer department', (
-          id,
-        ) async {
+        await _pickMeta(MetaKind.departments, title: 'Transfer department',
+            selectedId: _ticket?.departmentId, (id) async {
           await _runAction(
             () => repo.transfer(widget.ticketId, id),
             success: 'Transferred',
@@ -300,8 +342,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         await _setDueDate();
       case 'mark':
         await _markState();
-      case 'tags':
-        await _manageTags();
       case 'collaborators':
         await _manageCollaborators();
       case 'delete':
@@ -311,11 +351,18 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
 
   Future<void> _setDueDate() async {
     final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _ticket?.due ?? now,
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 365 * 3)),
+    final firstDate = DateTime(now.year, now.month, now.day); // today
+    // A ticket may already carry a due date in the past; the picker asserts if
+    // initialDate is before firstDate, so clamp it up to today.
+    final existingDue = _ticket?.due;
+    final initialDate = (existingDue == null || existingDue.isBefore(firstDate))
+        ? firstDate
+        : existingDue;
+    final date = await pickDate(
+      context,
+      initial: initialDate,
+      first: firstDate,
+      last: now.add(const Duration(days: 365 * 3)),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
@@ -329,6 +376,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       time?.hour ?? 17,
       time?.minute ?? 0,
     );
+    // Reject a due time already in the past (e.g. today at an earlier hour).
+    if (due.isBefore(DateTime.now())) {
+      _toast('Due date must be in the future');
+      return;
+    }
     await _runAction(
       () => ref
           .read(ticketsRepositoryProvider)
@@ -369,13 +421,6 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     await _load();
   }
 
-  Future<void> _manageTags() async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _TagsSheet(ticketId: widget.ticketId),
-    );
-  }
-
   Future<void> _manageCollaborators() async {
     await showDialog<void>(
       context: context,
@@ -387,23 +432,22 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     String kind,
     Future<void> Function(int id) onPick, {
     String title = 'Select',
+    int? selectedId,
   }) async {
-    final items = await ref.read(metaRepositoryProvider).get(kind);
+    final List<MetaItem> items;
+    try {
+      items = await ref.read(metaRepositoryProvider).get(kind);
+    } on ApiException catch (e) {
+      _toast(e.message);
+      return;
+    }
     if (!mounted) return;
     final chosen = await showDialog<int>(
       context: context,
-      builder: (_) => SimpleDialog(
-        title: Text(title),
-        children: [
-          for (final m in items)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, m.id),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: Text(m.name),
-              ),
-            ),
-        ],
+      builder: (_) => _MetaPickerDialog(
+        title: title,
+        items: items,
+        selectedId: selectedId,
       ),
     );
     if (chosen != null) await onPick(chosen);
@@ -446,12 +490,7 @@ class _CollapsingHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            ticket.subject,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+          AppText.titleText(context, ticket.subject, fw: 2),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -482,10 +521,7 @@ class _CollapsingHeader extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            Text(
-              'SLA: ${ticket.sla!.label ?? '—'}',
-              style: theme.textTheme.bodySmall,
-            ),
+            AppText.paraText(context, 'SLA: ${ticket.sla!.label ?? 'â€”'}'),
           ],
         ],
       ),
@@ -541,73 +577,192 @@ class _ConversationTab extends StatelessWidget {
 }
 
 class _DetailsTab extends StatelessWidget {
-  const _DetailsTab({required this.ticket});
+  const _DetailsTab({required this.ticket, required this.onEdit});
   final Ticket ticket;
+
+  /// Routes an edit intent (matching the â‹®-menu action keys) back to the host.
+  final ValueChanged<String> onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final rows = <(String, String?)>[
-      ('Requester', ticket.requester),
-      ('Email', ticket.userEmail),
-      ('Department', ticket.departmentName),
-      ('Assignee', ticket.assignee),
-      ('Created', Fmt.dateTime(ticket.created)),
-      ('Updated', Fmt.dateTime(ticket.updated)),
-      ('Due', Fmt.dateTime(ticket.due)),
-    ];
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        for (final (label, value) in rows)
-          if (value != null && value.isNotEmpty && value != '—')
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 7),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 110,
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: Text(
-                      value,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  ),
-                ],
-              ),
+        // Editable attributes â€” tap to open the matching picker.
+        _DetailSection(
+          title: 'Attributes',
+          children: [
+            _DetailRow(
+              icon: Icons.published_with_changes,
+              label: 'Status',
+              value: ticket.statusName,
+              onTap: () => onEdit('status'),
             ),
+            _DetailRow(
+              icon: Icons.flag_outlined,
+              label: 'Priority',
+              value: ticket.priority,
+              placeholder: 'Set priority',
+              onTap: () => onEdit('priority'),
+            ),
+            _DetailRow(
+              icon: Icons.apartment_outlined,
+              label: 'Department',
+              value: ticket.departmentName,
+              placeholder: 'Transfer',
+              onTap: () => onEdit('transfer'),
+            ),
+            _DetailRow(
+              icon: Icons.assignment_ind_outlined,
+              label: 'Assignee',
+              value: ticket.assignee,
+              placeholder: 'Assign',
+              onTap: () => onEdit('assign'),
+            ),
+            _DetailRow(
+              icon: Icons.event_outlined,
+              label: 'Due date',
+              value: ticket.due == null ? null : Fmt.dateTime(ticket.due),
+              placeholder: 'Set due date',
+              onTap: () => onEdit('duedate'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // Read-only requester / timestamps.
+        _DetailSection(
+          title: 'Information',
+          children: [
+            _DetailRow(
+              icon: Icons.person_outline,
+              label: 'Requester',
+              value: ticket.requester,
+            ),
+            _DetailRow(
+              icon: Icons.mail_outline,
+              label: 'Email',
+              value: ticket.userEmail,
+            ),
+            _DetailRow(
+              icon: Icons.schedule,
+              label: 'Created',
+              value: Fmt.dateTime(ticket.created),
+            ),
+            _DetailRow(
+              icon: Icons.update,
+              label: 'Updated',
+              value: Fmt.dateTime(ticket.updated),
+            ),
+          ],
+        ),
         if (ticket.customFields.isNotEmpty) ...[
-          const Divider(height: 28),
-          Text('Custom fields', style: Theme.of(context).textTheme.titleSmall),
-          const SizedBox(height: 8),
-          for (final e in ticket.customFields.entries)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 130,
-                    child: Text(
-                      e.key,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                  Expanded(child: Text(e.value)),
-                ],
-              ),
-            ),
+          const SizedBox(height: 16),
+          _DetailSection(
+            title: 'Custom fields',
+            children: [
+              for (final e in ticket.customFields.entries)
+                _DetailRow(
+                  icon: Icons.list_alt_outlined,
+                  label: e.key,
+                  value: e.value,
+                ),
+            ],
+          ),
         ],
       ],
+    );
+  }
+}
+
+/// A titled card grouping a set of [_DetailRow]s.
+class _DetailSection extends StatelessWidget {
+  const _DetailSection({required this.title, required this.children});
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: AppText.captionText(
+            context,
+            title.toUpperCase(),
+            fw: 2,
+          ),
+        ),
+        Card(
+          margin: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                if (i != 0) const Divider(height: 1, indent: 52),
+                children[i],
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A single detail row. When [onTap] is set it renders as tappable (chevron +
+/// ripple); otherwise it's static. A null/empty [value] shows [placeholder]
+/// in a muted style.
+class _DetailRow extends StatelessWidget {
+  const _DetailRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.placeholder,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final String? placeholder;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final has = value != null && value!.isNotEmpty && value != 'â€”';
+    // Static rows with no value at all render nothing.
+    if (!has && onTap == null) return const SizedBox.shrink();
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 96,
+              child: AppText.subText(
+                context,
+                label,
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            Expanded(
+              child: AppText.subText(
+                context,
+                has ? value! : (placeholder ?? 'â€”'),
+                fw: has ? 1 : 3,
+                color: has ? scheme.onSurface : scheme.primary,
+              ),
+            ),
+            if (onTap != null)
+              Icon(Icons.chevron_right, size: 20, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -616,52 +771,92 @@ class _ActivityTab extends StatelessWidget {
   const _ActivityTab({required this.events});
   final List<ThreadEvent> events;
 
+  /// (icon, colour) for an event, derived from its state slug.
+  static (IconData, Color) _style(String state) {
+    final s = state.toLowerCase();
+    if (s.contains('close') || s.contains('resolved')) {
+      return (Icons.check_circle_outline, AppTheme.closed);
+    }
+    if (s.contains('open') || s.contains('reopen')) {
+      return (Icons.play_circle_outline, AppTheme.open);
+    }
+    if (s.contains('assign') || s.contains('claim') || s.contains('owner')) {
+      return (Icons.person_outline, AppTheme.brand);
+    }
+    if (s.contains('transfer')) {
+      return (Icons.swap_horiz, AppTheme.warning);
+    }
+    if (s.contains('overdue')) {
+      return (Icons.warning_amber_rounded, AppTheme.overdue);
+    }
+    if (s.contains('note')) {
+      return (Icons.sticky_note_2_outlined, AppTheme.brandLight);
+    }
+    if (s.contains('reply') || s.contains('message')) {
+      return (Icons.reply, AppTheme.open);
+    }
+    return (Icons.fiber_manual_record, AppTheme.brand);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (events.isEmpty) return const EmptyView(message: 'No activity');
+    final scheme = Theme.of(context).colorScheme;
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
       itemCount: events.length,
       itemBuilder: (context, i) {
         final e = events[i];
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+        final (icon, color) = _style(e.state);
+        final isLast = i == events.length - 1;
+        return IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Timeline rail: a coloured icon node with a connector below.
               Column(
                 children: [
                   Container(
-                    width: 10,
-                    height: 10,
-                    margin: const EdgeInsets.only(top: 4),
+                    width: 30,
+                    height: 30,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: color.withValues(alpha: 0.14),
                       shape: BoxShape.circle,
                     ),
+                    child: Icon(icon, size: 17, color: color),
                   ),
-                  if (i != events.length - 1)
-                    Container(
-                      width: 2,
-                      height: 30,
-                      color: Theme.of(context).colorScheme.outlineVariant,
+                  if (!isLast)
+                    Expanded(
+                      child: Container(
+                        width: 2,
+                        color: scheme.outlineVariant,
+                      ),
                     ),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      e.description ?? e.state,
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                    Text(
-                      '${e.actor ?? ''} · ${Fmt.ago(e.created)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                child: Padding(
+                  padding: EdgeInsets.only(bottom: isLast ? 0 : 18, top: 4),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      AppText.subText(
+                        context,
+                        e.description ?? e.state,
+                        fw: 1,
+                        lineHeight: 1.3,
+                      ),
+                      const SizedBox(height: 2),
+                      AppText.paraText(
+                        context,
+                        [
+                          if ((e.actor ?? '').isNotEmpty) e.actor!,
+                          Fmt.ago(e.created),
+                        ].join(' Â· '),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -765,9 +960,7 @@ class _InlineComposerState extends ConsumerState<_InlineComposer> {
       return true;
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(e.message)));
+        AppSnack.error(context, e.message);
       }
       return false;
     } finally {
@@ -1168,160 +1361,6 @@ class _ModeToggle extends StatelessWidget {
   }
 }
 
-// --- Tags sheet -------------------------------------------------------------
-
-class _TagsSheet extends ConsumerStatefulWidget {
-  const _TagsSheet({required this.ticketId});
-  final int ticketId;
-
-  @override
-  ConsumerState<_TagsSheet> createState() => _TagsSheetState();
-}
-
-class _TagsSheetState extends ConsumerState<_TagsSheet> {
-  final _name = TextEditingController();
-  List<Tag> _tags = [];
-  bool _loading = true;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    try {
-      final tags = await ref
-          .read(ticketsRepositoryProvider)
-          .tags(widget.ticketId);
-      if (mounted) {
-        setState(() {
-          _tags = tags;
-          _loading = false;
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    }
-  }
-
-  Future<void> _add() async {
-    final name = _name.text.trim();
-    if (name.isEmpty) return;
-    setState(() => _busy = true);
-    try {
-      final tags = await ref
-          .read(ticketsRepositoryProvider)
-          .addTag(widget.ticketId, name: name);
-      _name.clear();
-      if (mounted) setState(() => _tags = tags);
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _remove(int tagId) async {
-    setState(() => _busy = true);
-    try {
-      final tags = await ref
-          .read(ticketsRepositoryProvider)
-          .removeTag(widget.ticketId, tagId);
-      if (mounted) setState(() => _tags = tags);
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Tags'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_tags.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No tags yet'),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  for (final t in _tags)
-                    Chip(
-                      label: Text(t.name),
-                      onDeleted: _busy ? null : () => _remove(t.id),
-                    ),
-                ],
-              ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _name,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _add(),
-                    decoration: const InputDecoration(
-                      hintText: 'Add a tag by name',
-                      isDense: true,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                FilledButton(
-                  onPressed: _busy ? null : _add,
-                  child: const Text('Add'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
-        ),
-      ],
-    );
-  }
-}
-
 // --- Collaborators sheet ----------------------------------------------------
 
 class _CollaboratorsSheet extends ConsumerStatefulWidget {
@@ -1358,9 +1397,7 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppSnack.error(context, e.message);
       }
     }
   }
@@ -1376,9 +1413,7 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
       await _load();
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppSnack.error(context, e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1394,9 +1429,7 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
       if (mounted) setState(() => _collabs = c);
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppSnack.error(context, e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1405,54 +1438,151 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Row(
+    return AppDialog(
+      title: 'Collaborators',
+      actionLabel: 'Add collaborator',
+      onAction: _busy ? null : _add,
+      actionEnabled: !_busy,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Expanded(child: Text('Collaborators')),
-          TextButton.icon(
-            onPressed: _busy ? null : _add,
-            icon: const Icon(Icons.person_add_alt, size: 18),
-            label: const Text('Add'),
+          _loading
+              ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : _collabs.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: AppText.subText(context, 'No collaborators'),
+                )
+              : ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 320),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final c in _collabs)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(c.name),
+                          subtitle: c.email != null ? Text(c.email!) : null,
+                          trailing: IconButton(
+                            icon: const Icon(Icons.close),
+                            onPressed: _busy ? null : () => _remove(c.id),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Meta picker dialog (with search) ----------------------------------------
+
+class _MetaPickerDialog extends StatefulWidget {
+  const _MetaPickerDialog({
+    required this.title,
+    required this.items,
+    this.selectedId,
+  });
+
+  final String title;
+  final List<MetaItem> items;
+  final int? selectedId;
+
+  @override
+  State<_MetaPickerDialog> createState() => _MetaPickerDialogState();
+}
+
+class _MetaPickerDialogState extends State<_MetaPickerDialog> {
+  final _searchCtrl = TextEditingController();
+  late List<MetaItem> _filtered = widget.items;
+
+  /// Only show the search field for lists long enough to warrant it; short
+  /// pick-lists (priorities, statuses, â€¦) don't need one.
+  bool get _searchable => widget.items.length > 8;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchCtrl.addListener(_updateFilter);
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.removeListener(_updateFilter);
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _updateFilter() {
+    final query = _searchCtrl.text.toLowerCase();
+    setState(() {
+      _filtered = widget.items
+          .where((item) => item.name.toLowerCase().contains(query))
+          .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AppDialog(
+      title: widget.title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_searchable) ...[
+            SheetSearchField(
+              controller: _searchCtrl,
+              hintText: 'Search',
+            ),
+            const SizedBox(height: 12),
+          ],
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: _filtered.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: AppText.subText(context, 'No results found'),
+                  )
+                : ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final item in _filtered)
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () => Navigator.pop(context, item.id),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
+                              ),
+                              child: AppText.subText(
+                                context,
+                                item.name,
+                                fw: item.id == widget.selectedId ? 2 : 3,
+                                color: item.id == widget.selectedId
+                                    ? theme.colorScheme.primary
+                                    : theme.colorScheme.onSurface,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
           ),
         ],
       ),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: _loading
-            ? const Padding(
-                padding: EdgeInsets.all(16),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : _collabs.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('No collaborators'),
-              )
-            : ConstrainedBox(
-                constraints: const BoxConstraints(maxHeight: 320),
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final c in _collabs)
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(c.name),
-                        subtitle: c.email != null ? Text(c.email!) : null,
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: _busy ? null : () => _remove(c.id),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Done'),
-        ),
-      ],
     );
   }
 }

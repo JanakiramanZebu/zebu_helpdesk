@@ -57,7 +57,25 @@ class Attachment {
   /// Bearer-authed `/scp/api.php/files/<id>` URL for in-app previews.
   final String? streamUrl;
 
-  bool get isImage => (type ?? '').startsWith('image/');
+  String get _t => (type ?? '').toLowerCase();
+  String get _ext {
+    final dot = name.lastIndexOf('.');
+    return dot >= 0 ? name.substring(dot + 1).toLowerCase() : '';
+  }
+
+  bool get isImage =>
+      _t.startsWith('image/') ||
+      const {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic'}.contains(_ext);
+
+  bool get isPdf => _t.contains('pdf') || _ext == 'pdf';
+
+  bool get isVideo =>
+      _t.startsWith('video/') ||
+      const {'mp4', 'mov', 'm4v', 'webm', '3gp', 'mkv'}.contains(_ext);
+
+  bool get isAudio =>
+      _t.startsWith('audio/') ||
+      const {'mp3', 'wav', 'm4a', 'aac', 'ogg'}.contains(_ext);
 
   factory Attachment.fromJson(Map<String, dynamic> j) => Attachment(
     id: J.intOr(j['id']),

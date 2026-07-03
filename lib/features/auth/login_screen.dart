@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
+import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers.dart';
-import '../../widgets/app_dialog.dart';
+import '../../widgets/app_snack.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -22,7 +25,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _password = TextEditingController();
   bool _obscure = true;
   bool _busy = false;
-  String? _error;
   Map<String, String> _fieldErrors = {};
 
   @override
@@ -32,11 +34,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  /// Surface a login failure as an error SnackBar rather than an inline banner.
+  void _showError(String message) {
+    AppSnack.error(context, message);
+  }
+
   Future<void> _submit() async {
-    setState(() {
-      _error = null;
-      _fieldErrors = {};
-    });
+    setState(() => _fieldErrors = {});
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
@@ -50,26 +54,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           );
       // Router redirect handles navigation on auth state change.
     } on ApiException catch (e) {
-      setState(() {
-        _fieldErrors = e.fields;
-        _error = e.fields.isEmpty ? e.message : null;
-      });
+      setState(() => _fieldErrors = e.fields);
+      if (e.fields.isEmpty && mounted) _showError(e.message);
     } catch (_) {
-      setState(() => _error = 'Unexpected error. Please try again.');
+      if (mounted) _showError('Unexpected error. Please try again.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  void _forgotPassword() {
-    showAppMessageDialog(
-      context,
-      title: 'Forgot password?',
-      message:
-          'Helpdesk password resets are handled by your administrator. '
-          'Please reach out to your team admin to reset your password.',
-    );
-  }
+  void _forgotPassword() => context.push(Routes.forgotPassword);
 
   /// Clean underline-style field used by the login form (overrides the global
   /// filled-pill input theme for a lighter sign-in look).
@@ -119,21 +113,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: SvgPicture.asset(Assets.zebuLogo, height: 54),
                     ),
                     const SizedBox(height: 48),
-                    Text(
-                      'Sign in to Helpdesk',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
+                    AppText.headText(context, 'Sign in to Helpdesk', fw: 2),
                     const SizedBox(height: 6),
-                    Text(
+                    AppText.subText(
+                      context,
                       'Use your Zebu staff credentials',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
                     const SizedBox(height: 32),
-                    if (_error != null) _ErrorBanner(message: _error!),
                     TextFormField(
                       controller: _username,
                       textInputAction: TextInputAction.next,
@@ -218,36 +205,6 @@ class UpperCaseTextFormatter extends TextInputFormatter {
     return TextEditingValue(
       text: newValue.text.toUpperCase(),
       selection: newValue.selection,
-    );
-  }
-}
-
-class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message});
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(color: scheme.onErrorContainer),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/auth/forgot_password_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/canned/canned_screen.dart';
 import '../../features/dashboard/dashboard_screen.dart';
@@ -48,14 +49,22 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       final loggingIn = loc == Routes.login;
       final onSplash = loc == Routes.splash;
+      // Public, pre-auth routes reachable from the login screen.
+      final onPublicAuthRoute = loggingIn || loc == Routes.forgotPassword;
 
-      if (!auth.isAuthenticated) return loggingIn ? null : Routes.login;
+      if (!auth.isAuthenticated) {
+        return onPublicAuthRoute ? null : Routes.login;
+      }
       if (loggingIn || onSplash) return Routes.dashboard;
       return null;
     },
     routes: [
       GoRoute(path: Routes.splash, builder: (_, __) => const SplashScreen()),
       GoRoute(path: Routes.login, builder: (_, __) => const LoginScreen()),
+      GoRoute(
+        path: Routes.forgotPassword,
+        builder: (_, __) => const ForgotPasswordScreen(),
+      ),
 
       // Bottom-nav shell.
       StatefulShellRoute.indexedStack(
@@ -83,6 +92,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: Routes.tasks,
                 builder: (_, __) => const TasksListScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.notifications,
+                builder: (_, __) => const NotificationsScreen(),
               ),
             ],
           ),
@@ -121,11 +138,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/tasks/:id',
         builder: (_, s) =>
             TaskDetailScreen(taskId: int.parse(s.pathParameters['id']!)),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootKey,
-        path: Routes.notifications,
-        builder: (_, __) => const NotificationsScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,

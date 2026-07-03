@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/faq.dart';
 import '../../providers.dart';
 import '../../widgets/attachment_tile.dart';
@@ -67,12 +68,7 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          faq.question,
-          style: theme.textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        AppText.custmText(context, faq.question, fs: 22, fw: 2),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
@@ -93,15 +89,12 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(
-              Fmt.stripHtml(faq.answer),
-              style: theme.textTheme.bodyMedium,
-            ),
+            child: AppText.subText(context, Fmt.stripHtml(faq.answer)),
           ),
         ),
         if (faq.attachments.isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text('Attachments', style: theme.textTheme.titleSmall),
+          AppText.subText(context, 'Attachments', fw: 1),
           const SizedBox(height: 4),
           Card(
             child: Column(
@@ -113,16 +106,15 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
         ],
         if (faq.notes != null && faq.notes!.trim().isNotEmpty) ...[
           const SizedBox(height: 16),
-          Text('Notes', style: theme.textTheme.titleSmall),
+          AppText.subText(context, 'Notes', fw: 1),
           const SizedBox(height: 6),
-          Text(faq.notes!, style: theme.textTheme.bodyMedium),
+          AppText.subText(context, faq.notes!),
         ],
         const SizedBox(height: 20),
-        Text(
+        AppText.paraText(
+          context,
           'Created ${Fmt.date(faq.created)}  ·  Updated ${Fmt.date(faq.updated)}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
+          color: theme.colorScheme.onSurfaceVariant,
         ),
       ],
     );
@@ -134,9 +126,6 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
       color: color.withValues(alpha: 0.12),
       borderRadius: BorderRadius.circular(6),
     ),
-    child: Text(
-      label,
-      style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
-    ),
+    child: AppText.paraText(context, label, color: color, fw: 0),
   );
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_text.dart';
+
 /// One selectable filter facet, backed by a `GET /meta/{kind}` list.
 class FilterFacet {
   const FilterFacet({
@@ -70,6 +72,8 @@ class ListControlsBar extends StatelessWidget {
     required this.sortKey,
     required this.onSort,
     this.facets = const [],
+    this.compact = false,
+    this.onToggleLayout,
   });
 
   final DateRange dateRange;
@@ -81,6 +85,12 @@ class ListControlsBar extends StatelessWidget {
   final ValueChanged<String> onSort;
 
   final List<FacetControl> facets;
+
+  /// Whether the list is currently in compact layout — drives the toggle icon.
+  final bool compact;
+
+  /// When set, a layout-density toggle is shown pinned at the trailing edge.
+  final VoidCallback? onToggleLayout;
 
   @override
   Widget build(BuildContext context) {
@@ -97,50 +107,96 @@ class ListControlsBar extends StatelessWidget {
           bottom: BorderSide(color: scheme.outlineVariant, width: 1),
         ),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _PillMenu<DateRange>(
-              icon: Icons.filter_list,
-              label: dateRange == DateRange.all
-                  ? 'Create Date'
-                  : dateRange.label,
-              active: dateRange != DateRange.all,
-              selected: dateRange,
-              items: [
-                for (final r in DateRange.values) (value: r, text: r.label),
-              ],
-              onSelected: onDateRange,
-            ),
-            const SizedBox(width: 8),
-            _PillMenu<String>(
-              icon: Icons.swap_vert,
-              label: sortLabel,
-              active: true,
-              selected: sortKey,
-              items: [for (final s in sortItems) (value: s.key, text: s.label)],
-              onSelected: onSort,
-            ),
-            for (final f in facets) ...[
-              const SizedBox(width: 8),
-              _PillMenu<String>(
-                icon: Icons.filter_alt_outlined,
-                label: f.selected == 'all'
-                    ? f.label
-                    : f.items
-                          .firstWhere(
-                            (i) => i.value == f.selected,
-                            orElse: () => (value: 'all', text: f.label),
-                          )
-                          .text,
-                active: f.selected != 'all',
-                selected: f.selected,
-                items: f.items,
-                onSelected: f.onSelected,
+      child: Row(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _PillMenu<DateRange>(
+                    icon: Icons.filter_list,
+                    label: dateRange == DateRange.all
+                        ? 'Create Date'
+                        : dateRange.label,
+                    active: dateRange != DateRange.all,
+                    selected: dateRange,
+                    items: [
+                      for (final r in DateRange.values)
+                        (value: r, text: r.label),
+                    ],
+                    onSelected: onDateRange,
+                  ),
+                  const SizedBox(width: 8),
+                  _PillMenu<String>(
+                    icon: Icons.swap_vert,
+                    label: sortLabel,
+                    active: true,
+                    selected: sortKey,
+                    items: [
+                      for (final s in sortItems) (value: s.key, text: s.label),
+                    ],
+                    onSelected: onSort,
+                  ),
+                  for (final f in facets) ...[
+                    const SizedBox(width: 8),
+                    _PillMenu<String>(
+                      icon: Icons.filter_alt_outlined,
+                      label: f.selected == 'all'
+                          ? f.label
+                          : f.items
+                                .firstWhere(
+                                  (i) => i.value == f.selected,
+                                  orElse: () => (value: 'all', text: f.label),
+                                )
+                                .text,
+                      active: f.selected != 'all',
+                      selected: f.selected,
+                      items: f.items,
+                      onSelected: f.onSelected,
+                    ),
+                  ],
+                ],
               ),
-            ],
+            ),
+          ),
+          if (onToggleLayout != null) ...[
+            const SizedBox(width: 8),
+            _LayoutToggle(compact: compact, onTap: onToggleLayout!),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A square icon button that toggles the list's layout density. The icon shows
+/// the layout you'll switch *to* on tap.
+class _LayoutToggle extends StatelessWidget {
+  const _LayoutToggle({required this.compact, required this.onTap});
+
+  final bool compact;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: compact ? 'Comfortable view' : 'Compact view',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Icon(
+            compact ? Icons.view_agenda_outlined : Icons.view_headline,
+            size: 20,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -188,7 +244,7 @@ class _PillMenu<T> extends StatelessWidget {
                       : scheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 10),
-                Text(i.text),
+                AppText.subText(context, i.text),
               ],
             ),
           ),
@@ -211,15 +267,14 @@ class _PillMenu<T> extends StatelessWidget {
             const SizedBox(width: 6),
             ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 160),
-              child: Text(
+              child: AppText.custmText(
+                context,
                 label,
+                fs: 13,
+                fw: 1,
+                color: fg,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: fg,
-                ),
               ),
             ),
             Icon(Icons.arrow_drop_down, size: 20, color: fg),

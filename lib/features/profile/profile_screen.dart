@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/assets.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/me.dart';
 import '../../providers.dart';
+import '../../widgets/app_snack.dart';
+import '../../widgets/app_sheet.dart';
 import '../../widgets/states.dart';
+import '../../widgets/svg_icon.dart';
 import '../../widgets/user_avatar.dart';
 
 /// The authenticated agent's own profile & settings.
@@ -18,9 +23,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _busy = false;
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   Future<void> _setAvailability(bool value) async {
     setState(() => _busy = true);
@@ -48,11 +51,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _editProfile(Me me) async {
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => _EditProfileSheet(profile: me.profile, email: me.email),
     );
     if (saved == true) {
@@ -62,11 +62,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   }
 
   Future<void> _changePassword() async {
-    final changed = await showModalBottomSheet<bool>(
+    final changed = await showAppSheet<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => const _ChangePasswordSheet(),
     );
     if (changed == true && mounted) _toast('Password changed');
@@ -100,25 +97,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             children: [
               UserAvatar(name: m.name, radius: 44),
               const SizedBox(height: 12),
-              Text(
-                m.name,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
+              AppText.custmText(context, m.name, fs: 22, fw: 2),
               const SizedBox(height: 2),
-              Text('@${m.username}', style: theme.textTheme.bodyMedium),
+              AppText.subText(context, '@${m.username}'),
               const SizedBox(height: 2),
-              Text(m.email, style: theme.textTheme.bodySmall),
+              AppText.paraText(context, m.email),
               if (dept != null) ...[
                 const SizedBox(height: 4),
-                Text(
+                AppText.paraText(
+                  context,
                   dept.roleName != null && dept.roleName!.isNotEmpty
                       ? '${dept.name} · ${dept.roleName}'
                       : dept.name,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ],
             ],
@@ -126,7 +117,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const SizedBox(height: 20),
         SwitchListTile(
-          secondary: const Icon(Icons.circle, size: 14),
+          secondary: SvgIcon(
+            Assets.profileAvailable,
+            size: 22,
+            color: m.available
+                ? const Color(0xFF00B14F)
+                : theme.colorScheme.onSurfaceVariant,
+          ),
           title: const Text('Available'),
           subtitle: const Text('Accept new ticket assignments'),
           value: m.available,
@@ -134,19 +131,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         ),
         const Divider(height: 8),
         ListTile(
-          leading: const Icon(Icons.edit_outlined),
+          leading: const SvgIcon(Assets.profileEdit, size: 22),
           title: const Text('Edit profile'),
           trailing: const Icon(Icons.chevron_right),
           onTap: _busy ? null : () => _editProfile(m),
         ),
         ListTile(
-          leading: const Icon(Icons.lock_outline),
+          leading: const SvgIcon(Assets.profilePassword, size: 22),
           title: const Text('Change password'),
           trailing: const Icon(Icons.chevron_right),
           onTap: _busy ? null : _changePassword,
         ),
         ListTile(
-          leading: const Icon(Icons.refresh),
+          leading: const SvgIcon(Assets.profileAvatar, size: 22),
           title: const Text('Regenerate avatar'),
           trailing: const Icon(Icons.chevron_right),
           onTap: _busy ? null : _rerollAvatar,
@@ -230,24 +227,17 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Edit profile',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            if (_error != null) ...[
-              Text(
+    return AppSheet(
+      title: 'Edit profile',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_error != null) ...[
+              AppText.subText(
+                context,
                 _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+                color: Theme.of(context).colorScheme.error,
               ),
               const SizedBox(height: 8),
             ],
@@ -329,7 +319,6 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
             ),
           ],
         ),
-      ),
     );
   }
 }
@@ -389,23 +378,17 @@ class _ChangePasswordSheetState extends ConsumerState<_ChangePasswordSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
+    return AppSheet(
+      title: 'Change password',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Change password',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
           if (_error != null) ...[
-            Text(
+            AppText.subText(
+              context,
               _error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+              color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 8),
           ],

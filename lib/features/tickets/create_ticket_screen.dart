@@ -1,17 +1,24 @@
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../models/canned.dart';
 import '../../models/meta.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
+import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/pickers.dart';
+import '../../widgets/rich_message_field.dart';
 
 /// Ticket source options (the `source` param), mirroring the web dropdown.
 const _sources = ['Phone', 'Email', 'Web', 'Other'];
@@ -25,9 +32,16 @@ class CreateTicketScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _subject = TextEditingController();
-  final _message = TextEditingController();
+  final _message = FleatherController();
   final _internalNote = TextEditingController();
+  // Focus target so a failed submit can jump to the empty subject field.
+  final _subjectFocus = FocusNode();
+  final _scrollCtrl = ScrollController();
+  // Set true once the user first tries to submit, so the Requester tile only
+  // shows its "Required" error after an attempt (not on a pristine form).
+  bool _attempted = false;
 
   AppUser? _user;
   final List<AppUser> _collaborators = [];
@@ -45,28 +59,62 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   bool _saving = false;
   Map<String, String> _fieldErrors = const {};
   String? _error;
+  String? _messageError;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild the submit button's enabled state as the required text changes.
+    _subject.addListener(_onRequiredChanged);
+    _message.addListener(_onRequiredChanged);
+  }
+
+  void _onRequiredChanged() => setState(() {
+    // Clear the message error once the user has typed something.
+    if (_messageError != null && _messageText.isNotEmpty) _messageError = null;
+  });
+
+  /// Plain-text view of the rich message, for empty/required checks.
+  String get _messageText => _message.document.toPlainText().trim();
+
+  /// Requester, subject and message are the required fields.
+  bool get _canSubmit =>
+      _user != null &&
+      _subject.text.trim().isNotEmpty &&
+      _messageText.isNotEmpty;
 
   @override
   void dispose() {
+    _subject.removeListener(_onRequiredChanged);
+    _message.removeListener(_onRequiredChanged);
     _subject.dispose();
     _message.dispose();
     _internalNote.dispose();
+    _subjectFocus.dispose();
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   Future<void> _submit() async {
+    setState(() => _attempted = true);
+    // Validate the subject field inline via the Form, and the rich message
+    // separately (it's not a FormField).
+    final formOk = _formKey.currentState?.validate() ?? false;
+    final messageOk = _messageText.isNotEmpty;
+    setState(() => _messageError = messageOk ? null : 'Message is required');
     if (_user == null) {
+      // Surface the missing requester on its own tile and scroll it into view.
       setState(() => _error = 'Pick a requester first');
+      _scrollCtrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
       return;
     }
-    if (_subject.text.trim().isEmpty || _message.text.trim().isEmpty) {
-      setState(() => _error = 'Subject and message are required');
-      return;
-    }
+    if (!formOk || !messageOk) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -78,7 +126,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
         {
           'user_id': _user!.id,
           'subject': _subject.text.trim(),
-          'message': _message.text.trim(),
+          'message': parchmentHtml.encode(_message.document),
           'source': _source,
           if (_topic != null) 'topic_id': _topic!.id,
           if (_department != null) 'dept_id': _department!.id,
@@ -155,19 +203,19 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   }
 
   Future<void> _pickSource() async {
-    final s = await showModalBottomSheet<String>(
+    final s = await showAppSheet<String>(
       context: context,
-      showDragHandle: true,
-      builder: (_) => SafeArea(
+      builder: (_) => AppSheet(
+        title: 'Source',
+        scrollable: false,
+        padding: EdgeInsets.zero,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             for (final o in _sources)
-              ListTile(
-                title: Text(o),
-                trailing: o == _source
-                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-                    : null,
+              PickerOptionTile(
+                label: o,
+                selected: o == _source,
                 onTap: () => Navigator.pop(context, o),
               ),
           ],
@@ -178,72 +226,84 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   }
 
   Future<void> _pickCanned() async {
-    final c = await showModalBottomSheet<CannedResponse>(
+    final c = await showAppSheet<CannedResponse>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
       builder: (_) => const _CannedPickerSheet(),
     );
     if (c == null) return;
+    // Insert the canned body's text into the rich document. The document
+    // always ends with a trailing "\n", so its editable length is length - 1.
+    final doc = _message.document;
+    final end = doc.length - 1;
+    final text = Fmt.stripHtml(c.body);
+    final insert = end > 0 ? '\n\n$text' : text;
+    _message.replaceText(
+      end,
+      0,
+      insert,
+      selection: TextSelection.collapsed(offset: end + insert.length),
+    );
     setState(() {
       _canned = c;
-      final text = Fmt.stripHtml(c.body);
-      final current = _message.text.trim();
-      _message.text = current.isEmpty ? text : '$current\n\n$text';
+      if (_messageError != null) _messageError = null;
     });
   }
 
   Future<void> _pickDue() async {
     final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _due ?? now,
-      firstDate: now.subtract(const Duration(days: 1)),
-      lastDate: now.add(const Duration(days: 365 * 3)),
+    final date = await pickDate(
+      context,
+      initial: _due ?? now,
+      first: DateTime(now.year, now.month, now.day), // today at the earliest
+      last: now.add(const Duration(days: 365 * 3)),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_due ?? now),
     );
-    setState(() {
-      _due = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time?.hour ?? 17,
-        time?.minute ?? 0,
-      );
-    });
+    final picked = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time?.hour ?? 17,
+      time?.minute ?? 0,
+    );
+    // Reject a due time already in the past (e.g. today + an earlier hour).
+    if (picked.isBefore(DateTime.now())) {
+      _toast('Due date must be in the future');
+      return;
+    }
+    setState(() => _due = picked);
   }
 
   Widget _section(String title) => Padding(
     padding: const EdgeInsets.only(top: 20, bottom: 6),
-    child: Text(
-      title,
-      style: Theme.of(
-        context,
-      ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-    ),
+    child: AppText.subText(context, title, fw: 2),
   );
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('New ticket')),
+      appBar: AppBar(title: AppText.titleText(context, 'New ticket', fw: 1)),
       body: SafeArea(
         child: AbsorbPointer(
           absorbing: _saving,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              if (_saving) const LinearProgressIndicator(minHeight: 2),
-              if (_error != null) ...[
-                Text(_error!, style: TextStyle(color: scheme.error)),
-                const SizedBox(height: 12),
-              ],
+          child: Form(
+            key: _formKey,
+            autovalidateMode: _attempted
+                ? AutovalidateMode.onUserInteraction
+                : AutovalidateMode.disabled,
+            child: ListView(
+              controller: _scrollCtrl,
+              padding: const EdgeInsets.all(16),
+              children: [
+                if (_saving) const LinearProgressIndicator(minHeight: 2),
+                if (_error != null) ...[
+                  _ErrorBanner(message: _error!),
+                  const SizedBox(height: 12),
+                ],
 
               // --- User & collaborators ---------------------------------
               _section('User & collaborators'),
@@ -252,7 +312,10 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                 label: 'Requester',
                 value: _user?.name,
                 hint: 'Required',
-                error: _fieldErrors['user_id'],
+                error: _fieldErrors['user_id'] ??
+                    (_attempted && _user == null
+                        ? 'Please select a requester'
+                        : null),
                 onTap: () async {
                   final u = await pickUser(context, ref);
                   if (u != null) setState(() => _user = u);
@@ -261,8 +324,9 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.group_outlined),
-                title: const Text('Collaborators (Cc)'),
-                subtitle: Text(
+                title: AppText.subText(context, 'Collaborators (Cc)'),
+                subtitle: AppText.paraText(
+                  context,
                   _collaborators.isEmpty
                       ? 'Optional'
                       : '${_collaborators.length} added',
@@ -289,9 +353,13 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
 
               // --- Ticket details ---------------------------------------
               _section('Ticket details'),
-              TextField(
+              TextFormField(
                 controller: _subject,
+                focusNode: _subjectFocus,
                 textInputAction: TextInputAction.next,
+                validator: (v) => (v ?? '').trim().isEmpty
+                    ? 'Subject is required'
+                    : null,
                 decoration: InputDecoration(
                   labelText: 'Subject',
                   errorText: _fieldErrors['subject'],
@@ -310,20 +378,16 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              TextField(
+              RichMessageField(
                 controller: _message,
-                minLines: 4,
-                maxLines: 10,
-                decoration: InputDecoration(
-                  labelText: 'Message',
-                  alignLabelWithHint: true,
-                  errorText: _fieldErrors['message'],
-                ),
+                label: 'Message',
+                hintText: 'Type your message…',
+                errorText: _messageError ?? _fieldErrors['message'],
               ),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Text('Attachments', style: Theme.of(context).textTheme.titleSmall),
+                  AppText.subText(context, 'Attachments'),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: _pickFiles,
@@ -333,9 +397,10 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                 ],
               ),
               if (_files.isEmpty)
-                Text(
+                AppText.subText(
+                  context,
                   'No files added',
-                  style: TextStyle(color: scheme.onSurfaceVariant),
+                  color: scheme.onSurfaceVariant,
                 )
               else
                 Wrap(
@@ -379,6 +444,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     ref,
                     MetaKind.topics,
                     title: 'Help topic',
+                    selectedId: _topic?.id,
                   );
                   if (m != null) setState(() => _topic = m);
                 },
@@ -393,6 +459,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     ref,
                     MetaKind.departments,
                     title: 'Department',
+                    selectedId: _department?.id,
                   );
                   if (m != null) setState(() => _department = m);
                 },
@@ -407,6 +474,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     ref,
                     MetaKind.priorities,
                     title: 'Priority',
+                    selectedId: _priority?.id,
                   );
                   if (m != null) setState(() => _priority = m);
                 },
@@ -439,6 +507,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     ref,
                     MetaKind.agents,
                     title: 'Assign to agent',
+                    selectedId: _agent?.id,
                   );
                   if (m != null) setState(() => _agent = m);
                 },
@@ -459,6 +528,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     ref,
                     MetaKind.teams,
                     title: 'Assign to team',
+                    selectedId: _team?.id,
                   );
                   if (m != null) setState(() => _team = m);
                 },
@@ -473,6 +543,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                     ref,
                     MetaKind.statuses,
                     title: 'Status',
+                    selectedId: _status?.id,
                   );
                   if (m != null) setState(() => _status = m);
                 },
@@ -491,6 +562,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                 ),
               ),
             ],
+            ),
           ),
         ),
       ),
@@ -503,12 +575,80 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: FilledButton(
-              onPressed: _saving ? null : _submit,
-              child: const Text('Create ticket'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!_canSubmit && !_saving) ...[
+                  AppText.paraText(
+                    context,
+                    _missingHint,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                FilledButton(
+                  onPressed: (_saving || !_canSubmit) ? null : _submit,
+                  child: _saving
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.4,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('Create ticket'),
+                ),
+              ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Human-readable list of the still-missing required fields, shown above the
+  /// disabled submit button.
+  String get _missingHint {
+    final missing = <String>[
+      if (_user == null) 'requester',
+      if (_subject.text.trim().isEmpty) 'subject',
+      if (_messageText.isEmpty) 'message',
+    ];
+    if (missing.isEmpty) return '';
+    return 'Add ${missing.join(', ')} to continue';
+  }
+}
+
+/// A prominent inline error banner (icon + tinted container) shown at the top
+/// of the form for submit-level failures.
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.error.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.error.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, size: 20, color: scheme.error),
+          const SizedBox(width: 10),
+          Expanded(
+            child: AppText.subText(
+              context,
+              message,
+              color: scheme.error,
+              fw: 0,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -540,17 +680,16 @@ class _PickerTile extends StatelessWidget {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: Icon(icon),
-      title: Text(label),
-      subtitle: Text(
+      title: AppText.subText(context, label),
+      subtitle: AppText.subText(
+        context,
         value ?? hint ?? 'Not set',
-        style: TextStyle(
-          color: error != null
-              ? theme.colorScheme.error
-              : value != null
-              ? theme.colorScheme.onSurface
-              : theme.colorScheme.onSurfaceVariant,
-          fontWeight: value != null ? FontWeight.w600 : FontWeight.normal,
-        ),
+        color: error != null
+            ? theme.colorScheme.error
+            : value != null
+            ? theme.colorScheme.onSurface
+            : theme.colorScheme.onSurfaceVariant,
+        fw: value != null ? 1 : null,
       ),
       trailing: trailing ?? const Icon(Icons.chevron_right),
       onTap: onTap,
@@ -596,8 +735,10 @@ class _CannedPickerSheetState extends ConsumerState<_CannedPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+    return AppSheet(
+      title: 'Canned responses',
+      scrollable: false,
+      padding: EdgeInsets.zero,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.of(context).size.height * 0.7,
@@ -605,17 +746,6 @@ class _CannedPickerSheetState extends ConsumerState<_CannedPickerSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Canned responses',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-              ),
-            ),
-            const Divider(height: 1),
             Flexible(
               child: _loading
                   ? const Padding(
@@ -623,19 +753,23 @@ class _CannedPickerSheetState extends ConsumerState<_CannedPickerSheet> {
                       child: Center(child: CircularProgressIndicator()),
                     )
                   : _error != null
-                  ? Padding(padding: const EdgeInsets.all(24), child: Text(_error!))
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: AppText.subText(context, _error!),
+                    )
                   : _items.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(24),
-                      child: Text('No canned responses'),
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: AppText.subText(context, 'No canned responses'),
                     )
                   : ListView.builder(
                       itemCount: _items.length,
                       itemBuilder: (_, i) {
                         final c = _items[i];
                         return ListTile(
-                          title: Text(c.title),
-                          subtitle: Text(
+                          title: AppText.subText(context, c.title),
+                          subtitle: AppText.paraText(
+                            context,
                             Fmt.stripHtml(c.body),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,

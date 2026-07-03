@@ -9,7 +9,7 @@ class AppConfig {
   /// osTicket helpdesk base URL (cfg->getBaseUrl()).
   static const String baseUrl = String.fromEnvironment(
     'ZEBU_BASE_URL',
-    defaultValue: 'https://ticket.mynt.in',
+    defaultValue: 'http://192.168.5.61:8010/',
   );
 
   /// Single dispatcher script that routes the whole v2 API by PATH_INFO.

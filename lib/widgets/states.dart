@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/api/api_exception.dart';
+import '../core/theme/app_text.dart';
 
 /// Centered loading spinner.
 class LoadingView extends StatelessWidget {
@@ -15,7 +16,7 @@ class LoadingView extends StatelessWidget {
         const CircularProgressIndicator(strokeWidth: 2.5),
         if (message != null) ...[
           const SizedBox(height: 12),
-          Text(message!, style: Theme.of(context).textTheme.bodyMedium),
+          AppText.subText(context, message!),
         ],
       ],
     ),
@@ -23,35 +24,77 @@ class LoadingView extends StatelessWidget {
 }
 
 /// Friendly error state with an optional retry.
+///
+/// Network/timeout failures ([ApiException.isNetworkError]) get a dedicated
+/// "no connection" glyph and title so they read as a connectivity problem
+/// rather than a generic app error. Set [compact] for a tighter layout when
+/// shown inside a sheet or small panel.
 class ErrorView extends StatelessWidget {
-  const ErrorView({super.key, required this.error, this.onRetry});
+  const ErrorView({
+    super.key,
+    required this.error,
+    this.onRetry,
+    this.compact = false,
+  });
+
   final Object error;
   final VoidCallback? onRetry;
+  final bool compact;
+
+  bool get _isNetwork =>
+      error is ApiException && (error as ApiException).isNetworkError;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final message = error is ApiException
         ? (error as ApiException).message
         : 'Something went wrong.';
+
+    final IconData icon = _isNetwork
+        ? Icons.wifi_off_rounded
+        : Icons.error_outline_rounded;
+    final Color iconColor = _isNetwork ? scheme.onSurfaceVariant : scheme.error;
+    final String? title = _isNetwork ? 'No connection' : null;
+
+    final double iconSize = compact ? 40 : 48;
+
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(compact ? 20 : 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 44,
-              color: Theme.of(context).colorScheme.error,
+            Container(
+              padding: EdgeInsets.all(compact ? 14 : 18),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: iconSize, color: iconColor),
             ),
-            const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
+            SizedBox(height: compact ? 12 : 16),
+            if (title != null) ...[
+              AppText.titleText(
+                context,
+                title,
+                fw: 2,
+                align: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+            ],
+            AppText.subText(
+              context,
+              message,
+              color: scheme.onSurfaceVariant,
+              align: TextAlign.center,
+            ),
             if (onRetry != null) ...[
-              const SizedBox(height: 16),
+              SizedBox(height: compact ? 14 : 18),
               OutlinedButton.icon(
                 onPressed: onRetry,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: AppText.subText(context, 'Retry'),
               ),
             ],
           ],
@@ -84,17 +127,14 @@ class EmptyView extends StatelessWidget {
           children: [
             Icon(icon, size: 48, color: muted),
             const SizedBox(height: 12),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+            AppText.titleText(context, message, align: TextAlign.center),
             if (hint != null) ...[
               const SizedBox(height: 6),
-              Text(
+              AppText.subText(
+                context,
                 hint!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: muted),
+                color: muted,
+                align: TextAlign.center,
               ),
             ],
           ],

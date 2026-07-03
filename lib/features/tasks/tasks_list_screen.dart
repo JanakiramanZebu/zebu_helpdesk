@@ -6,20 +6,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
-import '../../core/assets.dart';
 import '../../core/export/table_export.dart';
 import '../../core/format.dart';
+import '../../core/list_layout.dart';
 import '../../core/router/routes.dart';
+import '../../core/theme/app_text.dart';
 import '../../data/tasks_repository.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
+import '../../widgets/app_sheet.dart';
+import '../../widgets/app_snack.dart';
 import '../../widgets/list_controls.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/segmented_tabs.dart';
-import '../../widgets/selection_check.dart';
-import '../../widgets/svg_icon.dart';
+import '../../widgets/selection_controls.dart';
+import '../../widgets/skeleton.dart';
 import 'widgets/task_row.dart';
 
 /// App filter pills (the `view` param on GET /tasks).
@@ -104,9 +107,7 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg) => AppSnack.info(context, msg);
 
   /// Debounced live search — narrows the list as the user types.
   void _onSearchChanged(String value) {
@@ -248,29 +249,22 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   Future<int?> _pickMeta(String kind, String title) async {
     final items = await ref.read(metaRepositoryProvider).get(kind);
     if (!mounted) return null;
-    return showModalBottomSheet<int>(
+    return showAppSheet<int>(
       context: context,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Text(
-              title,
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
-            ),
-          ),
-          for (final m in items)
-            ListTile(
-              title: Text(m.name),
-              onTap: () => Navigator.pop(context, m.id),
-            ),
-        ],
+      builder: (_) => AppSheet(
+        title: title,
+        scrollable: false,
+        padding: EdgeInsets.zero,
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final m in items)
+              ListTile(
+                title: AppText.subText(context, m.name),
+                onTap: () => Navigator.pop(context, m.id),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -446,135 +440,52 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   // --- UI -------------------------------------------------------------------
 
   /// The select-all bar shown above the list while in selection mode.
-  Widget _selectionBar() {
-    final scheme = Theme.of(context).colorScheme;
-    final labelStyle = TextStyle(
-      fontSize: 13,
-      fontWeight: FontWeight.w600,
-      color: scheme.onSurface,
-    );
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border(
-          bottom: BorderSide(color: scheme.outlineVariant, width: 1),
-        ),
-      ),
-      child: Row(
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _toggleSelectAll,
-            child: Row(
-              children: [
-                SelectionCheck(selected: _allVisibleSelected, size: 20),
-                const SizedBox(width: 10),
-                Text('Select all', style: labelStyle),
-              ],
-            ),
-          ),
-          const Spacer(),
-          Text(
-            '${_selected.length} selected',
-            style: labelStyle.copyWith(color: scheme.onSurfaceVariant),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _selectionBar() => SelectionBar(
+    allSelected: _allVisibleSelected,
+    onToggleSelectAll: _toggleSelectAll,
+  );
 
-  PreferredSizeWidget _selectionAppBar() {
-    return AppBar(
-      leading: IconButton(
-        icon: const Icon(Icons.close),
-        tooltip: 'Cancel',
-        onPressed: _clearSelection,
+  PreferredSizeWidget _selectionAppBar() => buildSelectionAppBar(
+    context,
+    selectedCount: _selected.length,
+    onCancel: _clearSelection,
+    busy: _bulkBusy,
+    primaryAction: IconButton(
+      tooltip: 'Mark complete',
+      icon: const Icon(Icons.task_alt),
+      onPressed: () => _runBulk(
+        'Completed',
+        (t) => ref.read(tasksRepositoryProvider).close(t),
       ),
-      title: Text('${_selected.length} selected'),
-      actions: _bulkBusy
-          ? const [
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 18),
-                child: Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2.4),
-                  ),
-                ),
-              ),
-            ]
-          : [
-              IconButton(
-                tooltip: 'Mark complete',
-                icon: const Icon(Icons.task_alt),
-                onPressed: () => _runBulk(
-                  'Completed',
-                  (t) => ref.read(tasksRepositoryProvider).close(t),
-                ),
-              ),
-              PopupMenuButton<String>(
-                onSelected: _onBulkMenu,
-                itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-                  PopupMenuItem(value: 'assign', child: Text('Assign to agent…')),
-                  PopupMenuItem(value: 'priority', child: Text('Set priority…')),
-                  PopupMenuItem(
-                    value: 'transfer',
-                    child: Text('Transfer department…'),
-                  ),
-                ],
-              ),
-            ],
-    );
-  }
+    ),
+    onMenuSelected: _onBulkMenu,
+    menuItems: [
+      selectionMenuItem(context, value: 'reopen', label: 'Reopen'),
+      selectionMenuItem(context, value: 'assign', label: 'Assign to agent…'),
+      selectionMenuItem(context, value: 'priority', label: 'Set priority…'),
+      selectionMenuItem(
+        context,
+        value: 'transfer',
+        label: 'Transfer department…',
+      ),
+    ],
+  );
 
   PreferredSizeWidget _normalAppBar() {
     return AppBar(
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Tasks'),
-          if (_total != null)
-            Text('$_total total', style: Theme.of(context).textTheme.bodySmall),
+          AppText.titleText(context, 'Tasks', fw: 1),
+          if (_total != null) AppText.paraText(context, '$_total total'),
         ],
       ),
       actions: [
-        IconButton(
-          icon: const SvgIcon(Assets.bell, size: 22),
-          onPressed: () => context.push(Routes.notifications),
-        ),
-        if (_exporting)
-          const IconButton(
-            tooltip: 'Downloading…',
-            onPressed: null,
-            icon: SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2.4),
-            ),
-          )
-        else
-          PopupMenuButton<ExportFormat>(
-            tooltip: 'Download',
-            position: PopupMenuPosition.under,
-            icon: const SvgIcon(Assets.download, size: 22),
-            onSelected: _runExport,
-            itemBuilder: (context) => [
-              for (final f in ExportFormat.values)
-                PopupMenuItem<ExportFormat>(
-                  value: f,
-                  child: Row(
-                    children: [
-                      Icon(f.icon, size: 20),
-                      const SizedBox(width: 12),
-                      Text('Download ${f.label}'),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+        // IconButton(
+        //   icon: const SvgIcon(Assets.bell, size: 22),
+        //   onPressed: () => context.push(Routes.notifications),
+        // ),
+        ExportMenuButton(busy: _exporting, onSelected: _runExport),
       ],
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(90),
@@ -614,6 +525,8 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
     final meName = ref.watch(meProvider).asData?.value.name;
     final repo = ref.watch(tasksRepositoryProvider);
     final query = _query;
+    final layout = ref.watch(listLayoutProvider);
+    final compact = layout == ListLayout.compact;
 
     return Scaffold(
       appBar: _selectionMode ? _selectionAppBar() : _normalAppBar(),
@@ -623,6 +536,7 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
               // Lift above the floating nav bar (it overlaps the body).
               padding: const EdgeInsets.only(bottom: 120),
               child: FloatingActionButton(
+                heroTag: 'fab-tasks',
                 onPressed: _createTask,
                 tooltip: 'New task',
                 child: const Icon(Icons.add),
@@ -640,10 +554,15 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
               sortKey: _sort,
               onSort: (s) => setState(() => _sort = s),
               facets: _facetControls(),
+              compact: compact,
+              onToggleLayout: () =>
+                  ref.read(listLayoutProvider.notifier).toggle(),
             ),
           Expanded(
             child: PagedListView(
               fabClearance: !_selectionMode,
+              skeleton: const ListSkeleton(),
+              separated: compact,
               refreshKey: '$_view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
               itemFilter: (t) => _matches(t, meName),
               itemSort: _sort == 'thread' ? null : _compare,
@@ -656,6 +575,7 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
               fetch: (page) => repo.list(query.copyWith(page: page)),
               itemBuilder: (context, t) => TaskRow(
                 task: t,
+                compact: compact,
                 selectionMode: _selectionMode,
                 selected: _selected.contains(t.id),
                 onToggle: () => _toggle(t.id),

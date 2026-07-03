@@ -34,6 +34,11 @@ class ApiException implements Exception {
   bool get isNotFound => statusCode == 404;
   bool get isValidation => statusCode == 422 || code == 'validation';
 
+  /// A connectivity/timeout failure (no usable response reached the app), as
+  /// opposed to a server-side error. Drives the "no network" empty state.
+  bool get isNetworkError =>
+      code == 'network_error' || code == 'timeout' || statusCode == 0;
+
   /// Best validation message to surface for [field], falling back to [message].
   String fieldOr(String field) => fields[field] ?? message;
 

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_text.dart';
+
 /// Day-range picker (7 / 30 / 90 days) rendered as a dropdown. Used by the
 /// dashboard and the full reports screen.
 class ReportRangeSelector extends StatelessWidget {
@@ -16,8 +18,7 @@ class ReportRangeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -36,9 +37,11 @@ class ReportRangeSelector extends StatelessWidget {
             Icons.keyboard_arrow_down_rounded,
             color: scheme.onSurfaceVariant,
           ),
-          style: theme.textTheme.bodyMedium?.copyWith(
+          style: AppText.style(
+            context,
+            fontSize: 14,
             color: scheme.onSurface,
-            fontWeight: FontWeight.w600,
+            fw: 1,
           ),
           items: [
             for (final d in _options)
