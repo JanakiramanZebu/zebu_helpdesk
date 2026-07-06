@@ -7,6 +7,7 @@ import '../../core/router/routes.dart';
 import '../../models/saved_queue.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/states.dart';
 
 class QueuesScreen extends ConsumerStatefulWidget {
@@ -28,9 +29,8 @@ class _QueuesScreenState extends ConsumerState<QueuesScreen> {
     _load();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _load() async {
     setState(() {
@@ -167,10 +167,10 @@ class _QueuesScreenState extends ConsumerState<QueuesScreen> {
     if (ok != true) return;
     try {
       await ref.read(queuesRepositoryProvider).delete(queue.id);
-      _toast('Deleted');
+      _toast('Deleted', type: ToastType.success);
       _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 }
@@ -284,9 +284,7 @@ class _QueueEditorState extends ConsumerState<_QueueEditor> {
         if (e.fields.isNotEmpty) {
           _fieldErrors.addAll(e.fields);
         } else {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text(e.message)));
+          AppToast.error(context, e.message);
         }
       });
     } finally {

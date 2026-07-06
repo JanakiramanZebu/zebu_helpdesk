@@ -10,6 +10,7 @@ import '../../models/ticket.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/states.dart';
 import '../../widgets/user_avatar.dart';
@@ -65,9 +66,8 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _onMenu(String value) async {
     switch (value) {
@@ -96,7 +96,7 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
       builder: (_) => _EditUserSheet(user: u),
     );
     if (saved == true) {
-      _toast('User updated');
+      _toast('User updated', type: ToastType.success);
       await _load();
     }
   }
@@ -104,10 +104,10 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
   Future<void> _clearOrg() async {
     try {
       await ref.read(usersRepositoryProvider).setOrg(widget.userId, null);
-      _toast('Organization cleared');
+      _toast('Organization cleared', type: ToastType.success);
       await _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 
@@ -121,7 +121,7 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
           .join(', ');
       _toast(detail.isEmpty ? 'Done: $action' : detail);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 
@@ -137,11 +137,11 @@ class _UserDetailScreenState extends ConsumerState<UserDetailScreen>
     try {
       await ref.read(usersRepositoryProvider).delete(widget.userId);
       if (mounted) {
-        _toast('User deleted');
+        _toast('User deleted', type: ToastType.success);
         Navigator.of(context).pop();
       }
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 
@@ -373,9 +373,8 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _add() async {
     final text = _note.text.trim();
@@ -387,7 +386,7 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
       if (mounted) FocusScope.of(context).unfocus();
       await _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _adding = false);
     }
@@ -400,7 +399,7 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
           .deleteNote(widget.userId, note.id);
       await _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 

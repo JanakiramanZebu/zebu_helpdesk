@@ -70,55 +70,74 @@ class _AppDialogCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final actionColor = destructive ? scheme.error : scheme.primary;
 
+    // Compact centered card: header row (title left, X right), divider,
+    // then message + full-width primary button. Constrained to 360 px so
+    // it doesn't stretch across wide desktop viewports.
     return Dialog(
-      insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      backgroundColor: scheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                icon: const Icon(Icons.close, size: 22),
-                color: scheme.onSurfaceVariant,
-                visualDensity: VisualDensity.compact,
-                onPressed: onClose,
-              ),
-            ),
-            if (title != null) ...[
-              Text(
-                title!,
-                textAlign: TextAlign.center,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-            ],
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-                height: 1.35,
-              ),
-            ),
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  backgroundColor: actionColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title ?? '',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                   ),
-                ),
-                onPressed: onAction,
-                child: Text(actionLabel),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    color: scheme.onSurfaceVariant,
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onClose,
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: scheme.outlineVariant),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurface,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(44),
+                        backgroundColor: actionColor,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      onPressed: onAction,
+                      child: Text(actionLabel),
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

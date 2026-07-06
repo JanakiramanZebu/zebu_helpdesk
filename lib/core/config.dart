@@ -7,8 +7,9 @@ class AppConfig {
   AppConfig._();
 
   /// osTicket helpdesk base URL (cfg->getBaseUrl()).
+  /// Override at build time with `--dart-define=API_BASE_URL=https://...`.
   static const String baseUrl = String.fromEnvironment(
-    'ZEBU_BASE_URL',
+    'API_BASE_URL',
     defaultValue: 'https://ticket.mynt.in',
   );
 

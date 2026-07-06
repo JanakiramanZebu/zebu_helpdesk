@@ -11,6 +11,7 @@ import '../../models/canned.dart';
 import '../../models/meta.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/pickers.dart';
 
 /// Ticket source options (the `source` param), mirroring the web dropdown.
@@ -54,9 +55,8 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _submit() async {
     if (_user == null) {
@@ -120,7 +120,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       }
 
       if (!mounted) return;
-      _toast('Ticket #${ticket.number} created');
+      _toast('Ticket #${ticket.number} created', type: ToastType.success);
       context.pushReplacement(Routes.ticket(ticket.id));
     } on ApiException catch (e) {
       setState(() {

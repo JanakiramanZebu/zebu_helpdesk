@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/app_notification.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/paged_list_view.dart';
 
 /// The agent's notification inbox (`GET /notifications`).
@@ -28,16 +29,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     ref.invalidate(unreadCountProvider);
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _markAllRead() async {
     try {
       await ref.read(notificationsRepositoryProvider).readAll();
       _refresh();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 
@@ -54,7 +54,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       await ref.read(notificationsRepositoryProvider).deleteAll();
       _refresh();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 

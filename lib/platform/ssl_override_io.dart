@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import '../config.dart';
+import '../core/config.dart';
 
 /// Accepts the helpdesk server's TLS certificate even though it serves an
 /// **incomplete chain** (the leaf's issuing intermediate isn't sent, so Android
@@ -11,9 +11,9 @@ import '../config.dart';
 /// helpdesk host — every other host still goes through normal validation.
 ///
 /// This is a stop-gap. The real fix is to install the correct intermediate
-/// bundle on `ticket.mynt.in` so the chain validates without this.
-class MyHttpOverrides extends HttpOverrides {
-  MyHttpOverrides() : _allowedHost = Uri.parse(AppConfig.baseUrl).host;
+/// bundle on the helpdesk server so the chain validates without this.
+class _MyHttpOverrides extends HttpOverrides {
+  _MyHttpOverrides() : _allowedHost = Uri.parse(AppConfig.baseUrl).host;
 
   final String _allowedHost;
 
@@ -23,4 +23,8 @@ class MyHttpOverrides extends HttpOverrides {
     client.badCertificateCallback = (cert, host, port) => host == _allowedHost;
     return client;
   }
+}
+
+void installSslOverride() {
+  HttpOverrides.global = _MyHttpOverrides();
 }

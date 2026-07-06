@@ -21,6 +21,7 @@ class PagedListView<T> extends StatefulWidget {
     this.itemFilter,
     this.itemSort,
     this.onItems,
+    this.loadingBuilder,
   });
 
   final Future<Paginated<T>> Function(int page) fetch;
@@ -53,6 +54,12 @@ class PagedListView<T> extends StatefulWidget {
   /// Add extra bottom padding so a [FloatingActionButton] doesn't cover the
   /// last item.
   final bool fabClearance;
+
+  /// Optional override for the initial loading state — screens with a
+  /// dense table layout pass a skeleton table here instead of the default
+  /// centered spinner, so the first paint gives the user the shape of the
+  /// content that's about to arrive.
+  final WidgetBuilder? loadingBuilder;
 
   @override
   State<PagedListView<T>> createState() => _PagedListViewState<T>();
@@ -129,7 +136,9 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
 
   @override
   Widget build(BuildContext context) {
-    if (_initial && _loading) return const LoadingView();
+    if (_initial && _loading) {
+      return widget.loadingBuilder?.call(context) ?? const LoadingView();
+    }
     if (_error != null && _items.isEmpty) {
       return ErrorView(error: _error!, onRetry: () => _load(reset: true));
     }

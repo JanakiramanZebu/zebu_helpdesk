@@ -7,6 +7,7 @@ import '../../core/format.dart';
 import '../../models/canned.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/attachment_tile.dart';
 import '../../widgets/paged_list_view.dart';
 
@@ -20,9 +21,8 @@ class CannedScreen extends ConsumerStatefulWidget {
 class _CannedScreenState extends ConsumerState<CannedScreen> {
   int _reload = 0;
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   void _refresh() => setState(() => _reload++);
 
@@ -105,7 +105,7 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
                     ClipboardData(text: Fmt.stripHtml(c.body)),
                   );
                   if (context.mounted) Navigator.pop(context);
-                  _toast('Copied');
+                  _toast('Copied', type: ToastType.success);
                 },
                 icon: const Icon(Icons.copy, size: 18),
                 label: const Text('Copy'),
@@ -150,10 +150,10 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
     if (ok != true) return;
     try {
       await ref.read(cannedRepositoryProvider).delete(c.id);
-      _toast('Deleted');
+      _toast('Deleted', type: ToastType.success);
       _refresh();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 }
@@ -301,9 +301,7 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
         if (e.fields.isNotEmpty) {
           _fieldErrors.addAll(e.fields);
         } else {
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text(e.message)));
+          AppToast.error(context, e.message);
         }
       });
     } finally {

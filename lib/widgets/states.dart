@@ -45,13 +45,22 @@ class ErrorView extends StatelessWidget {
               color: Theme.of(context).colorScheme.error,
             ),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Text(message, textAlign: TextAlign.center),
+            ),
             if (onRetry != null) ...[
               const SizedBox(height: 16),
               OutlinedButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
                 label: const Text('Retry'),
+                // Reset the global OutlinedButton theme's infinite min-width
+                // (Size.fromHeight(50), used by the login CTA) so this Retry
+                // reads as a compact action, not a full-width bar on web.
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(120, 44),
+                ),
               ),
             ],
           ],

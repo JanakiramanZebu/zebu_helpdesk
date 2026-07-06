@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_exception.dart';
 import '../../models/me.dart';
 import '../../providers.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/states.dart';
 import '../../widgets/user_avatar.dart';
 
@@ -18,9 +19,8 @@ class ProfileScreen extends ConsumerStatefulWidget {
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _busy = false;
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _setAvailability(bool value) async {
     setState(() => _busy = true);
@@ -28,7 +28,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       await ref.read(meRepositoryProvider).setAvailability(available: value);
       ref.invalidate(meProvider);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -39,9 +39,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       await ref.read(meRepositoryProvider).rerollAvatar();
       ref.invalidate(meProvider);
-      if (mounted) _toast('Avatar regenerated');
+      if (mounted) _toast('Avatar regenerated', type: ToastType.success);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -57,7 +57,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     );
     if (saved == true) {
       ref.invalidate(meProvider);
-      if (mounted) _toast('Profile updated');
+      if (mounted) _toast('Profile updated', type: ToastType.success);
     }
   }
 
@@ -69,7 +69,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       showDragHandle: true,
       builder: (_) => const _ChangePasswordSheet(),
     );
-    if (changed == true && mounted) _toast('Password changed');
+    if (changed == true && mounted) _toast('Password changed', type: ToastType.success);
   }
 
   @override

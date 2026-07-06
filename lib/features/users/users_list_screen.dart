@@ -7,6 +7,7 @@ import '../../core/router/routes.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/user_avatar.dart';
 
@@ -29,9 +30,8 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _openCreate() async {
     final created = await showModalBottomSheet<bool>(
@@ -42,7 +42,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
       builder: (_) => const _CreateUserSheet(),
     );
     if (created == true) {
-      _toast('User created');
+      _toast('User created', type: ToastType.success);
       if (mounted) setState(() => _refreshKey++);
     }
   }

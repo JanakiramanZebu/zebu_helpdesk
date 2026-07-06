@@ -1,34 +1,48 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:excel/excel.dart' as xls;
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:url_launcher/url_launcher.dart';
+
+import '../../platform/file_save.dart';
 
 /// The file formats a list screen can export to via [exportTable].
 enum ExportFormat {
-  pdf(label: 'PDF', ext: 'pdf', icon: Icons.picture_as_pdf_outlined),
-  excel(label: 'Excel', ext: 'xlsx', icon: Icons.grid_on_outlined);
+  pdf(
+    label: 'PDF',
+    ext: 'pdf',
+    mime: 'application/pdf',
+    icon: Icons.picture_as_pdf_outlined,
+  ),
+  excel(
+    label: 'Excel',
+    ext: 'xlsx',
+    mime:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    icon: Icons.grid_on_outlined,
+  );
 
   const ExportFormat({
     required this.label,
     required this.ext,
+    required this.mime,
     required this.icon,
   });
 
   final String label;
   final String ext;
+  final String mime;
   final IconData icon;
 }
 
-/// Build a tabular document (PDF or Excel) from [columns]/[rows], write it to a
-/// temp file named `<baseName>.<ext>`, open it with the platform handler, and
-/// return the written file.
+/// Build a tabular document (PDF or Excel) from [columns]/[rows] and hand it
+/// to the platform: mobile opens it via the OS file handler, web triggers a
+/// browser download. The actual save/open is delegated to
+/// [saveAndReveal], whose implementation is platform-specific.
 ///
 /// [rows] cells are plain strings; missing values should be passed as `''`.
-Future<File> exportTable({
+Future<void> exportTable({
   required ExportFormat format,
   required String baseName,
   required String title,
@@ -40,10 +54,11 @@ Future<File> exportTable({
     ExportFormat.excel => _buildExcel(title, columns, rows),
   };
 
-  final file = File('${Directory.systemTemp.path}/$baseName.${format.ext}');
-  await file.writeAsBytes(bytes);
-  await launchUrl(Uri.file(file.path));
-  return file;
+  await saveAndReveal(
+    bytes: bytes,
+    filename: '$baseName.${format.ext}',
+    mime: format.mime,
+  );
 }
 
 Future<Uint8List> _buildPdf(

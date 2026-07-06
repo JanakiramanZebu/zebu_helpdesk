@@ -22,7 +22,7 @@ The API base URL defaults to `https://ticket.mynt.in` and can be overridden at
 build time:
 
 ```sh
-flutter run --dart-define=ZEBU_BASE_URL=https://your-helpdesk.example.com
+flutter run --dart-define=API_BASE_URL=https://your-helpdesk.example.com
 ```
 
 All calls go through the single dispatcher `{BASE}/scp/api.php/<path>`.

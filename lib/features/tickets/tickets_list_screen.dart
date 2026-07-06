@@ -15,6 +15,7 @@ import '../../models/meta.dart';
 import '../../models/ticket.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/list_controls.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/segmented_tabs.dart';
@@ -105,9 +106,8 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   /// Fetch the count for every tab in parallel (cheap total-only queries).
   Future<void> _loadCounts() async {
@@ -437,7 +437,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
         _toast('Exported ${tickets.length} tickets as ${format.label}');
       }
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } catch (_) {
       _toast('Saved file but could not open it automatically');
     } finally {

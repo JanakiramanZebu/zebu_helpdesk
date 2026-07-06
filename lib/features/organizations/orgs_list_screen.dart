@@ -7,6 +7,7 @@ import '../../core/router/routes.dart';
 import '../../models/organization.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/paged_list_view.dart';
 
 class OrgsListScreen extends ConsumerStatefulWidget {
@@ -28,20 +29,16 @@ class _OrgsListScreenState extends ConsumerState<OrgsListScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _openCreate() async {
-    final created = await showModalBottomSheet<bool>(
+    final created = await showDialog<bool>(
       context: context,
-      useSafeArea: true,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => const _CreateOrgSheet(),
+      builder: (_) => const _CreateOrgDialog(),
     );
     if (created == true) {
-      _toast('Organization created');
+      _toast('Organization created', type: ToastType.success);
       if (mounted) setState(() => _refreshKey++);
     }
   }
@@ -115,14 +112,14 @@ class _OrgsListScreenState extends ConsumerState<OrgsListScreen> {
   }
 }
 
-class _CreateOrgSheet extends ConsumerStatefulWidget {
-  const _CreateOrgSheet();
+class _CreateOrgDialog extends ConsumerStatefulWidget {
+  const _CreateOrgDialog();
 
   @override
-  ConsumerState<_CreateOrgSheet> createState() => _CreateOrgSheetState();
+  ConsumerState<_CreateOrgDialog> createState() => _CreateOrgDialogState();
 }
 
-class _CreateOrgSheetState extends ConsumerState<_CreateOrgSheet> {
+class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
   final _name = TextEditingController();
   final _domain = TextEditingController();
   bool _saving = false;
@@ -161,60 +158,62 @@ class _CreateOrgSheetState extends ConsumerState<_CreateOrgSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final insets = mq.viewInsets.bottom + mq.padding.bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + insets),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'New organization',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _name,
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
-            decoration: InputDecoration(
-              labelText: 'Name',
-              errorText: _fieldErrors['name'],
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: const Text('New organization'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _name,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                errorText: _fieldErrors['name'],
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _domain,
-            decoration: InputDecoration(
-              labelText: 'Domain (optional)',
-              hintText: 'example.com',
-              errorText: _fieldErrors['domain'],
-            ),
-          ),
-          if (_formError != null) ...[
             const SizedBox(height: 12),
-            Text(
-              _formError!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            TextField(
+              controller: _domain,
+              decoration: InputDecoration(
+                labelText: 'Domain (optional)',
+                hintText: 'example.com',
+                errorText: _fieldErrors['domain'],
+              ),
             ),
+            if (_formError != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _formError!,
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+            ],
           ],
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('Create organization'),
-          ),
-        ],
+        ),
       ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('Create'),
+        ),
+      ],
     );
   }
 }

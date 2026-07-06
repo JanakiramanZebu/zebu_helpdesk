@@ -11,6 +11,7 @@ import '../../data/tasks_repository.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/pickers.dart';
 
 /// `POST /tasks` — create a task.
@@ -42,9 +43,8 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     super.dispose();
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _submit() async {
     if (_department == null) {
@@ -77,7 +77,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
         ],
       );
       if (!mounted) return;
-      _toast('Task #${task.number} created');
+      _toast('Task #${task.number} created', type: ToastType.success);
       context.pushReplacement(Routes.task(task.id));
     } on ApiException catch (e) {
       setState(() {

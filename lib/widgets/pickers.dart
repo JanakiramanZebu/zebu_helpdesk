@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -7,13 +8,18 @@ import '../core/api/api_exception.dart';
 import '../models/meta.dart';
 import '../models/user.dart';
 import '../providers.dart';
+import 'app_toast.dart';
 
 /// Where an attachment comes from. Surfaced as a popup menu on the composer.
 enum AttachSource { photos, camera, files }
 
 /// Colourful (Telegram-style) popup-menu entries for the attachment sources.
-List<PopupMenuEntry<AttachSource>> attachMenuItems() => const [
-  PopupMenuItem(
+///
+/// On web the *Camera* entry is hidden — `ImagePicker.pickImage(source: camera)`
+/// works via `getUserMedia`, but the UX is poor (no native viewfinder, requires
+/// camera permission prompts on every shot). Users on web upload via Files.
+List<PopupMenuEntry<AttachSource>> attachMenuItems() => [
+  const PopupMenuItem(
     value: AttachSource.photos,
     child: _AttachTile(
       icon: Icons.photo_library_rounded,
@@ -21,15 +27,16 @@ List<PopupMenuEntry<AttachSource>> attachMenuItems() => const [
       label: 'Photos',
     ),
   ),
-  PopupMenuItem(
-    value: AttachSource.camera,
-    child: _AttachTile(
-      icon: Icons.photo_camera_rounded,
-      color: Color(0xFFEB5757),
-      label: 'Camera',
+  if (!kIsWeb)
+    const PopupMenuItem(
+      value: AttachSource.camera,
+      child: _AttachTile(
+        icon: Icons.photo_camera_rounded,
+        color: Color(0xFFEB5757),
+        label: 'Camera',
+      ),
     ),
-  ),
-  PopupMenuItem(
+  const PopupMenuItem(
     value: AttachSource.files,
     child: _AttachTile(
       icon: Icons.insert_drive_file_rounded,
@@ -116,9 +123,7 @@ Future<MetaItem?> pickMeta(
     items = await ref.read(metaRepositoryProvider).get(kind);
   } on ApiException catch (e) {
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.message)));
+      AppToast.error(context, e.message);
     }
     return null;
   }

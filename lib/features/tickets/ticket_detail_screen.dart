@@ -13,6 +13,7 @@ import '../../models/meta.dart';
 import '../../models/ticket.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
@@ -98,9 +99,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
 
   void _apply(Ticket updated) => setState(() => _ticket = updated);
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _runAction(
     Future<Ticket> Function() action, {
@@ -110,9 +110,9 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     try {
       final updated = await action();
       _apply(updated);
-      if (success != null) _toast(success);
+      if (success != null) _toast(success, type: ToastType.success);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -421,11 +421,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     try {
       await ref.read(ticketsRepositoryProvider).delete(widget.ticketId);
       if (mounted) {
-        _toast('Ticket deleted');
+        _toast('Ticket deleted', type: ToastType.success);
         Navigator.of(context).pop();
       }
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 }
@@ -765,9 +765,7 @@ class _InlineComposerState extends ConsumerState<_InlineComposer> {
       return true;
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
       return false;
     } finally {
@@ -1210,9 +1208,7 @@ class _TagsSheetState extends ConsumerState<_TagsSheet> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
     }
   }
@@ -1229,9 +1225,7 @@ class _TagsSheetState extends ConsumerState<_TagsSheet> {
       if (mounted) setState(() => _tags = tags);
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1247,9 +1241,7 @@ class _TagsSheetState extends ConsumerState<_TagsSheet> {
       if (mounted) setState(() => _tags = tags);
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1358,9 +1350,7 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
     }
   }
@@ -1376,9 +1366,7 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
       await _load();
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -1394,9 +1382,7 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
       if (mounted) setState(() => _collabs = c);
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
     } finally {
       if (mounted) setState(() => _busy = false);

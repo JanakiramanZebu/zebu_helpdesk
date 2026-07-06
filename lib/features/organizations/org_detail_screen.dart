@@ -11,6 +11,7 @@ import '../../models/ticket.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
@@ -67,9 +68,8 @@ class _OrgDetailScreenState extends ConsumerState<OrgDetailScreen>
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _onMenu(String value) async {
     switch (value) {
@@ -91,7 +91,7 @@ class _OrgDetailScreenState extends ConsumerState<OrgDetailScreen>
       builder: (_) => _EditOrgSheet(org: o),
     );
     if (saved == true) {
-      _toast('Organization updated');
+      _toast('Organization updated', type: ToastType.success);
       await _load();
     }
   }
@@ -108,11 +108,11 @@ class _OrgDetailScreenState extends ConsumerState<OrgDetailScreen>
     try {
       await ref.read(orgsRepositoryProvider).delete(widget.orgId);
       if (mounted) {
-        _toast('Organization deleted');
+        _toast('Organization deleted', type: ToastType.success);
         Navigator.of(context).pop();
       }
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 
@@ -301,9 +301,7 @@ class _MembersTab extends ConsumerWidget {
             onRemoved();
           } on ApiException catch (e) {
             if (context.mounted) {
-              ScaffoldMessenger.of(context)
-                ..hideCurrentSnackBar()
-                ..showSnackBar(SnackBar(content: Text(e.message)));
+              AppToast.error(context, e.message);
             }
             onRemoved();
           }
@@ -394,9 +392,8 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
     }
   }
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _add() async {
     final text = _note.text.trim();
@@ -408,7 +405,7 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
       if (mounted) FocusScope.of(context).unfocus();
       await _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _adding = false);
     }
@@ -419,7 +416,7 @@ class _NotesTabState extends ConsumerState<_NotesTab> {
       await ref.read(orgsRepositoryProvider).deleteNote(widget.orgId, note.id);
       await _load();
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     }
   }
 

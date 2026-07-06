@@ -215,6 +215,15 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     final t = summary.totals;
 
+    // Width-aware stat grid: each tile aims for ≤220 px wide. On phones that
+    // means 2 columns; on a widescreen browser, 4–6 columns naturally.
+    const statGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
+      maxCrossAxisExtent: 220,
+      mainAxisExtent: 78,
+      mainAxisSpacing: 10,
+      crossAxisSpacing: 10,
+    );
+
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
@@ -224,172 +233,160 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         12 + MediaQuery.of(context).padding.bottom,
       ),
       children: [
-        _sectionLabel('Tickets'),
-        SizedBox(
-          height: 250,
-          child: GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 2,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-            childAspectRatio: 2.5,
-            children: [
-              StatTile(
-                label: 'Open',
-                value: Fmt.count(t.open),
-                icon: Icons.inbox_outlined,
-                color: AppTheme.open,
-                onTap: () => _openTickets('open'),
-              ),
-              StatTile(
-                label: 'Unassigned',
-                value: Fmt.count(t.unassigned),
-                icon: Icons.person_off_outlined,
-                color: AppTheme.warning,
-                onTap: () => _openTickets('unassigned'),
-              ),
-              StatTile(
-                label: 'Overdue',
-                value: Fmt.count(t.overdue),
-                icon: Icons.schedule_outlined,
-                color: AppTheme.overdue,
-                onTap: () => _openTickets('overdue'),
-              ),
-              StatTile(
-                label: 'Mine Open',
-                value: Fmt.count(t.mineOpen),
-                icon: Icons.assignment_ind_outlined,
-                color: AppTheme.brand,
-                onTap: () => _openTickets('mine'),
-              ),
-              StatTile(
-                label: 'Answered',
-                value: Fmt.count(t.answered),
-                icon: Icons.mark_email_read_outlined,
-                color: AppTheme.open,
-                onTap: () => _openTickets('answered'),
-              ),
-              StatTile(
-                label: 'Closed',
-                value: Fmt.count(t.closed),
-                icon: Icons.check_circle_outline,
-                color: AppTheme.closed,
-                onTap: () => _openTickets('closed'),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_volume != null) ...[
-          ReportSummaryCard(
-            report: _volume!,
-            days: _days,
-            onDaysSelected: _selectDays,
-            loading: _volumeLoading,
-          ),
-          const SizedBox(height: 12),
-          ActivityChartCard(report: _volume!),
-        ],
-        if (_tasksOpen != null) ...[
-          const SizedBox(height: 20),
-          _sectionLabel('Tasks'),
-          SizedBox(
-            height: 250,
-            child: GridView.count(
+            _sectionLabel('Tickets'),
+            GridView(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              childAspectRatio: 2.5,
+              gridDelegate: statGridDelegate,
               children: [
                 StatTile(
                   label: 'Open',
-                  value: Fmt.count(_tasksOpen ?? 0),
-                  icon: Icons.radio_button_unchecked,
+                  value: Fmt.count(t.open),
+                  icon: Icons.inbox_outlined,
                   color: AppTheme.open,
-                  onTap: () => _openTasks('open'),
+                  onTap: () => _openTickets('open'),
                 ),
                 StatTile(
-                  label: 'Mine',
-                  value: Fmt.count(_tasksMine ?? 0),
-                  icon: Icons.assignment_ind_outlined,
-                  color: AppTheme.brand,
-                  onTap: () => _openTasks('mine'),
+                  label: 'Unassigned',
+                  value: Fmt.count(t.unassigned),
+                  icon: Icons.person_off_outlined,
+                  color: AppTheme.warning,
+                  onTap: () => _openTickets('unassigned'),
                 ),
                 StatTile(
                   label: 'Overdue',
-                  value: Fmt.count(_tasksOverdue ?? 0),
+                  value: Fmt.count(t.overdue),
                   icon: Icons.schedule_outlined,
                   color: AppTheme.overdue,
-                  onTap: () => _openTasks('overdue'),
+                  onTap: () => _openTickets('overdue'),
                 ),
                 StatTile(
-                  label: 'Collaborator',
-                  value: Fmt.count(_tasksCollaborator ?? 0),
-                  icon: Icons.groups_outlined,
-                  color: AppTheme.warning,
-                  onTap: () => _openTasks('collaborator'),
+                  label: 'Mine Open',
+                  value: Fmt.count(t.mineOpen),
+                  icon: Icons.assignment_ind_outlined,
+                  color: AppTheme.brand,
+                  onTap: () => _openTickets('mine'),
                 ),
                 StatTile(
-                  label: 'All',
-                  value: Fmt.count(_tasksAll ?? 0),
-                  icon: Icons.all_inbox_outlined,
-                  color: AppTheme.brandDark,
-                  onTap: () => _openTasks('all'),
+                  label: 'Answered',
+                  value: Fmt.count(t.answered),
+                  icon: Icons.mark_email_read_outlined,
+                  color: AppTheme.open,
+                  onTap: () => _openTickets('answered'),
                 ),
                 StatTile(
                   label: 'Closed',
-                  value: Fmt.count(_tasksClosed ?? 0),
-                  icon: Icons.task_alt,
+                  value: Fmt.count(t.closed),
+                  icon: Icons.check_circle_outline,
                   color: AppTheme.closed,
-                  onTap: () => _openTasks('closed'),
+                  onTap: () => _openTickets('closed'),
                 ),
               ],
             ),
-          ),
-        ],
-        if (summary.byPriority.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _Section(
-            title: 'By priority',
-            child: MiniBarChart(
-              data: [
-                for (final p in summary.byPriority)
-                  (
-                    label: p.priority,
-                    value: p.open,
-                    color: _priorityColor(p.priority),
+            const SizedBox(height: 16),
+            if (_volume != null) ...[
+              ReportSummaryCard(
+                report: _volume!,
+                days: _days,
+                onDaysSelected: _selectDays,
+                loading: _volumeLoading,
+              ),
+              const SizedBox(height: 12),
+              ActivityChartCard(report: _volume!),
+            ],
+            if (_tasksOpen != null) ...[
+              const SizedBox(height: 20),
+              _sectionLabel('Tasks'),
+              GridView(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: statGridDelegate,
+                children: [
+                  StatTile(
+                    label: 'Open',
+                    value: Fmt.count(_tasksOpen ?? 0),
+                    icon: Icons.radio_button_unchecked,
+                    color: AppTheme.open,
+                    onTap: () => _openTasks('open'),
                   ),
-              ],
-            ),
-          ),
-        ],
-        if (summary.byDepartment.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _Section(
-            title: 'By department',
-            child: MiniBarChart(
-              data: [
-                for (final d in summary.byDepartment)
-                  (label: d.dept, value: d.open, color: AppTheme.brand),
-              ],
-            ),
-          ),
-        ],
-        if (summary.byAgent.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _Section(
-            title: 'By agent',
-            child: MiniBarChart(
-              data: [
-                for (final a in summary.byAgent.take(8))
-                  (label: a.name, value: a.open, color: AppTheme.brandDark),
-              ],
-            ),
-          ),
-        ],
+                  StatTile(
+                    label: 'Mine',
+                    value: Fmt.count(_tasksMine ?? 0),
+                    icon: Icons.assignment_ind_outlined,
+                    color: AppTheme.brand,
+                    onTap: () => _openTasks('mine'),
+                  ),
+                  StatTile(
+                    label: 'Overdue',
+                    value: Fmt.count(_tasksOverdue ?? 0),
+                    icon: Icons.schedule_outlined,
+                    color: AppTheme.overdue,
+                    onTap: () => _openTasks('overdue'),
+                  ),
+                  StatTile(
+                    label: 'Collaborator',
+                    value: Fmt.count(_tasksCollaborator ?? 0),
+                    icon: Icons.groups_outlined,
+                    color: AppTheme.warning,
+                    onTap: () => _openTasks('collaborator'),
+                  ),
+                  StatTile(
+                    label: 'All',
+                    value: Fmt.count(_tasksAll ?? 0),
+                    icon: Icons.all_inbox_outlined,
+                    color: AppTheme.brandDark,
+                    onTap: () => _openTasks('all'),
+                  ),
+                  StatTile(
+                    label: 'Closed',
+                    value: Fmt.count(_tasksClosed ?? 0),
+                    icon: Icons.task_alt,
+                    color: AppTheme.closed,
+                    onTap: () => _openTasks('closed'),
+                  ),
+                ],
+              ),
+            ],
+            if (summary.byPriority.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _Section(
+                title: 'By priority',
+                child: MiniBarChart(
+                  data: [
+                    for (final p in summary.byPriority)
+                      (
+                        label: p.priority,
+                        value: p.open,
+                        color: _priorityColor(p.priority),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            if (summary.byDepartment.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _Section(
+                title: 'By department',
+                child: MiniBarChart(
+                  data: [
+                    for (final d in summary.byDepartment)
+                      (label: d.dept, value: d.open, color: AppTheme.brand),
+                  ],
+                ),
+              ),
+            ],
+            if (summary.byAgent.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _Section(
+                title: 'By agent',
+                child: MiniBarChart(
+                  data: [
+                    for (final a in summary.byAgent.take(8))
+                      (label: a.name, value: a.open, color: AppTheme.brandDark),
+                  ],
+                ),
+              ),
+            ],
       ],
     );
   }

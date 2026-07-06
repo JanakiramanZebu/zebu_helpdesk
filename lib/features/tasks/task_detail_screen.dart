@@ -14,6 +14,7 @@ import '../../models/common.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
+import '../../widgets/app_toast.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
@@ -104,9 +105,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
   void _apply(Task updated) => setState(() => _task = updated);
 
-  void _toast(String msg) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(msg)));
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
 
   Future<void> _runAction(
     Future<Task> Function() action, {
@@ -116,9 +116,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     try {
       final updated = await action();
       _apply(updated);
-      if (success != null) _toast(success);
+      if (success != null) _toast(success, type: ToastType.success);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -325,7 +325,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           .addDependency(widget.taskId, id);
       if (mounted) setState(() => _dependencies = deps);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -340,7 +340,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           .removeDependency(widget.taskId, depId);
       if (mounted) setState(() => _dependencies = deps);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -356,7 +356,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     try {
       items = await ref.read(metaRepositoryProvider).get(kind);
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.message, type: ToastType.error);
       return;
     }
     if (!mounted) return;
@@ -857,9 +857,7 @@ class _InlineComposerState extends ConsumerState<_InlineComposer> {
       return true;
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(e.message)));
+        AppToast.error(context, e.message);
       }
       return false;
     } finally {
@@ -1442,8 +1440,8 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
     super.dispose();
   }
 
-  void _snack(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, m, type: type);
 
   Future<void> _load() async {
     try {
@@ -1457,7 +1455,7 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        _snack(e.message);
+        _snack(e.message, type: ToastType.error);
       }
     }
   }
@@ -1473,7 +1471,7 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
       _name.clear();
       if (mounted) setState(() => _tags = tags);
     } on ApiException catch (e) {
-      if (mounted) _snack(e.message);
+      if (mounted) _snack(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1487,7 +1485,7 @@ class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
           .removeTag(widget.taskId, tagId);
       if (mounted) setState(() => _tags = tags);
     } on ApiException catch (e) {
-      if (mounted) _snack(e.message);
+      if (mounted) _snack(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1582,8 +1580,8 @@ class _TaskCollaboratorsSheetState
     _load();
   }
 
-  void _snack(String m) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _snack(String m, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, m, type: type);
 
   Future<void> _load() async {
     try {
@@ -1599,7 +1597,7 @@ class _TaskCollaboratorsSheetState
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _loading = false);
-        _snack(e.message);
+        _snack(e.message, type: ToastType.error);
       }
     }
   }
@@ -1614,7 +1612,7 @@ class _TaskCollaboratorsSheetState
           .addCollaborator(widget.taskId, user.id);
       await _load();
     } on ApiException catch (e) {
-      if (mounted) _snack(e.message);
+      if (mounted) _snack(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -1628,7 +1626,7 @@ class _TaskCollaboratorsSheetState
           .removeCollaborator(widget.taskId, cid);
       if (mounted) setState(() => _collabs = c);
     } on ApiException catch (e) {
-      if (mounted) _snack(e.message);
+      if (mounted) _snack(e.message, type: ToastType.error);
     } finally {
       if (mounted) setState(() => _busy = false);
     }
