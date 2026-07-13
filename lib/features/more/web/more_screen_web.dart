@@ -104,7 +104,7 @@ class MoreScreenWeb extends ConsumerWidget {
                     icon: Icons.logout,
                     title: 'Sign out',
                     subtitle: 'End this session',
-                    tone: WebTokens.danger,
+                    tone: t.danger,
                     onTap: () => _confirmSignOut(context, ref),
                   ),
                 ]),
@@ -183,10 +183,10 @@ class MoreScreenWeb extends ConsumerWidget {
                             ),
                           ),
                           if (mode == current)
-                            const Icon(
+                            Icon(
                               Icons.check,
                               size: 18,
-                              color: WebTokens.accent,
+                              color: t.accent,
                             ),
                         ],
                       ),
@@ -326,7 +326,7 @@ class _NavCardState extends State<_NavCard> {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final tone = widget.data.tone ?? WebTokens.accent;
+    final tone = widget.data.tone ?? t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),

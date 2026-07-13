@@ -8,9 +8,12 @@ class AppTheme {
   AppTheme._();
 
   // --- Brand (Mynt Plus `AppColors.primary` family) -------------------------
-  static const Color brand = Color(0xFF0037B7); // Mynt brand blue
-  static const Color brandDark = Color(0xFF002E9B); // primaryVariant
-  static const Color brandLight = Color(0xFF4A6CF7); // primaryLight
+  static const Color brand = Color(0xFF0037B7); // Mynt brand blue (light)
+  static const Color brandDark = Color(0xFF002E9B); // primaryVariant (light)
+  // Dark mode brand tone — GitHub Dark accent (`#2F81F7`). Reads with strong
+  // contrast against the near-black `canvas-default` surface.
+  static const Color brandLight = Color(0xFF2F81F7);
+  static const Color brandDarkHover = Color(0xFF1F6FEB); // GH accent-hover
 
   // --- Semantic status colors (Mynt profit/loss/pending) --------------------
   static const Color open = Color(0xFF00B14F); // Mynt profit green
@@ -26,10 +29,19 @@ class AppTheme {
   static const Color _outlineLight = Color(0xFFDDE2E7); // divider
   static const Color _primaryContainerLight = Color(0xFFE3EDFA);
 
-  static const Color _bgDark = Color(0xFF181818);
-  static const Color _surfaceDark = Color(0xFF1A1A1A);
-  static const Color _textMutedDark = Color(0xFF8A8A8A);
-  static const Color _outlineDark = Color(0xFF333333);
+  // GitHub Dark surface stack — see MEMORY palette for the source variables.
+  //   canvas-default (#0D1117) → scaffold bg
+  //   canvas-overlay (#161B22) → cards, sheets, popovers
+  //   text-primary   (#F0F6FC), text-secondary (#C9D1D9), text-muted (#8B949E)
+  //   border-default (#30363D), border-muted   (#21262D)
+  static const Color _bgDark = Color(0xFF0D1117);
+  static const Color _surfaceDark = Color(0xFF161B22);
+  static const Color _textDark = Color(0xFFF0F6FC);
+  static const Color _textMutedDark = Color(0xFF8B949E);
+  static const Color _outlineDark = Color(0xFF30363D);
+  static const Color _outlineVariantDark = Color(0xFF21262D);
+  static const Color _primaryContainerDark = Color(0xFF0C2D6B); // accent-subtle
+  static const Color _onPrimaryContainerDark = Color(0xFF79C0FF); // link-hover
 
   static ThemeData light() => _build(Brightness.light);
   static ThemeData dark() => _build(Brightness.dark);
@@ -43,15 +55,19 @@ class AppTheme {
           onPrimary: Colors.white,
           primaryContainer: isLight
               ? _primaryContainerLight
-              : const Color(0xFF1D242F),
-          onPrimaryContainer: isLight ? brandDark : _primaryContainerLight,
-          secondary: const Color(0xFF0052CC),
-          error: isLight ? overdue : const Color(0xFFFF6B6B),
+              : _primaryContainerDark,
+          onPrimaryContainer: isLight
+              ? brandDark
+              : _onPrimaryContainerDark,
+          secondary: isLight
+              ? const Color(0xFF0052CC)
+              : brandLight, // GH accent doubles for secondary in dark
+          error: isLight ? overdue : const Color(0xFFF85149), // GH danger
           surface: isLight ? _surfaceLight : _surfaceDark,
-          onSurface: isLight ? _textLight : Colors.white,
+          onSurface: isLight ? _textLight : _textDark,
           onSurfaceVariant: isLight ? _textMutedLight : _textMutedDark,
-          outline: isLight ? const Color(0xFFC7CDD4) : const Color(0xFF4A4A4A),
-          outlineVariant: isLight ? _outlineLight : _outlineDark,
+          outline: isLight ? const Color(0xFFC7CDD4) : _outlineDark,
+          outlineVariant: isLight ? _outlineLight : _outlineVariantDark,
         );
 
     final base = ThemeData(
@@ -86,9 +102,12 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
+        // Light: Mynt searchBg (`#F9F9F9`). Dark: GitHub Dark `input-bg`
+        // (`#0D1117`) — same tone as the scaffold so inputs sit *in* the
+        // canvas rather than as a raised chip.
         fillColor: isLight
-            ? const Color(0xFFF9F9F9) // Mynt searchBg
-            : const Color(0xFF1E1E1E), // Mynt searchBgDark
+            ? const Color(0xFFF9F9F9)
+            : _bgDark,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
@@ -99,7 +118,12 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: brand, width: 1.6),
+          // Light: Mynt brand. Dark: GitHub `focus-ring` / `input-border-focus`
+          // (`#1F6FEB`).
+          borderSide: BorderSide(
+            color: isLight ? brand : brandDarkHover,
+            width: 1.6,
+          ),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 14,
@@ -108,7 +132,9 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: brand,
+          // Dark filled CTAs adopt GitHub's accent blue so they stay
+          // on-palette with the surrounding dark surfaces.
+          backgroundColor: isLight ? brand : brandLight,
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -139,17 +165,19 @@ class AppTheme {
           ),
         ),
       ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: brand,
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: isLight ? brand : brandLight,
         foregroundColor: Colors.white,
       ),
       // Mynt Plus-style tabs: padded pill segments (no underline), grey
-      // unselected labels, brand-colored selected label.
+      // unselected labels, brand-colored selected label. Dark pill uses
+      // GitHub `surface-3` (`#21262D`) so the indicator reads on the
+      // near-black surface.
       tabBarTheme: TabBarThemeData(
         indicatorSize: TabBarIndicatorSize.tab,
         dividerColor: Colors.transparent,
         indicator: BoxDecoration(
-          color: isLight ? const Color(0xFFF1F3F8) : const Color(0xFF24242B),
+          color: isLight ? const Color(0xFFF1F3F8) : const Color(0xFF21262D),
           borderRadius: BorderRadius.circular(10),
         ),
         labelColor: isLight ? brand : brandLight,
@@ -185,6 +213,22 @@ class AppTheme {
         space: 1,
         thickness: 1,
       ),
+      // Instant route push/pop across every platform. Flutter's Material 3
+      // default on desktop targets is a zoom + fade, which felt heavy for a
+      // click-to-navigate helpdesk — this makes navigation feel like a
+      // proper SPA (matching the slide-over detail panel's instant swap).
+      // Only affects `Navigator.push`/`pop` animations — dialogs, snackbars,
+      // and modal sheets keep their own transitions.
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: _NoAnimationPageTransitionsBuilder(),
+          TargetPlatform.iOS: _NoAnimationPageTransitionsBuilder(),
+          TargetPlatform.linux: _NoAnimationPageTransitionsBuilder(),
+          TargetPlatform.macOS: _NoAnimationPageTransitionsBuilder(),
+          TargetPlatform.windows: _NoAnimationPageTransitionsBuilder(),
+          TargetPlatform.fuchsia: _NoAnimationPageTransitionsBuilder(),
+        },
+      ),
     );
   }
 
@@ -199,4 +243,25 @@ class AppTheme {
     final v = int.tryParse(h, radix: 16);
     return v == null ? fallback : Color(v);
   }
+}
+
+/// Instant page transition — returns the incoming page unchanged, so route
+/// pushes and pops swap with no motion or fade. Wired into [AppTheme] as
+/// the app-wide [PageTransitionsTheme] builder so every route pushed via
+/// `MaterialPage` (which is what `GoRoute(builder: …)` produces) inherits
+/// it without touching the router.
+///
+/// Only affects `Navigator` page transitions — [showDialog],
+/// [showModalBottomSheet], and other overlays keep their own transitions.
+class _NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
+  const _NoAnimationPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) => child;
 }

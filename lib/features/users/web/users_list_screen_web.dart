@@ -11,17 +11,17 @@ import '../../../providers.dart';
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
+import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../dashboard/web/_tokens.dart';
 import 'user_detail_panel.dart';
 
-// Column layout.
+// Column layout — header and every row share these so the vertical grid
+// lines up pixel-for-pixel. Mirrors the tickets table cell API.
 const int _kColUserFlex = 4;
 const int _kColOrgFlex = 3;
 const double _kColPhoneWidth = 160;
-const double _kColCreatedWidth = 110;
-
-const double _kColGap = 16;
+const double _kColCreatedWidth = 120;
 
 /// Below this width the table horizontally scrolls.
 const double _kTableMinWidth = 900;
@@ -102,36 +102,33 @@ class _UsersListScreenWebState extends ConsumerState<UsersListScreenWeb> {
             PageHeader(
               title: 'Users',
               subtitle: _total != null ? '$_total total' : null,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _BackButton(
-                    onTap: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go(Routes.more);
-                      }
-                    },
-                  ),
-                  const SizedBox(width: WebTokens.s3),
-                  SizedBox(
-                    width: 320,
-                    child: ListSearchInput(
-                      hintText: 'Search name, email, phone…',
-                      onChanged: _onSearchChanged,
-                    ),
-                  ),
-                ],
+              leading: _BackButton(
+                onTap: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go(Routes.more);
+                  }
+                },
+              ),
+              trailing: SizedBox(
+                width: 320,
+                child: ListSearchInput(
+                  hintText: 'Search name, email, phone…',
+                  onChanged: _onSearchChanged,
+                ),
               ),
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final tableWidth = constraints.maxWidth > _kTableMinWidth
-                      ? constraints.maxWidth
-                      : _kTableMinWidth;
-                  return Scrollbar(
+              child: ListTableShell(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final horizontalScroll =
+                        constraints.maxWidth <= _kTableMinWidth;
+                    final tableWidth = horizontalScroll
+                        ? _kTableMinWidth
+                        : constraints.maxWidth;
+                    return Scrollbar(
                     controller: _tableHScroll,
                     scrollbarOrientation: ScrollbarOrientation.bottom,
                     child: SingleChildScrollView(
@@ -142,7 +139,7 @@ class _UsersListScreenWebState extends ConsumerState<UsersListScreenWeb> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const _TableHeader(),
+                            _TableHeader(scrollGutter: horizontalScroll),
                             Expanded(
                               child: ColoredBox(
                                 color: t.bgElevated,
@@ -175,6 +172,7 @@ class _UsersListScreenWebState extends ConsumerState<UsersListScreenWeb> {
                     ),
                   );
                 },
+              ),
               ),
             ),
           ],
@@ -233,11 +231,17 @@ class _BackButtonState extends State<_BackButton> {
 }
 
 // ---------------------------------------------------------------------------
-// Table header
+// Table header — matches the tickets table: edge-to-edge, hairline
+// top/bottom borders, and per-column right-border creating the vertical
+// grid line that body rows align to pixel-for-pixel.
 // ---------------------------------------------------------------------------
 
 class _TableHeader extends StatelessWidget {
-  const _TableHeader();
+  const _TableHeader({this.scrollGutter = false});
+
+  /// When true, reserves 10 px of trailing space at the right edge of the
+  /// header to line up with the horizontal scrollbar sitting under the body.
+  final bool scrollGutter;
 
   @override
   Widget build(BuildContext context) {
@@ -250,38 +254,107 @@ class _TableHeader extends StatelessWidget {
           bottom: BorderSide(color: t.borderSubtle, width: 1),
         ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s8,
-        vertical: WebTokens.s3,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: _kColUserFlex,
-            child: Text('User', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          Expanded(
-            flex: _kColOrgFlex,
-            child: Text('Organization', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColPhoneWidth,
-            child: Text('Phone', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColCreatedWidth,
-            child: Text(
-              'Created',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            const _HeaderCell(flex: _kColUserFlex, label: 'User'),
+            const _HeaderCell(flex: _kColOrgFlex, label: 'Organization'),
+            const _HeaderCell(width: _kColPhoneWidth, label: 'Phone'),
+            const _HeaderCell(
+              width: _kColCreatedWidth,
+              label: 'Created',
+              alignRight: true,
+              last: true,
             ),
-          ),
-        ],
+            if (scrollGutter) const SizedBox(width: 10),
+          ],
+        ),
       ),
     );
+  }
+}
+
+/// Column header cell — mirrors the tickets `_HeaderCell` exactly so both
+/// tables read as one grid: hairline right border (except on the last
+/// cell), `s3` horizontal padding, `tableHeader` typography.
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell({
+    required this.label,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final String label;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: WebTokens.s3,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: t.tableHeader,
+        textAlign: alignRight ? TextAlign.right : TextAlign.left,
+      ),
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
+  }
+}
+
+/// Body cell — mirrors the tickets `_BodyCell`. Right-border creates the
+/// vertical grid line; 8 px vertical padding gives the same table rhythm.
+class _BodyCell extends StatelessWidget {
+  const _BodyCell({
+    required this.child,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final Widget child;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: child,
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
   }
 }
 
@@ -311,7 +384,6 @@ class _UserRowState extends State<_UserRow> {
     final t = WebTokens.of(context);
     final u = widget.user;
     final trimmed = u.name.trim();
-    final initial = trimmed.isNotEmpty ? trimmed[0].toUpperCase() : '?';
     final orgName = u.org?.name.trim() ?? '';
     final phone = (u.phone ?? '').trim();
 
@@ -332,85 +404,71 @@ class _UserRowState extends State<_UserRow> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s8,
-            vertical: WebTokens.s4,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: _kColUserFlex,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 30,
-                      height: 30,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: WebTokens.accent.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(WebTokens.rFull),
-                      ),
-                      child: Text(
-                        initial,
-                        style: t.cardName.copyWith(
-                          color: WebTokens.accent,
-                          fontWeight: FontWeight.w700,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Primary column mirrors the tickets `Ticket` column:
+                // accent-blue leading identifier (email) + main label
+                // (name), inline on a single line so row height matches
+                // the tickets table pixel-for-pixel.
+                _BodyCell(
+                  flex: _kColUserFlex,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          u.email,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.bodySm.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: t.accent,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: WebTokens.s3),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            trimmed.isEmpty ? '(unnamed)' : trimmed,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: t.bodyBase.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
+                      const SizedBox(width: WebTokens.s2),
+                      Flexible(
+                        child: Text(
+                          trimmed.isEmpty ? '(unnamed)' : trimmed,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.bodyBase.copyWith(
+                            fontWeight: FontWeight.w500,
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            u.email,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: t.bodySm,
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              Expanded(
-                flex: _kColOrgFlex,
-                child: _TextCell(text: orgName),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColPhoneWidth,
-                child: _TextCell(text: phone),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColCreatedWidth,
-                child: Text(
-                  Fmt.date(u.created),
-                  textAlign: TextAlign.right,
-                  style: t.bodySm
-                      .copyWith(
-                        color: t.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      )
-                      .withTabularNums(),
+                _BodyCell(
+                  flex: _kColOrgFlex,
+                  child: _TextCell(text: orgName),
                 ),
-              ),
-            ],
+                _BodyCell(
+                  width: _kColPhoneWidth,
+                  child: _TextCell(text: phone),
+                ),
+                _BodyCell(
+                  width: _kColCreatedWidth,
+                  last: true,
+                  alignRight: true,
+                  child: Text(
+                    Fmt.date(u.created),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                    textAlign: TextAlign.right,
+                    style: t.bodySm
+                        .copyWith(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        )
+                        .withTabularNums(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

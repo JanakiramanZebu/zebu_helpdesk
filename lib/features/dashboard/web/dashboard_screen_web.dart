@@ -270,7 +270,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
         svg: _kSvgOverdueTickets,
         value: totals.overdue,
         label: 'Overdue Tickets',
-        tone: WebTokens.danger,
+        tone: t.danger,
         onTap: () => _openTickets('overdue'),
         denominator: totals.open,
         denominatorLabel: 'open',
@@ -279,7 +279,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
         svg: _kSvgMyTasks,
         value: _tasksMine ?? 0,
         label: 'My Tasks',
-        tone: WebTokens.accent,
+        tone: t.accent,
         onTap: () => _openTasks('mine'),
         denominator: _tasksAll,
         denominatorLabel: 'all',
@@ -491,7 +491,7 @@ class _Hero extends ConsumerWidget {
               icon: Icons.person_outline_rounded,
               count: mineOpen,
               label: 'assigned to you',
-              tone: WebTokens.accent,
+              tone: t.accent,
             ),
           if (unread > 0)
             _HeroChip(
@@ -763,15 +763,16 @@ class _PriorityWorkloadCard extends StatelessWidget {
   final List<PriorityBucket> priorities;
   final VoidCallback onSeeAll;
 
-  static Color _tone(String name) {
+  static Color _tone(String name, WebTokens t) {
     final n = name.toLowerCase();
-    if (n.contains('emergency') || n.contains('high')) return WebTokens.danger;
+    if (n.contains('emergency') || n.contains('high')) return t.danger;
     if (n.contains('low')) return WebTokens.success;
     return WebTokens.warning;
   }
 
   @override
   Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
     // Sort by descending open count so the largest bucket sits at top.
     final sorted = [...priorities]
       ..sort((a, b) => b.open.compareTo(a.open));
@@ -794,7 +795,7 @@ class _PriorityWorkloadCard extends StatelessWidget {
             for (final bucket in sorted)
               _PriorityRow(
                 bucket: bucket,
-                tone: _tone(bucket.priority),
+                tone: _tone(bucket.priority, t),
                 fraction: peak == 0 ? 0 : bucket.open / peak,
               ),
           ],
@@ -960,7 +961,7 @@ class _DepartmentRow extends StatelessWidget {
             const SizedBox(width: 6),
             _CountPill(
               label: '${Fmt.count(bucket.overdue)} overdue',
-              color: WebTokens.danger,
+              color: t.danger,
             ),
           ],
         ],
@@ -1061,6 +1062,7 @@ class _SeeAllLinkState extends State<_SeeAllLink> {
 
   @override
   Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1072,10 +1074,10 @@ class _SeeAllLinkState extends State<_SeeAllLink> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: WebTokens.accent,
+            color: t.accent,
             decoration:
                 _hover ? TextDecoration.underline : TextDecoration.none,
-            decorationColor: WebTokens.accent,
+            decorationColor: t.accent,
           ),
         ),
       ),
@@ -1213,9 +1215,9 @@ class _TicketRowState extends State<_TicketRow> {
     // row content never shifts horizontally).
     final Color stripeColor;
     if (overdue) {
-      stripeColor = WebTokens.danger;
+      stripeColor = t.danger;
     } else if (_hover) {
-      stripeColor = WebTokens.accent;
+      stripeColor = t.accent;
     } else {
       stripeColor = Colors.transparent;
     }
@@ -1251,7 +1253,7 @@ class _TicketRowState extends State<_TicketRow> {
                         style: t.bodySm
                             .copyWith(
                               fontWeight: FontWeight.w600,
-                              color: WebTokens.accent,
+                              color: t.accent,
                             )
                             .withTabularNums(),
                       ),
@@ -1348,14 +1350,14 @@ class _PriorityCell extends StatelessWidget {
     }
     return StatusPill(
       label: _titleCase(name),
-      color: _tone(name),
+      color: _tone(name, t),
       icon: Icons.flag_rounded,
     );
   }
 
-  static Color _tone(String name) {
+  static Color _tone(String name, WebTokens t) {
     final n = name.toLowerCase();
-    if (n.contains('emergency') || n.contains('urgent')) return WebTokens.danger;
+    if (n.contains('emergency') || n.contains('urgent')) return t.danger;
     if (n.contains('high')) return WebTokens.warning;
     if (n.contains('low')) return WebTokens.success;
     if (n.contains('normal')) return WebTokens.info;
@@ -1462,7 +1464,7 @@ class _StatusTag extends StatelessWidget {
   }
 
   Color _fg(WebTokens t) {
-    if (ticket.isOverdue) return WebTokens.danger;
+    if (ticket.isOverdue) return t.danger;
     final s = ticket.statusName.toLowerCase();
     if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
     // "Unassigned" is a passive waiting state — read it as calm info-blue,
@@ -1641,7 +1643,7 @@ class _ActivityCard extends StatelessWidget {
                 _Metric(
                   value: net > 0 ? '+${Fmt.count(net)}' : Fmt.count(net),
                   label: 'NET',
-                  tone: net > 0 ? WebTokens.danger : WebTokens.success,
+                  tone: net > 0 ? t.danger : WebTokens.success,
                 ),
               ],
             ),

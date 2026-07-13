@@ -13,26 +13,21 @@ import '../../../widgets/app_toast.dart';
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
+import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../dashboard/web/_tokens.dart';
 import 'org_detail_panel.dart';
 
 const _kFlatRadius = 8.0;
 
-// Column layout — header and rows share these so the grid lines up
-// pixel-for-pixel. Text columns flex; user count / created are fixed so
-// they don't squish at narrow widths.
+// Column layout — header and rows share these so the vertical grid lines
+// up pixel-for-pixel. Mirrors the tickets table cell API.
 const int _kColOrgFlex = 4;
 const int _kColDomainFlex = 3;
 const double _kColMembersWidth = 120;
-const double _kColCreatedWidth = 110;
+const double _kColCreatedWidth = 120;
 
-const double _kColGap = 16;
-
-/// Minimum table width — accounts for horizontal row padding
-/// (`WebTokens.s8` × 2 = 64), 3 inter-column gaps (3 × 16 = 48),
-/// the fixed-width columns (120 + 110 = 230), and a readable minimum
-/// for each flex column. Below this, the table horizontally scrolls.
+/// Minimum table width. Below this, the table horizontally scrolls.
 const double _kTableMinWidth = 900;
 
 /// Web-only organizations list, styled to match [UsersListScreenWeb] and
@@ -134,19 +129,18 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
             PageHeader(
               title: 'Organizations',
               subtitle: _total != null ? '$_total total' : null,
+              leading: _BackButton(
+                onTap: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go(Routes.more);
+                  }
+                },
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _BackButton(
-                    onTap: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go(Routes.more);
-                      }
-                    },
-                  ),
-                  const SizedBox(width: WebTokens.s3),
                   SizedBox(
                     width: 280,
                     child: ListSearchInput(
@@ -160,12 +154,15 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
               ),
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final tableWidth = constraints.maxWidth > _kTableMinWidth
-                      ? constraints.maxWidth
-                      : _kTableMinWidth;
-                  return Scrollbar(
+              child: ListTableShell(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final horizontalScroll =
+                        constraints.maxWidth <= _kTableMinWidth;
+                    final tableWidth = horizontalScroll
+                        ? _kTableMinWidth
+                        : constraints.maxWidth;
+                    return Scrollbar(
                     controller: _tableHScroll,
                     scrollbarOrientation: ScrollbarOrientation.bottom,
                     child: SingleChildScrollView(
@@ -176,7 +173,7 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const _TableHeader(),
+                            _TableHeader(scrollGutter: horizontalScroll),
                             Expanded(
                               child: ColoredBox(
                                 color: t.bgElevated,
@@ -209,6 +206,7 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
                     ),
                   );
                 },
+              ),
               ),
             ),
           ],
@@ -285,7 +283,7 @@ class _NewOrgButtonState extends State<_NewOrgButton> {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final bg = _hover ? WebTokens.accentHover : WebTokens.accent;
+    final bg = _hover ? t.accentHover : t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -334,11 +332,15 @@ class _NewOrgButtonState extends State<_NewOrgButton> {
 }
 
 // ---------------------------------------------------------------------------
-// Table header — column labels on `bgTertiary`, mirrors users/tickets tables.
+// Table header — matches the tickets table: edge-to-edge, hairline
+// top/bottom borders, and per-column right-border creating the vertical
+// grid line that body rows align to pixel-for-pixel.
 // ---------------------------------------------------------------------------
 
 class _TableHeader extends StatelessWidget {
-  const _TableHeader();
+  const _TableHeader({this.scrollGutter = false});
+
+  final bool scrollGutter;
 
   @override
   Widget build(BuildContext context) {
@@ -351,42 +353,108 @@ class _TableHeader extends StatelessWidget {
           bottom: BorderSide(color: t.borderSubtle, width: 1),
         ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s8,
-        vertical: WebTokens.s3,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: _kColOrgFlex,
-            child: Text('Organization', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          Expanded(
-            flex: _kColDomainFlex,
-            child: Text('Domain', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColMembersWidth,
-            child: Text(
-              'Members',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            const _HeaderCell(flex: _kColOrgFlex, label: 'Organization'),
+            const _HeaderCell(flex: _kColDomainFlex, label: 'Domain'),
+            const _HeaderCell(
+              width: _kColMembersWidth,
+              label: 'Members',
+              alignRight: true,
             ),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColCreatedWidth,
-            child: Text(
-              'Created',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
+            const _HeaderCell(
+              width: _kColCreatedWidth,
+              label: 'Created',
+              alignRight: true,
+              last: true,
             ),
-          ),
-        ],
+            if (scrollGutter) const SizedBox(width: 10),
+          ],
+        ),
       ),
     );
+  }
+}
+
+/// Column header cell — mirrors the tickets `_HeaderCell`.
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell({
+    required this.label,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final String label;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: WebTokens.s3,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: t.tableHeader,
+        textAlign: alignRight ? TextAlign.right : TextAlign.left,
+      ),
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
+  }
+}
+
+/// Body cell — mirrors the tickets `_BodyCell`.
+class _BodyCell extends StatelessWidget {
+  const _BodyCell({
+    required this.child,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final Widget child;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: child,
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
   }
 }
 
@@ -418,7 +486,6 @@ class _OrgRowState extends State<_OrgRow> {
     final t = WebTokens.of(context);
     final o = widget.org;
     final trimmed = o.name.trim();
-    final initial = trimmed.isNotEmpty ? trimmed[0].toUpperCase() : '?';
     final domain = (o.domain ?? '').trim();
 
     return MouseRegion(
@@ -438,80 +505,59 @@ class _OrgRowState extends State<_OrgRow> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s8,
-            vertical: WebTokens.s4,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: _kColOrgFlex,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: WebTokens.accent.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(WebTokens.rXs),
-                      ),
-                      child: Icon(
-                        Icons.apartment,
-                        size: 16,
-                        color: WebTokens.accent,
-                      ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _BodyCell(
+                  flex: _kColOrgFlex,
+                  child: Text(
+                    trimmed.isEmpty ? '(unnamed)' : trimmed,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyBase.copyWith(
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(width: WebTokens.s3),
-                    Expanded(
-                      child: Text(
-                        trimmed.isEmpty ? '(unnamed)' : trimmed,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.bodyBase.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                    if (initial.isEmpty) const SizedBox.shrink(),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              Expanded(
-                flex: _kColDomainFlex,
-                child: _TextCell(text: domain),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColMembersWidth,
-                child: Text(
-                  '${o.userCount}',
-                  textAlign: TextAlign.right,
-                  style: t.bodySm
-                      .copyWith(
-                        color: t.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      )
-                      .withTabularNums(),
+                _BodyCell(
+                  flex: _kColDomainFlex,
+                  child: _TextCell(text: domain),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColCreatedWidth,
-                child: Text(
-                  Fmt.date(o.created),
-                  textAlign: TextAlign.right,
-                  style: t.bodySm
-                      .copyWith(
-                        color: t.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      )
-                      .withTabularNums(),
+                _BodyCell(
+                  width: _kColMembersWidth,
+                  alignRight: true,
+                  child: Text(
+                    '${o.userCount}',
+                    textAlign: TextAlign.right,
+                    style: t.bodySm
+                        .copyWith(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        )
+                        .withTabularNums(),
+                  ),
                 ),
-              ),
-            ],
+                _BodyCell(
+                  width: _kColCreatedWidth,
+                  last: true,
+                  alignRight: true,
+                  child: Text(
+                    Fmt.date(o.created),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                    textAlign: TextAlign.right,
+                    style: t.bodySm
+                        .copyWith(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        )
+                        .withTabularNums(),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -644,7 +690,7 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
               const SizedBox(height: 4),
               Text(
                 _fieldErrors['name']!,
-                style: t.bodySm.copyWith(color: WebTokens.danger),
+                style: t.bodySm.copyWith(color: t.danger),
               ),
             ],
             const SizedBox(height: WebTokens.s3),
@@ -659,7 +705,7 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
               const SizedBox(height: 4),
               Text(
                 _fieldErrors['domain']!,
-                style: t.bodySm.copyWith(color: WebTokens.danger),
+                style: t.bodySm.copyWith(color: t.danger),
               ),
             ],
             if (_formError != null) ...[
@@ -729,14 +775,14 @@ class _ThemedTextField extends StatelessWidget {
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : t.borderSubtle,
+        color: hasError ? t.danger : t.borderSubtle,
         width: 1,
       ),
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : WebTokens.accent,
+        color: hasError ? t.danger : t.accent,
         width: 1.4,
       ),
     );
@@ -778,17 +824,17 @@ class _CreateErrorBanner extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.dangerLight,
-        border: Border.all(color: WebTokens.danger, width: 1),
+        border: Border.all(color: t.danger, width: 1),
         borderRadius: BorderRadius.circular(_kFlatRadius),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, size: 16, color: WebTokens.danger),
+          Icon(Icons.error_outline, size: 16, color: t.danger),
           const SizedBox(width: WebTokens.s2),
           Expanded(
             child: Text(
               message,
-              style: t.bodySm.copyWith(color: WebTokens.danger),
+              style: t.bodySm.copyWith(color: t.danger),
             ),
           ),
         ],
@@ -906,10 +952,11 @@ class _DialogPrimaryButtonState extends State<_DialogPrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
     final disabled = widget.onTap == null;
     final base = disabled
-        ? WebTokens.accent.withValues(alpha: 0.4)
-        : WebTokens.accent;
+        ? t.accent.withValues(alpha: 0.4)
+        : t.accent;
     final fill = _hover && !disabled
         ? Color.lerp(base, Colors.black, 0.08) ?? base
         : base;

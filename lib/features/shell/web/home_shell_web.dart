@@ -162,7 +162,9 @@ class _Sidebar extends ConsumerWidget {
     return Container(
       width: width,
       decoration: BoxDecoration(
-        color: s.ctaFg,
+        // Was mistakenly wired to `s.ctaFg` (always white) — meant the rail
+        // stayed white in dark mode. Now tracks the theme via `sidebarBg`.
+        color: s.topbarBg,
         border: Border(
           right: BorderSide(color: s.sidebarBorder, width: 1),
         ),
@@ -172,7 +174,8 @@ class _Sidebar extends ConsumerWidget {
         children: [
           const SizedBox(height: 14),
           _NewTicketButton(collapsed: collapsed),
-          const SizedBox(height: 14),
+          const SizedBox(height: 18),
+          _SectionLabel(text: 'Menu', collapsed: collapsed),
           _SideNavItem(
             icon: _destinations[_idxDashboard].icon,
             selectedIcon: _destinations[_idxDashboard].selectedIcon,
@@ -205,6 +208,8 @@ class _Sidebar extends ConsumerWidget {
             selected: currentIndex == _idxInbox,
             onTap: () => onTap(_idxInbox),
           ),
+          const SizedBox(height: 10),
+          _SectionLabel(text: 'Workspace', collapsed: collapsed),
           _SideNavItem(
             icon: _destinations[_idxMore].icon,
             selectedIcon: _destinations[_idxMore].selectedIcon,
@@ -225,12 +230,43 @@ class _Sidebar extends ConsumerWidget {
   }
 }
 
-/// Sidebar primary action — filled brand-blue pill sitting above the
-/// Dashboard nav item. Filled (vs. outlined) so it reads clearly against the
-/// dark rail; on the previous light rail an outlined pill worked, but on a
-/// dark bg a filled brand pill has stronger visual weight without competing
-/// with the selected nav row (which uses a neutral dark surface + accent
-/// bar).
+/// Small uppercase section label that groups a run of nav items. In
+/// collapsed mode we render a hairline divider instead so the grouping
+/// still reads without a label crashing into the icon-only rail.
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel({required this.text, required this.collapsed});
+  final String text;
+  final bool collapsed;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ShellTokens.of(context);
+    if (collapsed) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+        child: Container(height: 1, color: s.sidebarDivider),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(22, 2, 22, 8),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: s.sidebarTextIdle,
+          letterSpacing: 0.9,
+        ),
+      ),
+    );
+  }
+}
+
+/// Sidebar primary action — flat solid CTA. Hover is a single colour swap
+/// in the same family, nothing else. Dark mode uses a monochrome sidebar-
+/// family surface so the CTA reads as an integrated chip rather than a
+/// bright blue plate against the near-black rail; the accent blue is
+/// reserved for the plus glyph.
 class _NewTicketButton extends StatefulWidget {
   const _NewTicketButton({required this.collapsed});
   final bool collapsed;
@@ -245,6 +281,7 @@ class _NewTicketButtonState extends State<_NewTicketButton> {
   @override
   Widget build(BuildContext context) {
     final s = ShellTokens.of(context);
+    final borderColor = _hover ? s.ctaBorderHover : s.ctaBorder;
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 12 : 11),
       child: MouseRegion(
@@ -254,40 +291,43 @@ class _NewTicketButtonState extends State<_NewTicketButton> {
         child: GestureDetector(
           onTap: () => showCreateTicketDialog(context),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 120),
+            duration: const Duration(milliseconds: 140),
             curve: Curves.easeOut,
             height: 40,
             decoration: BoxDecoration(
-              color: _hover ? s.ctaHover : s.ctaBg,
+              color: _hover ? s.ctaBgHover : s.ctaBg,
               borderRadius: BorderRadius.circular(WebTokens.rSm),
-              boxShadow: _hover
-                  ? const [
-                      BoxShadow(
-                        color: Color(0x330037B7),
-                        blurRadius: 14,
-                        offset: Offset(0, 4),
-                      ),
-                    ]
-                  : null,
+              border: borderColor == null
+                  ? null
+                  : Border.all(color: borderColor, width: 1),
             ),
             child: widget.collapsed
                 ? Tooltip(
                     message: 'New ticket',
-                    child: Icon(Icons.add, color: s.ctaFg, size: 20),
+                    child: Center(
+                      child: Icon(
+                        Icons.library_add_outlined,
+                        color: s.ctaIconFg,
+                        size: 20,
+                      ),
+                    ),
                   )
                 : Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
                     children: [
+                      const SizedBox(width: 12),
+                      Icon(
+                        Icons.library_add_outlined,
+                        color: s.ctaIconFg,
+                        size: 18,
+                      ),
                       const SizedBox(width: 10),
-                      Icon(Icons.add, color: s.ctaFg, size: 18),
-                      const SizedBox(width: 6),
                       Text(
                         'New Ticket',
                         style: TextStyle(
                           color: s.ctaFg,
                           fontSize: 13.5,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: 0.1,
+                          letterSpacing: 0.2,
                         ),
                       ),
                     ],
@@ -362,7 +402,7 @@ class _SideNavItemState extends State<_SideNavItem> {
               Icon(
                 widget.selected ? widget.selectedIcon : widget.icon,
                 color: iconColor,
-                size: 18,
+                size: 19,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -373,7 +413,7 @@ class _SideNavItemState extends State<_SideNavItem> {
                     fontSize: 13.5,
                     fontWeight:
                         widget.selected ? FontWeight.w600 : FontWeight.w500,
-                    letterSpacing: 0.1,
+                    letterSpacing: 0.15,
                   ),
                 ),
               ),
@@ -385,9 +425,9 @@ class _SideNavItemState extends State<_SideNavItem> {
           );
 
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: widget.collapsed ? 10 : 10,
-        vertical: 4,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 2,
       ),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -399,26 +439,32 @@ class _SideNavItemState extends State<_SideNavItem> {
           child: Stack(
             children: [
               AnimatedContainer(
-                duration: const Duration(milliseconds: 80),
+                duration: const Duration(milliseconds: 160),
                 curve: Curves.easeOut,
-                height: 38,
+                height: 40,
                 decoration: BoxDecoration(
                   color: bg,
                   borderRadius: BorderRadius.circular(WebTokens.rSm),
+                  // Soft accent glow on the selected pill so the current
+                  // section reads as elevated against sibling rows — matches
+                  // the accent-shadow language used on KPI tiles / CTAs.
+                  boxShadow: widget.selected ? WebTokens.accentGlow : null,
                 ),
                 child: child,
               ),
-              // Thin left accent bar visible only for the selected row.
+              // Rounded left accent bar on the selected row. Fully-rounded so
+              // the marker feels like a pill sitting inside the pill rather
+              // than a hard rectangular tick.
               if (widget.selected)
                 Positioned(
                   left: 0,
-                  top: 8,
-                  bottom: 8,
+                  top: 10,
+                  bottom: 10,
                   child: Container(
                     width: 3,
                     decoration: BoxDecoration(
                       color: s.sidebarAccentBar,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(WebTokens.rFull),
                     ),
                   ),
                 ),
@@ -540,13 +586,22 @@ class _ProfileFooterState extends ConsumerState<_ProfileFooter> {
             behavior: HitTestBehavior.opaque,
             onTap: () => showProfileDialog(context),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 80),
+              duration: const Duration(milliseconds: 140),
               curve: Curves.easeOut,
               margin: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              padding: const EdgeInsets.fromLTRB(8, 8, 6, 8),
               decoration: BoxDecoration(
                 color: _hover ? s.sidebarHover : s.sidebarBg,
                 borderRadius: BorderRadius.circular(WebTokens.rSm),
+                // Hairline border appears only on hover, so the footer sits
+                // flush at rest but promotes into a card the moment it's
+                // interactive — mirrors the KPI tile hover treatment.
+                border: Border.all(
+                  color: _hover
+                      ? s.sidebarBorder
+                      : Colors.transparent,
+                  width: 1,
+                ),
               ),
               child: Row(
                 children: [
@@ -580,6 +635,15 @@ class _ProfileFooterState extends ConsumerState<_ProfileFooter> {
                       ],
                     ),
                   ),
+                  // Trailing kebab hints that the row opens a menu. Fades
+                  // in / brightens on hover so at rest it's just a whisper.
+                  Icon(
+                    Icons.more_horiz_rounded,
+                    size: 18,
+                    color: _hover
+                        ? s.profileNameFg
+                        : s.profileEmailFg,
+                  ),
                 ],
               ),
             ),
@@ -612,6 +676,10 @@ class _TopBar extends ConsumerWidget {
       decoration: BoxDecoration(
         color: s.topbarBg,
         border: Border(bottom: BorderSide(color: s.topbarBorder, width: 1)),
+        // Whisper shadow so the top bar reads as slightly lifted off the
+        // warm-paper content below — mirrors the shell rhythm used in
+        // Asana / Linear.
+        boxShadow: WebTokens.shadowXs,
       ),
       child: Row(
         children: [
@@ -749,7 +817,7 @@ class _TopBarNotifButtonState extends State<_TopBarNotifButton> {
       child: Badge(
         isLabelVisible: widget.unread > 0,
         label: Text(widget.unread > 99 ? '99+' : '${widget.unread}'),
-        backgroundColor: WebTokens.danger,
+        backgroundColor: t.danger,
         textColor: Colors.white,
         textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
         largeSize: 16,
@@ -848,7 +916,7 @@ class _AvatarMenuButtonState extends ConsumerState<_AvatarMenuButton> {
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: _hover ? WebTokens.accent : t.borderSubtle,
+                  color: _hover ? t.accent : t.borderSubtle,
                   width: 1.5,
                 ),
               ),

@@ -23,7 +23,7 @@ import '../features/dashboard/web/_tokens.dart';
 ///     AppDropdownItem(value: 'close', label: 'Close task', icon: Icons.check_circle_outline),
 ///     AppDropdownItem(value: 'assign', label: 'Assign', icon: Icons.person_add_alt),
 ///     AppDropdownDivider(),
-///     AppDropdownItem(value: 'delete', label: 'Delete task', icon: Icons.delete_outline, tone: WebTokens.danger),
+///     AppDropdownItem(value: 'delete', label: 'Delete task', icon: Icons.delete_outline, tone: t.danger),
 ///   ],
 /// )
 /// ```
@@ -32,7 +32,7 @@ sealed class AppDropdownEntry<T> {
 }
 
 /// A single row in the dropdown. [tone] recolors the icon + label — pass
-/// `WebTokens.danger` for destructive actions.
+/// `t.danger` for destructive actions.
 class AppDropdownItem<T> extends AppDropdownEntry<T> {
   const AppDropdownItem({
     required this.value,
@@ -52,7 +52,7 @@ class AppDropdownItem<T> extends AppDropdownEntry<T> {
   final String? shortcut;
 
   /// Foreground color for the icon + label. Defaults to `textPrimary`.
-  /// Pass `WebTokens.danger` for destructive rows.
+  /// Pass `t.danger` for destructive rows.
   final Color? tone;
 
   final bool disabled;
@@ -223,7 +223,8 @@ class _AppDropdownButtonState<T> extends State<AppDropdownButton<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final tone = widget.tone ?? WebTokens.accent;
+    final t = WebTokens.of(context);
+    final tone = widget.tone ?? t.accent;
     final trigger = MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -391,18 +392,18 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                                 onTap: () => widget.onPick(e.value),
                                 hasSelectionColumn: _hasSelectionColumn,
                               )
-                            else if (e is AppDropdownHeader<T>)
-                              _AppDropdownHeaderRow(label: e.label)
+                            // else if (e is AppDropdownHeader<T>)
+                            //   _AppDropdownHeaderRow(label: e.label)
                             else
                               Padding(
                                 padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
+                                  vertical: 0,
                                 ),
-                                child: Divider(
-                                  height: 1,
-                                  thickness: 1,
-                                  color: t.borderSubtle,
-                                ),
+                                // child: Divider(
+                                //   height: 1,
+                                //   thickness: 1,
+                                //   color: t.borderSubtle,
+                                // ),
                               ),
                         ],
                       ),
@@ -466,7 +467,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                       textAlign: TextAlign.start,
                       textAlignVertical: TextAlignVertical.center,
                       style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
-                      cursorColor: WebTokens.accent,
+                      cursorColor: t.accent,
                       decoration: InputDecoration(
                         isCollapsed: true,
                         border: InputBorder.none,
@@ -588,7 +589,7 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
               ),
               const SizedBox(width: WebTokens.s3),
             ] else if (item.icon != null) ...[
-              Icon(item.icon, size: 16, color: effective),
+              // Icon(item.icon, size: 16, color: effective),
               const SizedBox(width: WebTokens.s3),
             ],
             Expanded(

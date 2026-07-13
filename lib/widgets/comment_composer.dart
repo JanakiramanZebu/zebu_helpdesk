@@ -217,7 +217,10 @@ class _CommentComposerState extends State<CommentComposer> {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final tone = _asNote ? WebTokens.warning : WebTokens.accent;
+    // Filled Send button keeps the Mynt brand blue in both modes — the
+    // dark-mode cyan accent is reserved for text/borders. Notes swap to
+    // warning amber as before.
+    final tone = _asNote ? WebTokens.warning : WebTokens.accentLight;
     final showToggle = widget.scope == ComposerScope.replyAndNote;
     final hint = _asNote ? widget.noteHint : widget.replyHint;
     final sendLabel = _asNote ? widget.noteLabel : widget.replyLabel;
@@ -305,9 +308,9 @@ class _CommentComposerState extends State<CommentComposer> {
                               lineSpacing: const VerticalSpacing(bottom: 0),
                             ),
                             link: base.link.copyWith(
-                              color: WebTokens.accent,
+                              color: t.accent,
                               decoration: TextDecoration.underline,
-                              decorationColor: WebTokens.accent,
+                              decorationColor: t.accent,
                             ),
                           );
                           return FleatherTheme(
@@ -558,12 +561,12 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
     final t = WebTokens.of(context);
     final disabled = widget.onTap == null;
     final bg = widget.active
-        ? WebTokens.accent.withValues(alpha: 0.14)
+        ? t.accent.withValues(alpha: 0.14)
         : (_hover && !disabled ? t.bgHover : Colors.transparent);
     final fg = disabled
         ? t.textSecondary.withValues(alpha: 0.4)
         : widget.active
-            ? WebTokens.accent
+            ? t.accent
             : (_hover ? t.textPrimary : t.textSecondary);
     final child = MouseRegion(
       cursor: disabled
@@ -631,7 +634,7 @@ class _ToggleChipState extends State<_ToggleChip> {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final effective = widget.tone ?? WebTokens.accent;
+    final effective = widget.tone ?? t.accent;
     // On-theme active state: same hairline `borderSubtle` outline the
     // other ghost controls in the panel use (Actions button, field
     // pills), with a soft `accentSoft` fill and accent-coloured label —
@@ -1259,7 +1262,7 @@ class _PopoverField extends StatelessWidget {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(WebTokens.rSm),
-          borderSide: const BorderSide(color: WebTokens.accent, width: 1.4),
+          borderSide: BorderSide(color: t.accent, width: 1.4),
         ),
       ),
     );
@@ -1285,7 +1288,7 @@ class _ApplyButtonState extends State<_ApplyButton> {
     final t = WebTokens.of(context);
     final enabled = widget.onTap != null;
     final fg = enabled
-        ? WebTokens.accent
+        ? t.accent
         : t.textSecondary.withValues(alpha: 0.4);
     return MouseRegion(
       cursor: enabled
@@ -1301,7 +1304,7 @@ class _ApplyButtonState extends State<_ApplyButton> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: enabled && _hover
-                ? WebTokens.accent.withValues(alpha: 0.08)
+                ? t.accent.withValues(alpha: 0.08)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(WebTokens.rSm),
           ),

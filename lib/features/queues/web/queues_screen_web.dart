@@ -11,6 +11,10 @@ import '../../../providers.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/states.dart';
+import '../../../widgets/web/list_search_input.dart';
+import '../../../widgets/web/list_table_shell.dart';
+import '../../../widgets/web/page_header.dart';
+import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../dashboard/web/_tokens.dart';
 import 'queue_editor_dialog.dart';
 
@@ -21,7 +25,6 @@ const double _kColTypeWidth = 110;
 const double _kColScopeWidth = 130;
 const double _kColFiltersWidth = 110;
 const double _kColActionsWidth = 60;
-const double _kColGap = 16;
 const double _kTableMinWidth = 900;
 
 /// Web-only saved-queues list. No slide-over — rows navigate to the
@@ -151,135 +154,59 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
     final all = _queues ?? const [];
     final rows = _filtered(all);
 
+    // Map the current type filter to a tab key so SegmentedTabBar's
+    // selected value is a plain string ('all' / 'ticket' / 'task').
+    final selectedTab = _type ?? 'all';
     return ColoredBox(
       color: t.bgPrimary,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              WebTokens.s6,
-              WebTokens.s5,
-              WebTokens.s6,
-              WebTokens.s4,
+          PageHeader(
+            title: 'Saved queues',
+            subtitle: _queues != null ? '${all.length} total' : null,
+            leading: _BackButton(
+              onTap: () {
+                if (context.canPop()) {
+                  context.pop();
+                } else {
+                  context.go(Routes.more);
+                }
+              },
             ),
-            child: LayoutBuilder(
-              builder: (context, rowConstraints) {
-                // Title-side content only (no action button, no filter
-                // chips). Wrapped in Expanded on wide layouts so filter
-                // chips + New button + search sit as a right-aligned group
-                // flush against each other.
-                final titleSide = Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    _BackButton(
-                      onTap: () {
-                        if (context.canPop()) {
-                          context.pop();
-                        } else {
-                          context.go(Routes.more);
-                        }
-                      },
-                    ),
-                    const SizedBox(width: WebTokens.s3),
-                    Flexible(
-                      child: Text(
-                        'Saved queues',
-                        style: t.hero,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (_queues != null) ...[
-                      const SizedBox(width: WebTokens.s3),
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          '${all.length} total',
-                          style: t.bodySm.withTabularNums(),
-                        ),
-                      ),
-                    ],
-                  ],
-                );
-
-                final filterChips = Row(
+            trailing: LayoutBuilder(
+              builder: (context, c) {
+                final filterAllowance = 152.0; // new button + gap
+                final available =
+                    c.hasBoundedWidth ? c.maxWidth - filterAllowance : 320.0;
+                final searchWidth = available.clamp(180.0, 320.0);
+                return Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _FilterChip(
-                      label: 'All',
-                      selected: _type == null,
-                      onTap: () => _setType(null),
-                    ),
-                    const SizedBox(width: WebTokens.s2),
-                    _FilterChip(
-                      label: 'Tickets',
-                      selected: _type == 'ticket',
-                      onTap: () => _setType('ticket'),
-                    ),
-                    const SizedBox(width: WebTokens.s2),
-                    _FilterChip(
-                      label: 'Tasks',
-                      selected: _type == 'task',
-                      onTap: () => _setType('task'),
-                    ),
-                  ],
-                );
-
-                const narrowBreak = 820.0;
-                if (rowConstraints.maxWidth < narrowBreak) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(child: titleSide),
-                          _NewButton(onTap: _openCreate),
-                        ],
-                      ),
-                      const SizedBox(height: WebTokens.s3),
-                      Row(
-                        children: [
-                          filterChips,
-                          const Spacer(),
-                          SizedBox(
-                            width: 240,
-                            child: _SearchInput(onChanged: _onSearchChanged),
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                }
-
-                final searchWidth =
-                    (rowConstraints.maxWidth * 0.28).clamp(180.0, 320.0);
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(child: titleSide),
-                    filterChips,
-                    const SizedBox(width: WebTokens.s3),
                     _NewButton(onTap: _openCreate),
                     const SizedBox(width: WebTokens.s3),
                     SizedBox(
                       width: searchWidth,
-                      child: _SearchInput(onChanged: _onSearchChanged),
+                      child: ListSearchInput(
+                        hintText: 'Search queues…',
+                        onChanged: _onSearchChanged,
+                      ),
                     ),
                   ],
                 );
               },
             ),
           ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: t.borderSubtle, width: 1),
-              ),
-            ),
-            child: const SizedBox(width: double.infinity, height: 0),
+          SegmentedTabBar<String>(
+            items: const [
+              SegmentedTabItem(value: 'all', label: 'All'),
+              SegmentedTabItem(value: 'ticket', label: 'Tickets'),
+              SegmentedTabItem(value: 'task', label: 'Tasks'),
+            ],
+            selected: selectedTab,
+            onSelect: (k) => _setType(k == 'all' ? null : k),
           ),
-          Expanded(child: _buildTable(rows)),
+          Expanded(child: ListTableShell(child: _buildTable(rows))),
         ],
       ),
     );
@@ -298,9 +225,9 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
     }
     return LayoutBuilder(
       builder: (context, constraints) {
-        final tableWidth = constraints.maxWidth > _kTableMinWidth
-            ? constraints.maxWidth
-            : _kTableMinWidth;
+        final horizontalScroll = constraints.maxWidth <= _kTableMinWidth;
+        final tableWidth =
+            horizontalScroll ? _kTableMinWidth : constraints.maxWidth;
         return Scrollbar(
           controller: _tableHScroll,
           scrollbarOrientation: ScrollbarOrientation.bottom,
@@ -312,7 +239,7 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const _TableHeader(),
+                  _TableHeader(scrollGutter: horizontalScroll),
                   Expanded(
                     child: ListView.builder(
                       padding: EdgeInsets.zero,
@@ -336,65 +263,8 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
 }
 
 // ---------------------------------------------------------------------------
-// Search + Back + New button + Filter chip
+// Back + New button
 // ---------------------------------------------------------------------------
-
-class _SearchInput extends StatefulWidget {
-  const _SearchInput({required this.onChanged});
-  final ValueChanged<String> onChanged;
-
-  @override
-  State<_SearchInput> createState() => _SearchInputState();
-}
-
-class _SearchInputState extends State<_SearchInput> {
-  final _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(color: t.borderSubtle, width: 1),
-    );
-    return TextField(
-      controller: _controller,
-      onChanged: (v) {
-        widget.onChanged(v);
-        setState(() {});
-      },
-      style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: t.bgElevated,
-        hoverColor: Colors.transparent,
-        focusColor: Colors.transparent,
-        border: border,
-        enabledBorder: border,
-        focusedBorder: border,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s4,
-          vertical: 12,
-        ),
-        prefixIcon: Icon(Icons.search, size: 18, color: t.textSecondary),
-        prefixIconConstraints:
-            const BoxConstraints(minWidth: 40, minHeight: 20),
-        hintText: 'Search queues…',
-        hintStyle: t.bodyBase.copyWith(
-          color: t.textSecondary,
-          letterSpacing: -0.1,
-        ),
-      ),
-    );
-  }
-}
 
 class _BackButton extends StatefulWidget {
   const _BackButton({required this.onTap});
@@ -454,7 +324,7 @@ class _NewButtonState extends State<_NewButton> {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final bg = _hover ? WebTokens.accentHover : WebTokens.accent;
+    final bg = _hover ? t.accentHover : t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -493,104 +363,130 @@ class _NewButtonState extends State<_NewButton> {
   }
 }
 
-class _FilterChip extends StatefulWidget {
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+// ---------------------------------------------------------------------------
+// Table header — matches the tickets table: edge-to-edge, hairline
+// top/bottom borders, and per-column right-border creating the vertical
+// grid line that body rows align to pixel-for-pixel.
+// ---------------------------------------------------------------------------
 
-  @override
-  State<_FilterChip> createState() => _FilterChipState();
-}
+class _TableHeader extends StatelessWidget {
+  const _TableHeader({this.scrollGutter = false});
 
-class _FilterChipState extends State<_FilterChip> {
-  bool _hover = false;
+  final bool scrollGutter;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final bg = widget.selected
-        ? WebTokens.accent
-        : (_hover ? t.bgHover : t.bgTertiary);
-    final fg = widget.selected ? WebTokens.textInverse : t.textSecondary;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          height: 32,
-          padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(_kFlatRadius),
-          ),
-          child: Text(
-            widget.label,
-            style: t.bodySm.copyWith(
-              color: fg,
-              fontWeight: FontWeight.w600,
+    return Container(
+      decoration: BoxDecoration(
+        color: t.bgElevated,
+        border: Border(
+          top: BorderSide(color: t.borderSubtle, width: 1),
+          bottom: BorderSide(color: t.borderSubtle, width: 1),
+        ),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            const _HeaderCell(flex: _kColNameFlex, label: 'Name'),
+            const _HeaderCell(width: _kColTypeWidth, label: 'Type'),
+            const _HeaderCell(width: _kColScopeWidth, label: 'Scope'),
+            const _HeaderCell(
+              width: _kColFiltersWidth,
+              label: 'Filters',
+              alignRight: true,
             ),
-          ),
+            const _HeaderCell(
+              width: _kColActionsWidth,
+              label: '',
+              last: true,
+            ),
+            if (scrollGutter) const SizedBox(width: 10),
+          ],
         ),
       ),
     );
   }
 }
 
-// ---------------------------------------------------------------------------
-// Table
-// ---------------------------------------------------------------------------
-
-class _TableHeader extends StatelessWidget {
-  const _TableHeader();
+/// Column header cell — mirrors the tickets `_HeaderCell`.
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell({
+    required this.label,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final String label;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    return Container(
-      color: t.bgElevated,
+    final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s8,
+        horizontal: WebTokens.s3,
         vertical: WebTokens.s3,
       ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: _kColNameFlex,
-            child: Text('Name', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColTypeWidth,
-            child: Text('Type', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColScopeWidth,
-            child: Text('Scope', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColFiltersWidth,
-            child: Text(
-              'Filters',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
-            ),
-          ),
-          const SizedBox(width: _kColGap),
-          const SizedBox(width: _kColActionsWidth),
-        ],
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: t.tableHeader,
+        textAlign: alignRight ? TextAlign.right : TextAlign.left,
       ),
     );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
+  }
+}
+
+/// Body cell — mirrors the tickets `_BodyCell`.
+class _BodyCell extends StatelessWidget {
+  const _BodyCell({
+    required this.child,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final Widget child;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: child,
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
   }
 }
 
@@ -638,111 +534,84 @@ class _RowState extends State<_Row> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s8,
-            vertical: WebTokens.s4,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: _kColNameFlex,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: WebTokens.accent.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(WebTokens.rXs),
-                      ),
-                      child: Icon(
-                        q.type == 'task'
-                            ? Icons.task_alt
-                            : Icons.confirmation_number_outlined,
-                        size: 16,
-                        color: WebTokens.accent,
-                      ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _BodyCell(
+                  flex: _kColNameFlex,
+                  child: Text(
+                    q.fullName.isEmpty ? '(unnamed)' : q.fullName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyBase.copyWith(
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(width: WebTokens.s3),
-                    Expanded(
-                      child: Text(
-                        q.fullName.isEmpty ? '(unnamed)' : q.fullName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.bodyBase.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColTypeWidth,
-                child: _Pill(
-                  label: q.type == 'task' ? 'Task' : 'Ticket',
-                  tone: WebTokens.info,
-                ),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColScopeWidth,
-                child: Text(
-                  scopeLabel,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.bodySm.copyWith(
-                    color: t.textPrimary,
-                    fontWeight: FontWeight.w500,
                   ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColFiltersWidth,
-                child: Text(
-                  '${q.criteria.length}',
-                  textAlign: TextAlign.right,
-                  style: t.bodySm
-                      .copyWith(
-                        color: t.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      )
-                      .withTabularNums(),
+                _BodyCell(
+                  width: _kColTypeWidth,
+                  child: _Pill(
+                    label: q.type == 'task' ? 'Task' : 'Ticket',
+                    tone: WebTokens.info,
+                  ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColActionsWidth,
-                child: q.editable
-                    ? PopupMenuButton<String>(
-                        tooltip: 'Actions',
-                        onSelected: (v) {
-                          if (v == 'edit') widget.onEdit();
-                          if (v == 'delete') widget.onDelete();
-                        },
-                        icon: Icon(
-                          Icons.more_horiz,
-                          size: 18,
-                          color: t.textSecondary,
-                        ),
-                        itemBuilder: (_) => const [
-                          PopupMenuItem(
-                            value: 'edit',
-                            child: Text('Rename'),
+                _BodyCell(
+                  width: _kColScopeWidth,
+                  child: Text(
+                    scopeLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodySm.copyWith(
+                      color: t.textPrimary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                _BodyCell(
+                  width: _kColFiltersWidth,
+                  alignRight: true,
+                  child: Text(
+                    '${q.criteria.length}',
+                    textAlign: TextAlign.right,
+                    style: t.bodySm
+                        .copyWith(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        )
+                        .withTabularNums(),
+                  ),
+                ),
+                _BodyCell(
+                  width: _kColActionsWidth,
+                  last: true,
+                  child: q.editable
+                      ? PopupMenuButton<String>(
+                          tooltip: 'Actions',
+                          onSelected: (v) {
+                            if (v == 'edit') widget.onEdit();
+                            if (v == 'delete') widget.onDelete();
+                          },
+                          icon: Icon(
+                            Icons.more_horiz,
+                            size: 18,
+                            color: t.textSecondary,
                           ),
-                          PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
-                          ),
-                        ],
-                      )
-                    : const SizedBox.shrink(),
-              ),
-            ],
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'edit',
+                              child: Text('Rename'),
+                            ),
+                            PopupMenuItem(
+                              value: 'delete',
+                              child: Text('Delete'),
+                            ),
+                          ],
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
           ),
         ),
       ),

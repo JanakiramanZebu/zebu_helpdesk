@@ -71,13 +71,13 @@ class _KpiTileState extends State<KpiTile> {
     final interactive = widget.onTap != null;
     final lifted = _hover && interactive;
 
-    // Ratio is only shown when we have both numerator and a non-zero
-    // denominator — avoids a 100 %-filled bar staring at the user for
-    // "16 of 16 open" style cases where the ratio is uninformative.
-    final showRatio = widget.current != null &&
-        widget.denominator != null &&
-        widget.denominator! > 0;
-    final fraction = showRatio
+    // Strip is rendered whenever the caller supplies both numerator and
+    // denominator so every tile in the KPI row lines up to the same height —
+    // a 0-denominator tile draws an empty track and reads "0 of 0" instead
+    // of collapsing shorter than its siblings.
+    final showRatio =
+        widget.current != null && widget.denominator != null;
+    final fraction = (showRatio && widget.denominator! > 0)
         ? (widget.current! / widget.denominator!).clamp(0.0, 1.0)
         : 0.0;
 

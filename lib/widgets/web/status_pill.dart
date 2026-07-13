@@ -18,6 +18,7 @@ class StatusPill extends StatelessWidget {
     required this.color,
     this.icon,
     this.dense = false,
+    this.fontWeight = FontWeight.w500,
   });
 
   final String label;
@@ -25,9 +26,14 @@ class StatusPill extends StatelessWidget {
   final IconData? icon;
   final bool dense;
 
+  /// Label weight. Defaults to `w500` (matches the light restraint the pill
+  /// was designed for); pass `w600` when the pill also carries an
+  /// identity/type meaning that should read as bolder in a scannable column.
+  final FontWeight fontWeight;
+
   @override
   Widget build(BuildContext context) {
-    final size = dense ? 11.0 : 12.0;
+    final size = dense ? 11.0 : 14.0;
     final indicatorSize = dense ? 5.0 : 6.0;
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -51,7 +57,7 @@ class StatusPill extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: size,
-              fontWeight: FontWeight.w500,
+              fontWeight: fontWeight,
               color: color,
               height: 1.25,
               letterSpacing: 0.05,

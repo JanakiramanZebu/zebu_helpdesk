@@ -1183,7 +1183,7 @@ class _ModeToggle extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final trackColor = isDark
-        ? const Color(0xFF1E1E1E)
+        ? const Color(0xFF161B22) // GitHub `canvas-overlay`
         : const Color(0xFFF1F1F1);
 
     return Container(

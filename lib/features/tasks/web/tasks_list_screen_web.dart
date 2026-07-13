@@ -12,6 +12,7 @@ import '../../../widgets/list_controls.dart' show DateRange;
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
+import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../../widgets/web/status_pill.dart';
@@ -21,8 +22,12 @@ import 'task_detail_panel.dart';
 
 // Column layout for the tasks table. Header and every row share these so the
 // vertical grid lines up pixel-for-pixel without a `Table`/`Row` per-cell
-// wrapper. Task column carries the number + title and needs the most room;
+// wrapper. Task column carries the title (and optional blocked lock);
 // Department is a short label and can afford the tightest flex.
+/// Task ID column — fixed 90 px, matches the tickets table so both grids
+/// share the same # column width. Split out of the "Task" column so the
+/// number reads as its own sortable value.
+const double _kColNumberWidth = 90;
 const int _kColTaskFlex = 6;
 const int _kColAssigneeFlex = 2;
 const int _kColDeptFlex = 2;
@@ -32,10 +37,10 @@ const double _kColStatusWidth = 130;
 const double _kColDueWidth = 120;
 
 /// Minimum table width — accounts for the fixed-width columns
-/// (110 + 130 + 120 = 360), the 3 px leading accent-stripe rail, and a
-/// readable minimum for each flex column. Below this the table horizontally
-/// scrolls instead of squeezing columns.
-const double _kTableMinWidth = 1080;
+/// (90 + 110 + 130 + 120 = 450), the 3 px leading accent-stripe rail, and
+/// a readable minimum for each flex column. Below this the table
+/// horizontally scrolls instead of squeezing columns.
+const double _kTableMinWidth = 1160;
 
 /// Web-only tasks list.
 ///
@@ -390,14 +395,15 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
               onSelect: (k) => setState(() => _view = k),
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final horizontalScroll =
-                      constraints.maxWidth <= _kTableMinWidth;
-                  final tableWidth = horizontalScroll
-                      ? _kTableMinWidth
-                      : constraints.maxWidth;
-                  return Scrollbar(
+              child: ListTableShell(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final horizontalScroll =
+                        constraints.maxWidth <= _kTableMinWidth;
+                    final tableWidth = horizontalScroll
+                        ? _kTableMinWidth
+                        : constraints.maxWidth;
+                    return Scrollbar(
                     controller: _tableHScroll,
                     scrollbarOrientation: ScrollbarOrientation.bottom,
                     child: SingleChildScrollView(
@@ -438,6 +444,7 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                     ),
                   );
                 },
+              ),
               ),
             ),
           ],
@@ -480,6 +487,7 @@ class _TableHeader extends StatelessWidget {
             // Leading 3 px offset matches the row's accent-stripe rail so
             // column starts line up with row content pixel-for-pixel.
             const SizedBox(width: 3),
+            const _HeaderCell(width: _kColNumberWidth, label: '#'),
             const _HeaderCell(flex: _kColTaskFlex, label: 'Task'),
             const _HeaderCell(flex: _kColAssigneeFlex, label: 'Assignee'),
             const _HeaderCell(flex: _kColDeptFlex, label: 'Department'),
@@ -608,7 +616,7 @@ class _TaskRowState extends State<_TaskRow> {
   // Emergency = red, Low = success green.
   Color _statusColor(WebTokens t) {
     final task = widget.task;
-    if (task.overdue) return WebTokens.danger;
+    if (task.overdue) return t.danger;
     final s = task.statusName.toLowerCase();
     if (s.contains('closed') ||
         s.contains('resolved') ||
@@ -621,7 +629,7 @@ class _TaskRowState extends State<_TaskRow> {
 
   Color _priorityColor(WebTokens t) {
     final p = (widget.task.priority?.name ?? '').toLowerCase();
-    if (p.contains('emergency') || p.contains('urgent')) return WebTokens.danger;
+    if (p.contains('emergency') || p.contains('urgent')) return t.danger;
     if (p.contains('high')) return WebTokens.warning;
     if (p.contains('low')) return WebTokens.success;
     if (p.contains('normal')) return WebTokens.info;
@@ -637,11 +645,11 @@ class _TaskRowState extends State<_TaskRow> {
     // row so content never shifts.
     final Color stripeColor;
     if (task.overdue) {
-      stripeColor = WebTokens.danger;
+      stripeColor = t.danger;
     } else if (widget.selected) {
-      stripeColor = WebTokens.accent;
+      stripeColor = t.accent;
     } else if (_hover) {
-      stripeColor = WebTokens.accent;
+      stripeColor = t.accent;
     } else {
       stripeColor = Colors.transparent;
     }
@@ -677,19 +685,21 @@ class _TaskRowState extends State<_TaskRow> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _BodyCell(
+                        width: _kColNumberWidth,
+                        child: Text(
+                          '#${task.number}',
+                          style: t.bodySm
+                              .copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: t.accent,
+                              )
+                              .withTabularNums(),
+                        ),
+                      ),
+                      _BodyCell(
                         flex: _kColTaskFlex,
                         child: Row(
                           children: [
-                            Text(
-                              '#${task.number}',
-                              style: t.bodySm
-                                  .copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: WebTokens.accent,
-                                  )
-                                  .withTabularNums(),
-                            ),
-                            const SizedBox(width: WebTokens.s2),
                             Flexible(
                               child: Text(
                                 task.title,
@@ -704,7 +714,7 @@ class _TaskRowState extends State<_TaskRow> {
                               Icon(
                                 Icons.lock_outline,
                                 size: 14,
-                                color: WebTokens.danger,
+                                color: t.danger,
                               ),
                             ],
                           ],
@@ -893,14 +903,12 @@ class _SkeletonRow extends StatelessWidget {
             // table so nothing shifts when data arrives.
             const SizedBox(width: 3),
             _BodyCell(
+              width: _kColNumberWidth,
+              child: _block(56),
+            ),
+            _BodyCell(
               flex: _kColTaskFlex,
-              child: Row(
-                children: [
-                  _block(56),
-                  const SizedBox(width: WebTokens.s2),
-                  Flexible(child: _block(260)),
-                ],
-              ),
+              child: _block(260),
             ),
             _BodyCell(
               flex: _kColAssigneeFlex,

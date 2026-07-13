@@ -28,6 +28,7 @@ import '../../dashboard/web/_tokens.dart';
 ///   - tickets rendered as card-per-item rows;
 ///   - notes rendered as card-per-item rows with actor avatar.
 const double _kFieldLabelWidth = 88;
+const double _kSidebarRowHeight = 40;
 const double _kAvatarSize = 32;
 
 /// Panel-body width at (or above) which the panel switches to a two-column
@@ -232,7 +233,8 @@ class _UserDetailPanelState extends ConsumerState<UserDetailPanel> {
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     return Material(
-      color: t.bgElevated,
+      // Warm-paper ground so the panel matches the list surface behind it.
+      color: t.bgPrimary,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       child: _buildBody(t),
@@ -572,6 +574,7 @@ class _ActionsBtnState extends State<_ActionsBtn> {
   bool _hover = false;
 
   Future<void> _open() async {
+    final t = WebTokens.of(context);
     final hasOrg = widget.user.org != null;
     final chosen = await showAppDropdown<String>(
       context,
@@ -610,11 +613,11 @@ class _ActionsBtnState extends State<_ActionsBtn> {
           icon: Icons.key_outlined,
         ),
         const AppDropdownDivider(),
-        const AppDropdownItem(
+        AppDropdownItem(
           value: 'delete',
           label: 'Delete user',
           icon: Icons.delete_outline,
-          tone: WebTokens.danger,
+          tone: t.danger,
         ),
       ],
     );
@@ -689,7 +692,7 @@ class _IconBtnState extends State<_IconBtn> {
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
     final fg = _hover && widget.destructive
-        ? WebTokens.danger
+        ? t.danger
         : t.textPrimary;
     final child = MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -743,11 +746,13 @@ class _FieldsTable extends StatelessWidget {
         _FieldRow(
           icon: Icons.alternate_email,
           label: 'Email',
+          sidebar: sidebar,
           value: _TextValue(text: email),
         ),
       _FieldRow(
         icon: Icons.phone_outlined,
         label: 'Phone',
+        sidebar: sidebar,
         value: phone.isEmpty
             ? const _EmptyValue(label: 'No phone')
             : _TextValue(text: phone),
@@ -755,6 +760,7 @@ class _FieldsTable extends StatelessWidget {
       _FieldRow(
         icon: Icons.business_outlined,
         label: 'Organization',
+        sidebar: sidebar,
         value: orgName.isEmpty
             ? const _EmptyValue(label: 'None')
             : _TextValue(text: orgName),
@@ -762,25 +768,54 @@ class _FieldsTable extends StatelessWidget {
       _FieldRow(
         icon: Icons.event_outlined,
         label: 'Created',
+        sidebar: sidebar,
         value: _TextValue(text: Fmt.dateTime(user.created)),
       ),
       _FieldRow(
         icon: Icons.update,
         label: 'Updated',
+        sidebar: sidebar,
         value: _TextValue(text: Fmt.dateTime(user.updated)),
       ),
     ];
 
+    // Sidebar mode: wrap the field rows in a single elevated card so every
+    // row sits on the same white ground against the panel's warm-paper bg.
+    // Subtle shadow lifts the rail off the page.
     if (sidebar) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: rows,
+        padding: const EdgeInsets.fromLTRB(
+          WebTokens.s3,
+          0,
+          WebTokens.s3,
+          WebTokens.s3,
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: t.bgElevated,
+            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            border: Border.all(color: t.borderSubtle, width: 1),
+            boxShadow: WebTokens.shadowXs,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: WebTokens.s3,
+              vertical: WebTokens.s2,
+            ),
+            child: DefaultTextStyle.merge(
+              style: t.bodyBase.copyWith(color: t.textPrimary),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: rows,
+              ),
+            ),
+          ),
         ),
       );
     }
 
+    // Narrow single-column: rounded hairline card + tighter `bodySm`
+    // rhythm inside so the value text matches the compact layout.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: WebTokens.s4),
       child: DecoratedBox(
@@ -793,9 +828,12 @@ class _FieldsTable extends StatelessWidget {
             horizontal: WebTokens.s3,
             vertical: WebTokens.s2,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: rows,
+          child: DefaultTextStyle.merge(
+            style: t.bodySm.copyWith(color: t.textPrimary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: rows,
+            ),
           ),
         ),
       ),
@@ -808,32 +846,43 @@ class _FieldRow extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    required this.sidebar,
   });
   final IconData icon;
   final String label;
   final Widget value;
 
+  /// True when the row is rendered inside the wide-mode right rail. In
+  /// sidebar mode the row height, icon, and label style all step up so
+  /// the fields column reads as its own scannable rail rather than a
+  /// squeezed footnote under the profile card.
+  final bool sidebar;
+
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
+    final rowHeight = sidebar ? _kSidebarRowHeight : 30.0;
+    final labelStyle = sidebar
+        ? t.bodyBase.copyWith(
+            color: t.textPrimary,
+            fontWeight: FontWeight.w500,
+          )
+        : t.bodySm.copyWith(
+            color: t.textPrimary,
+            fontWeight: FontWeight.w500,
+          );
+    // Leading icons removed — labels alone carry the meaning and the row
+    // reads cleaner without the credential glyphs.
     return SizedBox(
-      height: 30,
+      height: rowHeight,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: WebTokens.s1),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: t.textPrimary),
-            const SizedBox(width: WebTokens.s3),
             SizedBox(
               width: _kFieldLabelWidth,
-              child: Text(
-                label,
-                style: t.bodySm.copyWith(
-                  color: t.textPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              child: Text(label, style: labelStyle),
             ),
             const SizedBox(width: WebTokens.s3),
             Expanded(child: value),
@@ -851,11 +900,15 @@ class _TextValue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
+    // Inherit ambient DefaultTextStyle base so the sidebar `bodyBase`
+    // and narrow-card `bodySm` wrappers propagate their size into every
+    // value cell without hard-pinning.
+    final base = DefaultTextStyle.of(context).style;
     return Text(
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: base.copyWith(
         color: t.textPrimary,
         fontWeight: FontWeight.w500,
       ),
@@ -870,11 +923,12 @@ class _EmptyValue extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
+    final base = DefaultTextStyle.of(context).style;
     return Text(
       label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: base.copyWith(
         color: t.textSecondary,
         fontWeight: FontWeight.w400,
       ),
@@ -987,7 +1041,7 @@ class _TicketRowState extends State<_TicketRow> {
 
   Color _statusTone(WebTokens t) {
     final s = widget.ticket.statusName.toLowerCase();
-    if (widget.ticket.isOverdue) return WebTokens.danger;
+    if (widget.ticket.isOverdue) return t.danger;
     if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
     if (s.contains('open') || s.contains('new')) return WebTokens.success;
     return WebTokens.info;
@@ -1021,7 +1075,7 @@ class _TicketRowState extends State<_TicketRow> {
                 color: _hover ? t.borderDefault : t.borderSubtle,
                 width: 1,
               ),
-              boxShadow: _hover ? WebTokens.shadowXs : null,
+              boxShadow: _hover ? WebTokens.shadowSm : WebTokens.shadowXs,
             ),
             padding: const EdgeInsets.symmetric(
               horizontal: WebTokens.s4,
@@ -1127,7 +1181,7 @@ class _NoteRowState extends State<_NoteRow> {
               color: _hover ? t.borderDefault : t.borderSubtle,
               width: 1,
             ),
-            boxShadow: _hover ? WebTokens.shadowXs : null,
+            boxShadow: _hover ? WebTokens.shadowSm : WebTokens.shadowXs,
           ),
           padding: const EdgeInsets.symmetric(
             horizontal: WebTokens.s4,
@@ -1229,7 +1283,7 @@ class _DeleteBtnState extends State<_DeleteBtn> {
             child: Icon(
               Icons.delete_outline,
               size: 14,
-              color: _hover ? WebTokens.danger : t.textSecondary,
+              color: _hover ? t.danger : t.textSecondary,
             ),
           ),
         ),
@@ -1459,7 +1513,7 @@ class _EditUserDialogState extends ConsumerState<_EditUserDialog> {
                 const SizedBox(height: WebTokens.s3),
                 Text(
                   _formError!,
-                  style: t.bodySm.copyWith(color: WebTokens.danger),
+                  style: t.bodySm.copyWith(color: t.danger),
                 ),
               ],
               const SizedBox(height: WebTokens.s4),

@@ -174,7 +174,7 @@ class _ToastCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final accent = _accentColor(controller.type);
+    final accent = _accentColor(controller.type, t);
     final visible = controller.visible;
 
     return AnimatedSlide(
@@ -260,11 +260,11 @@ class _ToastCard extends StatelessWidget {
     );
   }
 
-  Color _accentColor(ToastType type) => switch (type) {
+  Color _accentColor(ToastType type, WebTokens t) => switch (type) {
     ToastType.success => WebTokens.success,
-    ToastType.error => WebTokens.danger,
+    ToastType.error => t.danger,
     ToastType.warning => WebTokens.warning,
-    ToastType.info => WebTokens.accent,
+    ToastType.info => t.accent,
   };
 }
 

@@ -410,11 +410,11 @@ class _HeroHeader extends StatelessWidget {
                   ),
                   const SizedBox(width: WebTokens.s2),
                   if (task.blocked) ...[
-                    _Tag(label: 'BLOCKED', tone: WebTokens.danger),
+                    _Tag(label: 'BLOCKED', tone: t.danger),
                     const SizedBox(width: WebTokens.s2),
                   ],
                   if (task.overdue)
-                    _Tag(label: 'OVERDUE', tone: WebTokens.danger),
+                    _Tag(label: 'OVERDUE', tone: t.danger),
                 ],
               ),
               const SizedBox(height: WebTokens.s2),
@@ -430,7 +430,7 @@ class _HeroHeader extends StatelessWidget {
                     const SizedBox(width: WebTokens.s2),
                     _Tag(
                       label: task.priority!.name.toUpperCase(),
-                      tone: _priorityTone(task.priority!.name),
+                      tone: _priorityTone(task.priority!.name, t),
                     ),
                   ],
                   if (task.progress > 0) ...[
@@ -448,8 +448,8 @@ class _HeroHeader extends StatelessWidget {
                                 value: (task.progress / 100).clamp(0, 1),
                                 minHeight: 6,
                                 backgroundColor: t.bgHover,
-                                valueColor: const AlwaysStoppedAnimation(
-                                  WebTokens.accent,
+                                valueColor: AlwaysStoppedAnimation(
+                                  t.accent,
                                 ),
                               ),
                             ),
@@ -476,9 +476,9 @@ class _HeroHeader extends StatelessWidget {
     );
   }
 
-  static Color _priorityTone(String name) {
+  static Color _priorityTone(String name, WebTokens t) {
     final n = name.toLowerCase();
-    if (n.contains('emergency') || n.contains('high')) return WebTokens.danger;
+    if (n.contains('emergency') || n.contains('high')) return t.danger;
     if (n.contains('low')) return WebTokens.success;
     return WebTokens.warning;
   }
@@ -549,7 +549,8 @@ class _ActionMenu extends StatelessWidget {
           vertical: 8,
         ),
         decoration: BoxDecoration(
-          color: WebTokens.accent,
+          // Filled Actions button keeps the Mynt brand blue in both modes.
+          color: WebTokens.accentLight,
           borderRadius: BorderRadius.circular(_kFlatRadius),
         ),
         child: Row(
@@ -619,7 +620,7 @@ class _ThreadEntryRow extends StatelessWidget {
     final isResponse = entry.isResponse;
     final tone = isNote
         ? WebTokens.warning
-        : (isResponse ? WebTokens.accent : t.textSecondary);
+        : (isResponse ? t.accent : t.textSecondary);
     final typeLabel = isNote
         ? 'NOTE'
         : (isResponse ? 'REPLY' : 'MESSAGE');
@@ -823,7 +824,7 @@ class _ReplyCardState extends State<_ReplyCard> {
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(_kFlatRadius),
                         borderSide: BorderSide(
-                          color: _asNote ? WebTokens.warning : WebTokens.accent,
+                          color: _asNote ? WebTokens.warning : t.accent,
                           width: 1.4,
                         ),
                       ),
@@ -836,7 +837,7 @@ class _ReplyCardState extends State<_ReplyCard> {
                   label: _asNote ? 'Save note' : 'Send reply',
                   icon: _asNote ? Icons.sticky_note_2_outlined : Icons.send,
                   disabled: widget.disabled || _sending,
-                  tone: _asNote ? WebTokens.warning : WebTokens.accent,
+                  tone: _asNote ? WebTokens.warning : WebTokens.accentLight,
                   onTap: _submit,
                 ),
               ],
@@ -863,7 +864,7 @@ class _ToggleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final effective = tone ?? WebTokens.accent;
+    final effective = tone ?? t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -1115,7 +1116,7 @@ class _DependencyRow extends StatelessWidget {
     final t = WebTokens.of(context);
     final blocker = dep.blocker;
     final blocked = blocker != null && blocker.open;
-    final tone = blocked ? WebTokens.danger : WebTokens.success;
+    final tone = blocked ? t.danger : WebTokens.success;
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: WebTokens.s4,
@@ -1329,12 +1330,12 @@ class _AddButtonState extends State<_AddButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.add, size: 14, color: WebTokens.accent),
+              Icon(Icons.add, size: 14, color: t.accent),
               const SizedBox(width: 4),
               Text(
                 widget.label,
                 style: t.bodySm.copyWith(
-                  color: WebTokens.accent,
+                  color: t.accent,
                   fontWeight: FontWeight.w600,
                 ),
               ),

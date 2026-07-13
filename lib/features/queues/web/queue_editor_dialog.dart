@@ -126,7 +126,7 @@ class _QueueEditorDialogState extends ConsumerState<QueueEditorDialog> {
               const SizedBox(height: 4),
               Text(
                 _fieldErrors['name']!,
-                style: t.bodySm.copyWith(color: WebTokens.danger),
+                style: t.bodySm.copyWith(color: t.danger),
               ),
             ],
             if (!_isEdit) ...[
@@ -201,14 +201,14 @@ class _ThemedTextField extends StatelessWidget {
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : t.borderSubtle,
+        color: hasError ? t.danger : t.borderSubtle,
         width: 1,
       ),
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : WebTokens.accent,
+        color: hasError ? t.danger : t.accent,
         width: 1.4,
       ),
     );
@@ -249,17 +249,17 @@ class _ErrorBanner extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.dangerLight,
-        border: Border.all(color: WebTokens.danger, width: 1),
+        border: Border.all(color: t.danger, width: 1),
         borderRadius: BorderRadius.circular(_kFlatRadius),
       ),
       child: Row(
         children: [
-          const Icon(Icons.error_outline, size: 16, color: WebTokens.danger),
+          Icon(Icons.error_outline, size: 16, color: t.danger),
           const SizedBox(width: WebTokens.s2),
           Expanded(
             child: Text(
               message,
-              style: t.bodySm.copyWith(color: WebTokens.danger),
+              style: t.bodySm.copyWith(color: t.danger),
             ),
           ),
         ],
@@ -377,10 +377,11 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
+    // Filled primary button keeps the Mynt brand blue in both modes.
     final disabled = widget.onTap == null;
     final base = disabled
-        ? WebTokens.accent.withValues(alpha: 0.4)
-        : WebTokens.accent;
+        ? WebTokens.accentLight.withValues(alpha: 0.4)
+        : WebTokens.accentLight;
     final fill = _hover && !disabled
         ? Color.lerp(base, Colors.black, 0.08) ?? base
         : base;

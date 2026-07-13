@@ -16,7 +16,13 @@
   <meta name="apple-mobile-web-app-title" content="Mynt Helpdesk">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <!-- ICO first for widest browser + tab-restore compatibility, then SVG
+       for sharp scaling on modern browsers, then PNG as a last-resort
+       raster fallback. The `?v=` query bumps the cache key when any icon
+       changes so browsers refetch instead of serving a stale copy. -->
+  <!-- <link rel="icon" type="image/x-icon" href="favicon.ico?v=4"/>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg?v=4"/> -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico"/>
   <link rel="manifest" href="manifest.json">
 
   <title>Mynt Helpdesk</title>

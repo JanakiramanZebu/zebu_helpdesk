@@ -39,6 +39,11 @@ class NotificationsRepository {
 
   Future<void> read(int id) => _api.post('/notifications/$id/read');
 
+  /// Flip a single notification back to unread. Mirrors [read] — matches
+  /// the `POST /notifications/{id}/unread` endpoint if the backend exposes
+  /// one. Returns 404 otherwise; callers should surface that as a toast.
+  Future<void> unread(int id) => _api.post('/notifications/$id/unread');
+
   Future<int> deleteAll() async {
     final body = await _api.delete('/notifications');
     return J.intOr(J.map(J.map(body)['data'])['deleted']);

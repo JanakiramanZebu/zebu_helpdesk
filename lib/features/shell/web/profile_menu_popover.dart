@@ -131,26 +131,29 @@ class _ProfileMenuContentState extends ConsumerState<_ProfileMenuContent> {
   }
 
   Future<void> _logout() async {
-    // Capture router + auth notifier BEFORE showing the confirm dialog. The
-    // popover lives in an OverlayEntry, so `context.mounted` can flip to
-    // false during the async gap — capturing here guarantees the references
-    // are still valid regardless of what happens next.
+    // Capture router + auth notifier + root Navigator context BEFORE
+    // dismissing. The popover lives in an OverlayEntry that we tear down
+    // immediately, so `context.mounted` flips to false during the async
+    // gap — capturing here keeps the references valid across the confirm
+    // dialog and the logout call.
     final router = GoRouter.of(context);
     final auth = ref.read(authControllerProvider.notifier);
+    final navigatorContext =
+        Navigator.of(context, rootNavigator: true).context;
 
+    // Dismiss the popover first so the confirm dialog appears on the
+    // clean page bg (matches how `_openProfile` sequences it). Then show
+    // the same confirmation prompt the More-screen Sign out uses so the
+    // two entry points feel consistent.
+    widget.onDismiss();
     final ok = await showAppConfirmDialog(
-      context,
+      navigatorContext,
       title: 'Sign out?',
       message: 'You will need to sign in again to continue.',
       confirmLabel: 'Sign out',
       destructive: true,
     );
-
-    // Dismiss the popover regardless of the result — leaving it up over the
-    // login page (or a dismissed confirm) would be jarring.
-    widget.onDismiss();
     if (ok != true) return;
-
     await auth.logout();
     router.go(Routes.login);
   }
@@ -322,7 +325,7 @@ class _AvailabilityRowState extends State<_AvailabilityRow> {
                 scale: 0.7,
                 child: Switch(
                   value: widget.value,
-                  activeThumbColor: WebTokens.accent,
+                  activeThumbColor: t.accent,
                   onChanged: widget.onChanged,
                 ),
               ),

@@ -80,7 +80,7 @@ class _MenuRowState extends State<MenuRow> {
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     final disabled = widget.onTap == null;
-    final tone = widget.destructive ? WebTokens.danger : t.textPrimary;
+    final tone = widget.destructive ? t.danger : t.textPrimary;
     return MouseRegion(
       cursor:
           disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,

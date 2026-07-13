@@ -29,6 +29,7 @@ import '../../dashboard/web/_tokens.dart';
 const _kFlatRadius = 8.0;
 const double _kFieldLabelWidth = 88;
 const double _kFieldValueWidth = 280;
+const double _kSidebarRowHeight = 40;
 const double _kAvatarSize = 32;
 
 /// Panel-body width at (or above) which the panel switches to a two-column
@@ -344,7 +345,10 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     return Material(
-      color: t.bgElevated,
+      // Warm-paper ground so the panel matches the list surface behind it.
+      // Cards (thread rows, header, activity strip) keep `bgElevated` so
+      // they read as elevated on the paper — same layering as the list.
+      color: t.bgPrimary,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       child: _buildBody(t),
@@ -727,7 +731,7 @@ class _IconBtnState extends State<_IconBtn> {
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
     final fg = _hover && widget.destructive
-        ? WebTokens.danger
+        ? t.danger
         : t.textPrimary;
     final child = MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -797,6 +801,34 @@ class _FieldsTable extends StatelessWidget {
     final department = (task.departmentName ?? '').trim();
 
     final cells = <Widget>[
+       _FieldRow(
+        rowKey: assigneeRowKey,
+        icon: Icons.person_outline,
+        label: 'Assignee',
+        sidebar: sidebar,
+        onTap: onAssigneeTap,
+        value: assignee.isEmpty
+            ? const _EmptyValue(label: 'Unassigned')
+            : _TextValue(
+                text: assignee,
+                tone: t.accent,
+                linked: true,
+              ),
+      ),
+       _FieldRow(
+        rowKey: departmentRowKey,
+        icon: Icons.business_outlined,
+        label: 'Department',
+        sidebar: sidebar,
+        onTap: onDepartmentTap,
+        value: department.isEmpty
+            ? const _EmptyValue(label: 'None')
+            : _TextValue(
+                text: department,
+                tone: t.accent,
+                linked: true,
+              ),
+      ),
       _FieldRow(
         rowKey: statusRowKey,
         icon: Icons.flag_outlined,
@@ -818,36 +850,8 @@ class _FieldsTable extends StatelessWidget {
             ? const _EmptyValue(label: 'No priority')
             : _StatusValuePill(
                 label: _titleCase(priorityName),
-                color: _priorityTone(priorityName),
+                color: _priorityTone(priorityName, t),
                 icon: Icons.flag_rounded,
-              ),
-      ),
-      _FieldRow(
-        rowKey: assigneeRowKey,
-        icon: Icons.person_outline,
-        label: 'Assignee',
-        sidebar: sidebar,
-        onTap: onAssigneeTap,
-        value: assignee.isEmpty
-            ? const _EmptyValue(label: 'Unassigned')
-            : _TextValue(
-                text: assignee,
-                tone: WebTokens.accent,
-                linked: true,
-              ),
-      ),
-      _FieldRow(
-        rowKey: departmentRowKey,
-        icon: Icons.business_outlined,
-        label: 'Department',
-        sidebar: sidebar,
-        onTap: onDepartmentTap,
-        value: department.isEmpty
-            ? const _EmptyValue(label: 'None')
-            : _TextValue(
-                text: department,
-                tone: WebTokens.accent,
-                linked: true,
               ),
       ),
       if (task.duedate != null)
@@ -857,7 +861,7 @@ class _FieldsTable extends StatelessWidget {
           sidebar: sidebar,
           value: _TextValue(
             text: Fmt.dateTime(task.duedate),
-            tone: task.overdue ? WebTokens.danger : null,
+            tone: task.overdue ? t.danger : null,
           ),
         ),
       if (task.blocked)
@@ -865,9 +869,9 @@ class _FieldsTable extends StatelessWidget {
           icon: Icons.block,
           label: 'Blocked',
           sidebar: sidebar,
-          value: const _TextValue(
+          value: _TextValue(
             text: 'Blocked by dependency',
-            tone: WebTokens.danger,
+            tone: t.danger,
           ),
         ),
       if (task.progress > 0)
@@ -885,22 +889,55 @@ class _FieldsTable extends StatelessWidget {
       ),
     ];
 
-    // Sidebar mode: strip the rounded-card chrome so the rows breathe
-    // inside the wide-mode right rail. The rail's left border already
-    // separates the details from the message column.
+    // Sidebar mode: wrap the field rows in a single elevated card so every
+    // row (clickable or not) sits on the same white ground against the
+    // panel's warm-paper bg. The card's subtle shadow lifts the rail off
+    // the page. [DefaultTextStyle] pins the ambient base to `bodyBase` so
+    // descendant [_TextValue] runs inherit the sidebar's 14 px size —
+    // fields rail reads one size-step above the messages column, matching
+    // TicketDetailPanel.
     if (sidebar) {
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: cells,
+        padding: const EdgeInsets.fromLTRB(
+          WebTokens.s3,
+          0,
+          WebTokens.s3,
+          WebTokens.s3,
+        ),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: t.bgElevated,
+            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            border: Border.all(color: t.borderSubtle, width: 1),
+            boxShadow: WebTokens.shadowXs,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: WebTokens.s3,
+              vertical: WebTokens.s2,
+            ),
+            child: DefaultTextStyle.merge(
+              style: t.bodyBase.copyWith(color: t.textPrimary),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: cells,
+              ),
+            ),
+          ),
         ),
       );
     }
+    // Narrow single-column: wraps the fields in an email-style card so the
+    // metadata block reads as one contained module (rounded hairline border
+    // + `bgElevated` fill). Without the fill the card blended into the page
+    // bg in dark mode — the border alone wasn't enough separation. The
+    // `DefaultTextStyle.merge` pins the ambient base to `bodySm` so the row
+    // value text matches the tighter single-column rhythm.
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: WebTokens.s4),
       child: DecoratedBox(
         decoration: BoxDecoration(
+          color: t.bgElevated,
           borderRadius: BorderRadius.circular(WebTokens.rMd),
           border: Border.all(color: t.borderSubtle, width: 1),
         ),
@@ -909,9 +946,12 @@ class _FieldsTable extends StatelessWidget {
             horizontal: WebTokens.s3,
             vertical: WebTokens.s2,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: cells,
+          child: DefaultTextStyle.merge(
+            style: t.bodySm.copyWith(color: t.textPrimary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: cells,
+            ),
           ),
         ),
       ),
@@ -919,14 +959,14 @@ class _FieldsTable extends StatelessWidget {
   }
 
   static Color _statusTone(Task task, WebTokens t) {
-    if (task.overdue) return WebTokens.danger;
+    if (task.overdue) return t.danger;
     if (!task.isOpen) return t.textSecondary;
     return WebTokens.success;
   }
 
-  static Color _priorityTone(String name) {
+  static Color _priorityTone(String name, WebTokens t) {
     final n = name.toLowerCase();
-    if (n.contains('emergency') || n.contains('urgent')) return WebTokens.danger;
+    if (n.contains('emergency') || n.contains('urgent')) return t.danger;
     if (n.contains('high')) return WebTokens.warning;
     if (n.contains('low')) return WebTokens.success;
     if (n.contains('normal')) return WebTokens.info;
@@ -988,7 +1028,7 @@ class _FieldRowState extends State<_FieldRow> {
               Icon(
                 Icons.expand_more,
                 size: 16,
-                color: _hover ? WebTokens.accent : t.textSecondary,
+                color: _hover ? t.accent : t.textSecondary,
               ),
             ],
           ),
@@ -1003,24 +1043,33 @@ class _FieldRowState extends State<_FieldRow> {
     } else {
       valueSlot = Expanded(child: widget.value);
     }
+    // Sidebar rows sit on a taller [_kSidebarRowHeight] rhythm and bump
+    // the label to the 14 px `bodyBase` size so the fields rail reads as
+    // its own scannable column, not a squeezed footnote. Matches the
+    // TicketDetailPanel reference.
+    final rowHeight = widget.sidebar ? _kSidebarRowHeight : 30.0;
+    final labelStyle = widget.sidebar
+        ? t.bodyBase.copyWith(
+            color: t.textPrimary,
+            fontWeight: FontWeight.w500,
+          )
+        : t.bodySm.copyWith(
+            color: t.textPrimary,
+            fontWeight: FontWeight.w500,
+          );
+    // Leading icons removed — labels alone carry the meaning and the row
+    // reads cleaner without the credential glyphs (person / building /
+    // flag / bang / calendar).
     final row = SizedBox(
-      height: 30,
+      height: rowHeight,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: WebTokens.s1),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(widget.icon, size: 16, color: t.textPrimary),
-            const SizedBox(width: WebTokens.s3),
             SizedBox(
               width: _kFieldLabelWidth,
-              child: Text(
-                widget.label,
-                style: t.bodySm.copyWith(
-                  color: t.textPrimary,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              child: Text(widget.label, style: labelStyle),
             ),
             const SizedBox(width: WebTokens.s3),
             valueSlot,
@@ -1065,11 +1114,17 @@ class _TextValueState extends State<_TextValue> {
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     final color = widget.tone ?? t.textPrimary;
+    // Inherit the ambient DefaultTextStyle base so the sidebar's bumped
+    // 14 px wrap propagates into value text — the surrounding column
+    // wraps in a DefaultTextStyle.merge with `bodyBase` (sidebar) or
+    // `bodySm` (narrow card), and this pulls that size out of the
+    // ambient rather than hard-pinning to `bodyBase`.
+    final base = DefaultTextStyle.of(context).style;
     final child = Text(
       widget.text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: base.copyWith(
         color: color,
         fontWeight: FontWeight.w500,
         decoration: widget.linked && _hover
@@ -1117,7 +1172,7 @@ class _EmptyValue extends StatelessWidget {
       label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: t.bodyBase.copyWith(
         color: t.textSecondary,
         fontWeight: FontWeight.w400,
       ),
@@ -1177,7 +1232,7 @@ class _ThreadRowState extends State<_ThreadRow> {
     final isResponse = entry.isResponse;
     final tone = isNote
         ? WebTokens.warning
-        : (isResponse ? WebTokens.accent : t.textSecondary);
+        : (isResponse ? t.accent : t.textSecondary);
     final typeLabel = isNote
         ? 'NOTE'
         : (isResponse ? 'REPLY' : 'MESSAGE');
@@ -1204,7 +1259,7 @@ class _ThreadRowState extends State<_ThreadRow> {
               color: _hover ? t.borderDefault : t.borderSubtle,
               width: 1,
             ),
-            boxShadow: _hover ? WebTokens.shadowXs : null,
+            boxShadow: _hover ? WebTokens.shadowSm : WebTokens.shadowXs,
           ),
           padding: const EdgeInsets.symmetric(
             horizontal: WebTokens.s4,
@@ -1402,7 +1457,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
           decoration: BoxDecoration(
             color: _hover ? t.accentSoft : t.bgTertiary,
             border: Border.all(
-              color: _hover ? WebTokens.accent : t.borderSubtle,
+              color: _hover ? t.accent : t.borderSubtle,
               width: 1,
             ),
             borderRadius: BorderRadius.circular(_kFlatRadius),
@@ -1413,7 +1468,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
               Icon(
                 _icon,
                 size: 14,
-                color: _hover ? WebTokens.accent : t.textSecondary,
+                color: _hover ? t.accent : t.textSecondary,
               ),
               const SizedBox(width: 6),
               ConstrainedBox(
@@ -1423,7 +1478,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.bodySm.copyWith(
-                    color: _hover ? WebTokens.accent : t.textPrimary,
+                    color: _hover ? t.accent : t.textPrimary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -1439,7 +1494,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
               Icon(
                 Icons.open_in_new,
                 size: 12,
-                color: _hover ? WebTokens.accent : t.textSecondary,
+                color: _hover ? t.accent : t.textSecondary,
               ),
             ],
           ),

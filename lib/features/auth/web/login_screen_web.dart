@@ -273,13 +273,13 @@ class _TextField extends StatelessWidget {
     // field, matching the reference login mock.
     final idle = UnderlineInputBorder(
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : t.borderDefault,
+        color: hasError ? t.danger : t.borderDefault,
         width: 1,
       ),
     );
     final focused = UnderlineInputBorder(
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : WebTokens.accent,
+        color: hasError ? t.danger : t.accent,
         width: 1.6,
       ),
     );
@@ -321,7 +321,7 @@ class _TextField extends StatelessWidget {
             // when a value is entered.
             labelStyle: t.bodyBase.copyWith(color: t.textSecondary),
             floatingLabelStyle: t.bodySm.copyWith(
-              color: hasError ? WebTokens.danger : WebTokens.accent,
+              color: hasError ? t.danger : t.accent,
               fontWeight: FontWeight.w500,
             ),
             floatingLabelBehavior: FloatingLabelBehavior.auto,
@@ -338,7 +338,7 @@ class _TextField extends StatelessWidget {
           Text(
             errorText!,
             style: t.bodySm.copyWith(
-              color: WebTokens.danger,
+              color: t.danger,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -371,6 +371,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
     final enabled = widget.onPressed != null && !widget.busy;
     return MouseRegion(
       cursor: enabled
@@ -386,9 +387,10 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
           height: 46,
           transform: Matrix4.translationValues(0, _hover && enabled ? -1 : 0, 0),
           decoration: BoxDecoration(
+            // Filled Sign In button keeps the Mynt brand blue in both modes.
             color: enabled
-                ? (_hover ? WebTokens.accentHover : WebTokens.accent)
-                : WebTokens.accent.withValues(alpha: 0.4),
+                ? (_hover ? WebTokens.accentHoverLight : WebTokens.accentLight)
+                : WebTokens.accentLight.withValues(alpha: 0.4),
             borderRadius: BorderRadius.circular(WebTokens.s1),
             boxShadow: _hover && enabled
                 ? const [
@@ -412,10 +414,10 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
                   )
                 : Text(
                     widget.label,
-                    style: WebTokens.of(context).bodyBase.copyWith(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
+                    style: t.bodyBase.copyWith(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
           ),
         ),
@@ -451,7 +453,7 @@ class _IconButtonState extends State<_IconButton> {
           child: Icon(
             widget.icon,
             size: 18,
-            color: _hover ? WebTokens.accent : t.textSecondary,
+            color: _hover ? t.accent : t.textSecondary,
           ),
         ),
       ),
@@ -486,10 +488,10 @@ class _LinkButtonState extends State<_LinkButton> {
         child: Text(
           widget.label,
           style: t.bodySm.copyWith(
-            color: enabled ? WebTokens.accent : t.textSecondary,
+            color: enabled ? t.accent : t.textSecondary,
             fontWeight: FontWeight.w600,
             decoration: _hover ? TextDecoration.underline : null,
-            decorationColor: WebTokens.accent,
+            decorationColor: t.accent,
           ),
         ),
       ),
@@ -517,9 +519,9 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
+          Icon(
             Icons.error_outline,
-            color: WebTokens.danger,
+            color: t.danger,
             size: 18,
           ),
           const SizedBox(width: WebTokens.s2),
@@ -527,7 +529,7 @@ class _ErrorBanner extends StatelessWidget {
             child: Text(
               message,
               style: t.bodySm.copyWith(
-                color: WebTokens.danger,
+                color: t.danger,
                 fontWeight: FontWeight.w500,
               ),
             ),

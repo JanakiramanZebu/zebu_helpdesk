@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "demoappcheck1",
+    "live": "demoappcheck1"
+  },
+  "targets": {},
+  "etags": {}
+}

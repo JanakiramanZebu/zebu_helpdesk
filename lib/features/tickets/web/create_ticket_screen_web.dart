@@ -740,7 +740,7 @@ class _IconBtnState extends State<_IconBtn> {
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
     final fg = _hover && widget.destructive
-        ? WebTokens.danger
+        ? t.danger
         : t.textPrimary;
     final child = MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -826,10 +826,11 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
+    // Filled Create button keeps the Mynt brand blue in both modes.
     final disabled = widget.onTap == null;
     final effective = disabled
-        ? WebTokens.accent.withValues(alpha: 0.4)
-        : WebTokens.accent;
+        ? WebTokens.accentLight.withValues(alpha: 0.4)
+        : WebTokens.accentLight;
     return MouseRegion(
       cursor: disabled
           ? SystemMouseCursors.forbidden
@@ -913,10 +914,10 @@ class _LabeledField extends StatelessWidget {
             ),
             if (required) ...[
               const SizedBox(width: 4),
-              const Text(
+              Text(
                 '*',
                 style: TextStyle(
-                  color: WebTokens.danger,
+                  color: t.danger,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
                 ),
@@ -928,7 +929,7 @@ class _LabeledField extends StatelessWidget {
         child,
         if (error != null) ...[
           const SizedBox(height: 4),
-          Text(error!, style: t.bodySm.copyWith(color: WebTokens.danger)),
+          Text(error!, style: t.bodySm.copyWith(color: t.danger)),
         ],
       ],
     );
@@ -986,8 +987,8 @@ class _SelectFieldState extends State<_SelectField> {
     final t = WebTokens.of(context);
     final hasValue = widget.value != null && widget.value!.isNotEmpty;
     final borderColor = widget.hasError
-        ? WebTokens.danger
-        : (_hover ? WebTokens.accent : t.borderSubtle);
+        ? t.danger
+        : (_hover ? t.accent : t.borderSubtle);
     final textColor = hasValue ? t.textPrimary : t.textSecondary;
 
     return MouseRegion(
@@ -1076,7 +1077,7 @@ class _MiniIconState extends State<_MiniIcon> {
           child: Icon(
             widget.icon,
             size: 12,
-            color: _hover ? WebTokens.danger : t.textSecondary,
+            color: _hover ? t.danger : t.textSecondary,
           ),
         ),
       ),
@@ -1109,14 +1110,14 @@ class _TextInput extends StatelessWidget {
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : t.borderSubtle,
+        color: hasError ? t.danger : t.borderSubtle,
         width: 1,
       ),
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
-        color: hasError ? WebTokens.danger : WebTokens.accent,
+        color: hasError ? t.danger : t.accent,
         width: 1.4,
       ),
     );
@@ -1184,7 +1185,7 @@ class _OutlinedActionState extends State<_OutlinedAction> {
           decoration: BoxDecoration(
             color: _hover ? t.accentSoft : t.bgElevated,
             border: Border.all(
-              color: _hover ? WebTokens.accent : t.borderSubtle,
+              color: _hover ? t.accent : t.borderSubtle,
               width: 1,
             ),
             borderRadius: BorderRadius.circular(_kFlatRadius),
@@ -1192,7 +1193,7 @@ class _OutlinedActionState extends State<_OutlinedAction> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(widget.icon, size: 16, color: WebTokens.accent),
+              Icon(widget.icon, size: 16, color: t.accent),
               const SizedBox(width: WebTokens.s2),
               Flexible(
                 child: Text(
@@ -1200,7 +1201,7 @@ class _OutlinedActionState extends State<_OutlinedAction> {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: t.bodySm.copyWith(
-                    color: WebTokens.accent,
+                    color: t.accent,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -1281,6 +1282,7 @@ class _AddFilesButtonState extends State<_AddFilesButton> {
 
   @override
   Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1293,13 +1295,13 @@ class _AddFilesButtonState extends State<_AddFilesButton> {
             Icon(
               Icons.attach_file,
               size: 14,
-              color: _hover ? WebTokens.accentHover : WebTokens.accent,
+              color: _hover ? t.accentHover : t.accent,
             ),
             const SizedBox(width: 4),
             Text(
               'Add files',
               style: TextStyle(
-                color: _hover ? WebTokens.accentHover : WebTokens.accent,
+                color: _hover ? t.accentHover : t.accent,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -1376,21 +1378,21 @@ class _ErrorBanner extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.dangerLight,
-        border: Border.all(color: WebTokens.danger, width: 1),
+        border: Border.all(color: t.danger, width: 1),
         borderRadius: BorderRadius.circular(_kFlatRadius),
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.error_outline,
             size: 16,
-            color: WebTokens.danger,
+            color: t.danger,
           ),
           const SizedBox(width: WebTokens.s2),
           Expanded(
             child: Text(
               message,
-              style: t.bodySm.copyWith(color: WebTokens.danger),
+              style: t.bodySm.copyWith(color: t.danger),
             ),
           ),
         ],
@@ -1570,7 +1572,7 @@ class _UserResultsList extends StatelessWidget {
         controller: controller,
         onSearch: onSearch,
         child: Center(
-          child: Text(error!, style: t.bodySm.copyWith(color: WebTokens.danger)),
+          child: Text(error!, style: t.bodySm.copyWith(color: t.danger)),
         ),
       );
     }
@@ -1788,7 +1790,7 @@ class _CannedPickerDialogState extends ConsumerState<_CannedPickerDialog> {
     }
     if (_error != null) {
       return Center(
-        child: Text(_error!, style: t.bodySm.copyWith(color: WebTokens.danger)),
+        child: Text(_error!, style: t.bodySm.copyWith(color: t.danger)),
       );
     }
     if (_items.isEmpty) {

@@ -12,6 +12,7 @@ import '../../../widgets/list_controls.dart' show DateRange;
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
+import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../../widgets/web/status_pill.dart';
@@ -30,6 +31,11 @@ import 'ticket_detail_panel.dart';
 // "Unassigned" regardless of the ticket's real state. The value is
 // available (and editable) inside the detail panel where the `/tickets/
 // {id}` endpoint carries it.
+/// Ticket ID column — fixed 90 px, wide enough for a padded 6-digit
+/// ticket like `#020817` at `bodySm` w600 plus the shared `s3` cell
+/// padding. Split out of the "Ticket" column so the number reads as its
+/// own sortable value.
+const double _kColNumberWidth = 90;
 const int _kColTicketFlex = 5;
 const int _kColRequesterFlex = 2;
 // Bumped from 1 to 2 so "Department" doesn't wrap in the header when
@@ -43,10 +49,10 @@ const double _kColStatusWidth = 130;
 const double _kColCreatedWidth = 120;
 
 /// Minimum table width — accounts for the fixed-width columns
-/// (130 + 130 + 120 = 380), the 3 px leading accent-stripe rail, and a
-/// readable minimum for each flex column. Below this the table
+/// (90 + 130 + 130 + 120 = 470), the 3 px leading accent-stripe rail, and
+/// a readable minimum for each flex column. Below this the table
 /// horizontally scrolls instead of squeezing columns.
-const double _kTableMinWidth = 1040;
+const double _kTableMinWidth = 1120;
 
 /// Web-only tickets list.
 ///
@@ -417,14 +423,15 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
               onSelect: (k) => setState(() => _view = k),
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final horizontalScroll =
-                      constraints.maxWidth <= _kTableMinWidth;
-                  final tableWidth = horizontalScroll
-                      ? _kTableMinWidth
-                      : constraints.maxWidth;
-                  return Scrollbar(
+              child: ListTableShell(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final horizontalScroll =
+                        constraints.maxWidth <= _kTableMinWidth;
+                    final tableWidth = horizontalScroll
+                        ? _kTableMinWidth
+                        : constraints.maxWidth;
+                    return Scrollbar(
                     controller: _tableHScroll,
                     scrollbarOrientation: ScrollbarOrientation.bottom,
                     child: SingleChildScrollView(
@@ -467,6 +474,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                     ),
                   );
                 },
+              ),
               ),
             ),
           ],
@@ -515,6 +523,7 @@ class _TableHeader extends StatelessWidget {
         // and body now start at x = 0.
         child: Row(
           children: [
+            const _HeaderCell(width: _kColNumberWidth, label: '#'),
             const _HeaderCell(flex: _kColTicketFlex, label: 'Ticket'),
             const _HeaderCell(flex: _kColRequesterFlex, label: 'Requester'),
             const _HeaderCell(flex: _kColDeptFlex, label: 'Department'),
@@ -655,7 +664,7 @@ class _TicketRowState extends State<_TicketRow> {
   // amber (Emergency stays red).
   Color _statusColor(WebTokens t) {
     final ticket = widget.ticket;
-    if (ticket.isOverdue) return WebTokens.danger;
+    if (ticket.isOverdue) return t.danger;
     final s = ticket.statusName.toLowerCase();
     if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
     if (s.contains('unassigned')) return WebTokens.info;
@@ -665,7 +674,7 @@ class _TicketRowState extends State<_TicketRow> {
 
   Color _priorityColor(WebTokens t) {
     final p = (widget.ticket.priority ?? '').toLowerCase();
-    if (p.contains('emergency') || p.contains('urgent')) return WebTokens.danger;
+    if (p.contains('emergency') || p.contains('urgent')) return t.danger;
     if (p.contains('high')) return WebTokens.warning;
     if (p.contains('low')) return WebTokens.success;
     if (p.contains('normal')) return WebTokens.info;
@@ -681,11 +690,11 @@ class _TicketRowState extends State<_TicketRow> {
     // content never shifts.
     final Color stripeColor;
     if (ticket.isOverdue) {
-      stripeColor = WebTokens.danger;
+      stripeColor = t.danger;
     } else if (widget.selected) {
-      stripeColor = WebTokens.accent;
+      stripeColor = t.accent;
     } else if (_hover) {
-      stripeColor = WebTokens.accent;
+      stripeColor = t.accent;
     } else {
       stripeColor = Colors.transparent;
     }
@@ -721,29 +730,25 @@ class _TicketRowState extends State<_TicketRow> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _BodyCell(
+                        width: _kColNumberWidth,
+                        child: Text(
+                          '#${ticket.number}',
+                          style: t.bodySm
+                              .copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: t.accent,
+                              )
+                              .withTabularNums(),
+                        ),
+                      ),
+                      _BodyCell(
                         flex: _kColTicketFlex,
-                        child: Row(
-                          children: [
-                            Text(
-                              '#${ticket.number}',
-                              style: t.bodySm
-                                  .copyWith(
-                                    fontWeight: FontWeight.w600,
-                                    color: WebTokens.accent,
-                                  )
-                                  .withTabularNums(),
-                            ),
-                            const SizedBox(width: WebTokens.s2),
-                            Flexible(
-                              child: Text(
-                                ticket.subject,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: t.bodyBase
-                                    .copyWith(fontWeight: FontWeight.w500),
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          ticket.subject,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.bodyBase
+                              .copyWith(fontWeight: FontWeight.w500),
                         ),
                       ),
                       _BodyCell(
@@ -929,14 +934,12 @@ class _SkeletonRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _BodyCell(
+              width: _kColNumberWidth,
+              child: _block(56),
+            ),
+            _BodyCell(
               flex: _kColTicketFlex,
-              child: Row(
-                children: [
-                  _block(56),
-                  const SizedBox(width: WebTokens.s2),
-                  Flexible(child: _block(260)),
-                ],
-              ),
+              child: _block(260),
             ),
             _BodyCell(
               flex: _kColRequesterFlex,

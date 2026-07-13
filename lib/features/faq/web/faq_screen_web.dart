@@ -11,6 +11,7 @@ import '../../../providers.dart';
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
+import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../dashboard/web/_tokens.dart';
 import 'faq_detail_panel.dart';
@@ -19,7 +20,6 @@ const int _kColQuestionFlex = 5;
 const int _kColCategoryFlex = 2;
 const double _kColTypeWidth = 110;
 const double _kColUpdatedWidth = 120;
-const double _kColGap = 16;
 const double _kTableMinWidth = 900;
 
 /// Web-only Knowledgebase list. Flat article list (search-filtered), styled
@@ -92,36 +92,33 @@ class _FaqScreenWebState extends ConsumerState<FaqScreenWeb> {
             PageHeader(
               title: 'Knowledgebase',
               subtitle: _total != null ? '$_total total' : null,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _BackButton(
-                    onTap: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go(Routes.more);
-                      }
-                    },
-                  ),
-                  const SizedBox(width: WebTokens.s3),
-                  SizedBox(
-                    width: 320,
-                    child: ListSearchInput(
-                      hintText: 'Search articles…',
-                      onChanged: _onSearchChanged,
-                    ),
-                  ),
-                ],
+              leading: _BackButton(
+                onTap: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go(Routes.more);
+                  }
+                },
+              ),
+              trailing: SizedBox(
+                width: 320,
+                child: ListSearchInput(
+                  hintText: 'Search articles…',
+                  onChanged: _onSearchChanged,
+                ),
               ),
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final tableWidth = constraints.maxWidth > _kTableMinWidth
-                      ? constraints.maxWidth
-                      : _kTableMinWidth;
-                  return Scrollbar(
+              child: ListTableShell(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final horizontalScroll =
+                        constraints.maxWidth <= _kTableMinWidth;
+                    final tableWidth = horizontalScroll
+                        ? _kTableMinWidth
+                        : constraints.maxWidth;
+                    return Scrollbar(
                     controller: _tableHScroll,
                     scrollbarOrientation: ScrollbarOrientation.bottom,
                     child: SingleChildScrollView(
@@ -132,7 +129,7 @@ class _FaqScreenWebState extends ConsumerState<FaqScreenWeb> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const _TableHeader(),
+                            _TableHeader(scrollGutter: horizontalScroll),
                             Expanded(
                               child: ColoredBox(
                                 color: t.bgElevated,
@@ -165,6 +162,7 @@ class _FaqScreenWebState extends ConsumerState<FaqScreenWeb> {
                     ),
                   );
                 },
+              ),
               ),
             ),
           ],
@@ -223,11 +221,15 @@ class _BackButtonState extends State<_BackButton> {
 }
 
 // ---------------------------------------------------------------------------
-// Table header + row
+// Table header — matches the tickets table: edge-to-edge, hairline
+// top/bottom borders, and per-column right-border creating the vertical
+// grid line that body rows align to pixel-for-pixel.
 // ---------------------------------------------------------------------------
 
 class _TableHeader extends StatelessWidget {
-  const _TableHeader();
+  const _TableHeader({this.scrollGutter = false});
+
+  final bool scrollGutter;
 
   @override
   Widget build(BuildContext context) {
@@ -240,42 +242,108 @@ class _TableHeader extends StatelessWidget {
           bottom: BorderSide(color: t.borderSubtle, width: 1),
         ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s8,
-        vertical: WebTokens.s3,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: _kColQuestionFlex,
-            child: Text('Question', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          Expanded(
-            flex: _kColCategoryFlex,
-            child: Text('Category', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColTypeWidth,
-            child: Text(
-              'Type',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            const _HeaderCell(flex: _kColQuestionFlex, label: 'Question'),
+            const _HeaderCell(flex: _kColCategoryFlex, label: 'Category'),
+            const _HeaderCell(
+              width: _kColTypeWidth,
+              label: 'Type',
+              alignRight: true,
             ),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColUpdatedWidth,
-            child: Text(
-              'Updated',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
+            const _HeaderCell(
+              width: _kColUpdatedWidth,
+              label: 'Updated',
+              alignRight: true,
+              last: true,
             ),
-          ),
-        ],
+            if (scrollGutter) const SizedBox(width: 10),
+          ],
+        ),
       ),
     );
+  }
+}
+
+/// Column header cell — mirrors the tickets `_HeaderCell`.
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell({
+    required this.label,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final String label;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: WebTokens.s3,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: t.tableHeader,
+        textAlign: alignRight ? TextAlign.right : TextAlign.left,
+      ),
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
+  }
+}
+
+/// Body cell — mirrors the tickets `_BodyCell`.
+class _BodyCell extends StatelessWidget {
+  const _BodyCell({
+    required this.child,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final Widget child;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: child,
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
   }
 }
 
@@ -318,76 +386,53 @@ class _RowState extends State<_Row> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s8,
-            vertical: WebTokens.s4,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: _kColQuestionFlex,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: WebTokens.accent.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(WebTokens.rXs),
-                      ),
-                      child: Icon(
-                        Icons.menu_book_outlined,
-                        size: 16,
-                        color: WebTokens.accent,
-                      ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _BodyCell(
+                  flex: _kColQuestionFlex,
+                  child: Text(
+                    f.question.trim().isEmpty ? '(untitled)' : f.question,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyBase.copyWith(
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(width: WebTokens.s3),
-                    Expanded(
-                      child: Text(
-                        f.question.trim().isEmpty ? '(untitled)' : f.question,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.bodyBase.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              Expanded(
-                flex: _kColCategoryFlex,
-                child: _TextCell(text: f.category?.name ?? ''),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColTypeWidth,
-                child: Align(
-                  alignment: Alignment.centerRight,
+                _BodyCell(
+                  flex: _kColCategoryFlex,
+                  child: _TextCell(text: f.category?.name ?? ''),
+                ),
+                _BodyCell(
+                  width: _kColTypeWidth,
+                  alignRight: true,
                   child: _Pill(
                     label: f.published ? 'Public' : 'Internal',
                     tone: f.published ? WebTokens.success : t.textSecondary,
                   ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColUpdatedWidth,
-                child: Text(
-                  Fmt.date(f.updated),
-                  textAlign: TextAlign.right,
-                  style: t.bodySm
-                      .copyWith(
-                        color: t.textPrimary,
-                        fontWeight: FontWeight.w500,
-                      )
-                      .withTabularNums(),
+                _BodyCell(
+                  width: _kColUpdatedWidth,
+                  last: true,
+                  alignRight: true,
+                  child: Text(
+                    Fmt.date(f.updated),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                    textAlign: TextAlign.right,
+                    style: t.bodySm
+                        .copyWith(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        )
+                        .withTabularNums(),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

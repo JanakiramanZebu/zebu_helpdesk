@@ -163,11 +163,13 @@ class _WebFilterButtonState extends State<WebFilterButton> {
                 height: 40,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
+                  // Active filter chip reads as a filled primary button —
+                  // keep Mynt brand blue in both modes.
                   color: active
-                      ? WebTokens.accent
+                      ? WebTokens.accentLight
                       : (_hover ? t.bgHover : t.bgElevated),
                   border: Border.all(
-                    color: active ? WebTokens.accent : t.borderSubtle,
+                    color: active ? WebTokens.accentLight : t.borderSubtle,
                     width: 1,
                   ),
                   borderRadius: BorderRadius.circular(WebTokens.rSm),
@@ -196,7 +198,7 @@ class _WebFilterButtonState extends State<WebFilterButton> {
                     padding: const EdgeInsets.symmetric(horizontal: 5),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: WebTokens.danger,
+                      color: t.danger,
                       borderRadius: BorderRadius.circular(WebTokens.rFull),
                       border: Border.all(color: t.bgElevated, width: 2),
                     ),
@@ -860,7 +862,7 @@ class _DropdownRowState<T> extends State<_DropdownRow<T>> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           color: widget.isSelected
-              ? WebTokens.accent.withValues(alpha: 0.08)
+              ? t.accent.withValues(alpha: 0.08)
               : (_hover ? t.bgHover : Colors.transparent),
           child: Row(
             children: [
@@ -869,7 +871,7 @@ class _DropdownRowState<T> extends State<_DropdownRow<T>> {
                   widget.entry.label,
                   style: t.bodyBase.copyWith(
                     color: widget.isSelected
-                        ? WebTokens.accent
+                        ? t.accent
                         : t.textPrimary,
                     fontWeight: widget.isSelected
                         ? FontWeight.w600
@@ -880,7 +882,7 @@ class _DropdownRowState<T> extends State<_DropdownRow<T>> {
                 ),
               ),
               if (widget.isSelected)
-                const Icon(Icons.check, size: 16, color: WebTokens.accent),
+                Icon(Icons.check, size: 16, color: t.accent),
             ],
           ),
         ),
@@ -926,11 +928,13 @@ class _FilterChipState extends State<_FilterChip> {
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
+            // Active filter pill reads as a filled primary button — keep
+            // Mynt brand blue in both modes.
             color: active
-                ? WebTokens.accent
+                ? WebTokens.accentLight
                 : (_hover ? t.bgHover : t.bgElevated),
             border: Border.all(
-              color: active ? WebTokens.accent : t.borderSubtle,
+              color: active ? WebTokens.accentLight : t.borderSubtle,
               width: 1,
             ),
             borderRadius: BorderRadius.circular(WebTokens.rFull),
@@ -989,11 +993,11 @@ class _ClearAllButtonState extends State<_ClearAllButton> {
         child: Text(
           'Clear all',
           style: t.bodySm.copyWith(
-            color: WebTokens.accent,
+            color: t.accent,
             fontWeight: FontWeight.w600,
             decoration:
                 _hover ? TextDecoration.underline : TextDecoration.none,
-            decorationColor: WebTokens.accent,
+            decorationColor: t.accent,
           ),
         ),
       ),

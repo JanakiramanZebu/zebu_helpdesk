@@ -24,65 +24,81 @@ class WebTokens {
   static WebTokens of(BuildContext context) =>
       WebTokens._(Theme.of(context).brightness);
 
-  // --- Accent (Mynt brand blue) -------------------------------------------
-  static const accent = Color(0xFF0037B7);
-  static const accentHover = Color(0xFF002E9B);
+  // --- Accent --------------------------------------------------------------
+  // Light mode keeps the deep Mynt brand blue. Dark mode adopts the GitHub
+  // Dark accent (`#2F81F7`) — a brighter blue that reads with strong
+  // contrast against the near-black `canvas-default` surface.
+  static const accentLight = Color(0xFF0037B7);
+  static const accentDark = Color(0xFF2F81F7);
+  static const accentHoverLight = Color(0xFF002E9B);
+  static const accentHoverDark = Color(0xFF1F6FEB);
+  Color get accent => isLight ? accentLight : accentDark;
+  Color get accentHover => isLight ? accentHoverLight : accentHoverDark;
   Color get accentMuted => isLight
       ? const Color(0xFFE3EDFA)
-      : const Color(0xFF1D242F);
+      : const Color(0x33388BFD); // GH accent-muted
   Color get accentSoft => isLight
       ? const Color(0xFFEFF4FC)
-      : const Color(0xFF15202F);
+      // Dark: 12 % accent overlay so the wash composites as a *whisper* of
+      // blue on the near-black canvas. The solid `accent-subtle` (`#0C2D6B`)
+      // reads as loud on unread rows / hover fills — this is subtler.
+      : const Color(0x1F2F81F7);
 
   // --- Backgrounds ---------------------------------------------------------
-  // Light page bg: `#F7F7F4` — a hair warm off-white so the content area
-  // reads as paper against the crisp-white cards + sidebar rather than as a
-  // flat cool gray plate. Same brightness as the previous `#F8F9FA` (~97 %)
-  // so contrast with cards is preserved. Dark bg unchanged.
+  // Light: warm-paper palette (Asana / Notion inspired) with `#FAFAF6` page
+  // bg reading as paper against pure-white cards. Dark: GitHub Dark canvas
+  // stack — `canvas-default` (#0D1117), `canvas-overlay` (#161B22),
+  // `surface-3` (#21262D), and `surface-hover` (#262C36).
   Color get bgPrimary =>
-      isLight ? const Color(0xFFFDFDFF) : const Color(0xFF0E0E10);
+      isLight ? const Color(0xFFFAFAF6) : const Color(0xFF0D1117);
   Color get bgSecondary =>
-      isLight ? const Color(0xFFFFFFFF) : const Color(0xFF15151A);
+      isLight ? const Color(0xFFFFFFFF) : const Color(0xFF161B22);
   Color get bgTertiary =>
-      isLight ? const Color(0xFFF1F3F8) : const Color(0xFF1A1A20);
+      isLight ? const Color(0xFFF1EFE8) : const Color(0xFF21262D);
   Color get bgElevated =>
-      isLight ? const Color(0xFFFFFFFF) : const Color(0xFF1A1A20);
+      isLight ? const Color(0xFFFFFFFF) : const Color(0xFF161B22);
   Color get bgHover =>
-      isLight ? const Color(0xFFEEF1F6) : const Color(0xFF22222B);
+      isLight ? const Color(0xFFF0EEE7) : const Color(0xFF262C36);
 
   // --- Borders -------------------------------------------------------------
-  // Hairline border matches DESIGN_SYSTEM.md `--color-border: #DDE2E7`
-  // (previously #E5E9F0, a hair lighter). The design also identifies
-  // `#C7CDD4` as a stronger "outline" — kept on `borderStrong` below.
+  // Light: warm hairline (`#E8E4DA`). Dark: GitHub Dark border stack —
+  // `border-muted` (#21262D), `border-default` (#30363D), `border-subtle`
+  // (#3D444D) used as the "strong" tone for controls that need to stand off
+  // the surface.
   Color get borderSubtle =>
-      isLight ? const Color(0x84DDE2E7) : const Color(0xFF26262E);
+      isLight ? const Color(0x84E8E4DA) : const Color(0xFF21262D);
   Color get borderDefault =>
-      isLight ? const Color(0xFFDDE2E7) : const Color(0xFF333341);
+      isLight ? const Color(0xFFE8E4DA) : const Color(0xFF30363D);
   Color get borderStrong =>
-      isLight ? const Color(0xFFC7CDD4) : const Color(0xFF4A4A55);
+      isLight ? const Color(0xFFD4CFC2) : const Color(0xFF3D444D);
 
   // --- Text ----------------------------------------------------------------
-  // skill.md restricts body text to two colors: primary and secondary.
-  // The old `--text-muted` token is removed — use [textSecondary] instead.
+  // Light: two-color rule from skill.md. Dark: GitHub Dark text stack —
+  // `text-primary` (#F0F6FC), `text-secondary` (#C9D1D9).
   Color get textPrimary =>
-      isLight ? const Color(0xFF141414) : const Color(0xFFFAFAFA);
+      isLight ? const Color(0xFF141414) : const Color(0xFFF0F6FC);
   Color get textSecondary =>
-      isLight ? const Color(0xFF565C68) : const Color(0xFFB0B5BD);
+      isLight ? const Color(0xFF565C68) : const Color(0xFFC9D1D9);
   static const textInverse = Colors.white;
 
   // --- Semantic ------------------------------------------------------------
+  // Dark tones taken from GitHub Dark: success `#3FB950` on bg `#12261E`,
+  // danger `#F85149` on bg `#2D1117`, warning `#D29922` on bg `#341A00`,
+  // info `#2F81F7` on bg `#0C2D6B` (accent-subtle).
   static const success = Color(0xFF00B14F);
   Color get successLight =>
-      isLight ? const Color(0xFFE6F8EE) : const Color(0xFF132B1C);
-  static const danger = Color(0xFFFF1717);
+      isLight ? const Color(0xFFE6F8EE) : const Color(0xFF12261E);
+  static const dangerBrandLight = Color(0xFFFF1717);
+  static const dangerBrandDark = Color(0xFFF85149);
+  Color get danger => isLight ? dangerBrandLight : dangerBrandDark;
   Color get dangerLight =>
-      isLight ? const Color(0xFFFDE7E7) : const Color(0xFF311616);
+      isLight ? const Color(0xFFFDE7E7) : const Color(0xFF2D1117);
   static const warning = Color(0xFFFFB038);
   Color get warningLight =>
-      isLight ? const Color(0xFFFFF4E0) : const Color(0xFF2C2316);
+      isLight ? const Color(0xFFFFF4E0) : const Color(0xFF341A00);
   static const info = Color(0xFF0052CC);
   Color get infoLight =>
-      isLight ? const Color(0xFFE3EDFA) : const Color(0xFF1D242F);
+      isLight ? const Color(0xFFE3EDFA) : const Color(0xFF0C2D6B);
 
   // --- Spacing (px, mirrors --space-* tokens) ------------------------------
   static const s1 = 4.0;
@@ -254,6 +270,9 @@ class WebTokens {
         boxShadow: accentGlow,
       );
     }
+    // Rest-state whisper shadow + hairline border so cards feel lifted off
+    // the warm-paper page bg. Hover steps up to `shadowSm` for a tactile
+    // press-in-place cue without a heavy transform.
     return BoxDecoration(
       color: bgElevated,
       borderRadius: BorderRadius.circular(rMd),
@@ -261,7 +280,7 @@ class WebTokens {
         color: hover ? borderDefault : borderSubtle,
         width: 1,
       ),
-      boxShadow: hover ? shadowSm : null,
+      boxShadow: hover ? shadowSm : shadowXs,
     );
   }
 

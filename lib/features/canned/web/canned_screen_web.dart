@@ -11,18 +11,18 @@ import '../../../providers.dart';
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
+import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../dashboard/web/_tokens.dart';
 import 'canned_detail_panel.dart';
 import 'canned_editor_dialog.dart';
 
-// Column layout — header and rows share these so the grid lines up
-// pixel-for-pixel. Title / preview flex; scope / status are fixed.
+// Column layout — header and rows share these so the vertical grid lines
+// up pixel-for-pixel. Mirrors the tickets table cell API.
 const int _kColTitleFlex = 3;
 const int _kColPreviewFlex = 5;
 const double _kColScopeWidth = 110;
 const double _kColStatusWidth = 110;
-const double _kColGap = 16;
 
 /// Below this, the table horizontally scrolls under a shared controller.
 const double _kTableMinWidth = 900;
@@ -113,19 +113,18 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
             PageHeader(
               title: 'Canned responses',
               subtitle: _total != null ? '$_total total' : null,
+              leading: _BackButton(
+                onTap: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go(Routes.more);
+                  }
+                },
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _BackButton(
-                    onTap: () {
-                      if (context.canPop()) {
-                        context.pop();
-                      } else {
-                        context.go(Routes.more);
-                      }
-                    },
-                  ),
-                  const SizedBox(width: WebTokens.s3),
                   SizedBox(
                     width: 280,
                     child: ListSearchInput(
@@ -139,12 +138,15 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
               ),
             ),
             Expanded(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final tableWidth = constraints.maxWidth > _kTableMinWidth
-                      ? constraints.maxWidth
-                      : _kTableMinWidth;
-                  return Scrollbar(
+              child: ListTableShell(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final horizontalScroll =
+                        constraints.maxWidth <= _kTableMinWidth;
+                    final tableWidth = horizontalScroll
+                        ? _kTableMinWidth
+                        : constraints.maxWidth;
+                    return Scrollbar(
                     controller: _tableHScroll,
                     scrollbarOrientation: ScrollbarOrientation.bottom,
                     child: SingleChildScrollView(
@@ -155,7 +157,7 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            const _TableHeader(),
+                            _TableHeader(scrollGutter: horizontalScroll),
                             Expanded(
                               child: ColoredBox(
                                 color: t.bgElevated,
@@ -197,6 +199,7 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
                     ),
                   );
                 },
+              ),
               ),
             ),
           ],
@@ -272,7 +275,7 @@ class _NewButtonState extends State<_NewButton> {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final bg = _hover ? WebTokens.accentHover : WebTokens.accent;
+    final bg = _hover ? t.accentHover : t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -321,11 +324,15 @@ class _NewButtonState extends State<_NewButton> {
 }
 
 // ---------------------------------------------------------------------------
-// Table header
+// Table header — matches the tickets table: edge-to-edge, hairline
+// top/bottom borders, and per-column right-border creating the vertical
+// grid line that body rows align to pixel-for-pixel.
 // ---------------------------------------------------------------------------
 
 class _TableHeader extends StatelessWidget {
-  const _TableHeader();
+  const _TableHeader({this.scrollGutter = false});
+
+  final bool scrollGutter;
 
   @override
   Widget build(BuildContext context) {
@@ -338,42 +345,108 @@ class _TableHeader extends StatelessWidget {
           bottom: BorderSide(color: t.borderSubtle, width: 1),
         ),
       ),
-      padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s8,
-        vertical: WebTokens.s3,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: _kColTitleFlex,
-            child: Text('Title', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          Expanded(
-            flex: _kColPreviewFlex,
-            child: Text('Preview', style: t.tableHeader),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColScopeWidth,
-            child: Text(
-              'Scope',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            const _HeaderCell(flex: _kColTitleFlex, label: 'Title'),
+            const _HeaderCell(flex: _kColPreviewFlex, label: 'Preview'),
+            const _HeaderCell(
+              width: _kColScopeWidth,
+              label: 'Scope',
+              alignRight: true,
             ),
-          ),
-          const SizedBox(width: _kColGap),
-          SizedBox(
-            width: _kColStatusWidth,
-            child: Text(
-              'Status',
-              style: t.tableHeader,
-              textAlign: TextAlign.right,
+            const _HeaderCell(
+              width: _kColStatusWidth,
+              label: 'Status',
+              alignRight: true,
+              last: true,
             ),
-          ),
-        ],
+            if (scrollGutter) const SizedBox(width: 10),
+          ],
+        ),
       ),
     );
+  }
+}
+
+/// Column header cell — mirrors the tickets `_HeaderCell`.
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell({
+    required this.label,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final String label;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: WebTokens.s3,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: Text(
+        label,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: t.tableHeader,
+        textAlign: alignRight ? TextAlign.right : TextAlign.left,
+      ),
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
+  }
+}
+
+/// Body cell — mirrors the tickets `_BodyCell`.
+class _BodyCell extends StatelessWidget {
+  const _BodyCell({
+    required this.child,
+    this.flex,
+    this.width,
+    this.last = false,
+    this.alignRight = false,
+  });
+  final Widget child;
+  final int? flex;
+  final double? width;
+  final bool last;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: WebTokens.s3,
+        vertical: 8,
+      ),
+      decoration: BoxDecoration(
+        border: last
+            ? null
+            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
+      ),
+      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
+      child: child,
+    );
+    if (flex != null) return Expanded(flex: flex!, child: content);
+    if (width != null) return SizedBox(width: width!, child: content);
+    return content;
   }
 }
 
@@ -421,73 +494,44 @@ class _RowState extends State<_Row> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s8,
-            vertical: WebTokens.s4,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                flex: _kColTitleFlex,
-                child: Row(
-                  children: [
-                    Container(
-                      width: 28,
-                      height: 28,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: WebTokens.accent.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(WebTokens.rXs),
-                      ),
-                      child: Icon(
-                        Icons.quickreply_outlined,
-                        size: 16,
-                        color: WebTokens.accent,
-                      ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _BodyCell(
+                  flex: _kColTitleFlex,
+                  child: Text(
+                    c.title.trim().isEmpty ? '(untitled)' : c.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodyBase.copyWith(
+                      fontWeight: FontWeight.w500,
                     ),
-                    const SizedBox(width: WebTokens.s3),
-                    Expanded(
-                      child: Text(
-                        c.title.trim().isEmpty ? '(untitled)' : c.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: t.bodyBase.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              Expanded(
-                flex: _kColPreviewFlex,
-                child: _TextCell(text: preview),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColScopeWidth,
-                child: Align(
-                  alignment: Alignment.centerRight,
+                _BodyCell(
+                  flex: _kColPreviewFlex,
+                  child: _TextCell(text: preview),
+                ),
+                _BodyCell(
+                  width: _kColScopeWidth,
+                  alignRight: true,
                   child: _Pill(
                     label: c.isGlobal ? 'Global' : 'Dept',
                     tone: c.isGlobal ? WebTokens.info : t.textSecondary,
                   ),
                 ),
-              ),
-              const SizedBox(width: _kColGap),
-              SizedBox(
-                width: _kColStatusWidth,
-                child: Align(
-                  alignment: Alignment.centerRight,
+                _BodyCell(
+                  width: _kColStatusWidth,
+                  last: true,
+                  alignRight: true,
                   child: _Pill(
                     label: c.isEnabled ? 'Enabled' : 'Disabled',
-                    tone: c.isEnabled ? WebTokens.success : WebTokens.danger,
+                    tone: c.isEnabled ? WebTokens.success : t.danger,
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

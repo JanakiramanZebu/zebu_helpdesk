@@ -32,6 +32,7 @@ class PageHeader extends StatelessWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.leading,
     this.trailing,
     this.padding = const EdgeInsets.fromLTRB(
       WebTokens.s6,
@@ -43,6 +44,9 @@ class PageHeader extends StatelessWidget {
 
   final String title;
   final String? subtitle;
+
+  /// Optional widget rendered to the left of the title (e.g. back button).
+  final Widget? leading;
   final Widget? trailing;
   final EdgeInsetsGeometry padding;
 
@@ -51,17 +55,51 @@ class PageHeader extends StatelessWidget {
     final t = WebTokens.of(context);
     // Title + optional subtitle column — same in both layouts, extracted
     // so the wide / stacked branches can compose it consistently.
+    // Title stays at its natural `hero` size — `maxLines: 1 + softWrap:
+    // false + ellipsis` keeps it on one line and cleanly truncates when
+    // the column is squeezed (list narrowed by an open detail panel, or a
+    // compact viewport). Earlier the title was wrapped in `FittedBox` to
+    // scale-down instead of ellipsising, but that shrunk the glyph size
+    // to body-text proportions at narrow widths and read as a UI bug —
+    // ellipsis preserves the "page title" visual weight.
     final titleColumn = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(title, style: t.hero),
+        Text(
+          title,
+          style: t.hero,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+        ),
         if (subtitle != null) ...[
           const SizedBox(height: 4),
-          Text(subtitle!, style: t.bodySm),
+          Text(
+            subtitle!,
+            style: t.bodySm,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ],
     );
+
+    // Compose the title area with the optional leading slot to its left.
+    // Kept as a single sub-tree so wide and stacked layouts both include
+    // the leading widget without a duplicate branch.
+    final titleArea = leading == null
+        ? titleColumn
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              leading!,
+              const SizedBox(width: WebTokens.s3),
+              Flexible(child: titleColumn),
+            ],
+          );
 
     return Padding(
       padding: padding,
@@ -73,7 +111,7 @@ class PageHeader extends StatelessWidget {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Expanded(child: titleColumn),
+                Expanded(child: titleArea),
                 if (hasTrailing) ...[
                   const SizedBox(width: WebTokens.s4),
                   trailing!,
@@ -88,7 +126,7 @@ class PageHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              titleColumn,
+              titleArea,
               const SizedBox(height: WebTokens.s3),
               trailing!,
             ],

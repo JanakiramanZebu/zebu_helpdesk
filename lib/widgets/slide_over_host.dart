@@ -105,7 +105,12 @@ class SlideOverHost extends StatelessWidget {
                 decoration: BoxDecoration(
                   border: Border(
                     left: BorderSide(
-                      color: const Color(0xFFD6D6D6),
+                      // Light: warm hairline. Dark: GitHub `border-muted`
+                      // (`#21262D`) so the seam disappears into the panel
+                      // family instead of stripe-lighting the split.
+                      color: Theme.of(context).brightness == Brightness.light
+                          ? const Color(0xFFD6D6D6)
+                          : const Color(0xFF21262D),
                       width: 1,
                     ),
                   ),
@@ -179,12 +184,13 @@ class _PanelSlotState extends State<_PanelSlot> {
 // Kept file-private so the values live with the widget that consumes them.
 
 const _kSplitBreakpoint = 905.0;
-// Bumped from 0.58 → 0.68 (and max 920 → 1200) so the panel is wide enough
-// to host a two-column body (message column + fields sidebar) without the
-// message column collapsing under a rigid 300 px sidebar.
-const _kPanelRatio = 0.68;
-const _kPanelMinWidth = 540.0;
-const _kPanelMaxWidth = 1200.0;
+// Panel needs to host a two-column body (message column + fields sidebar)
+// without the message column collapsing under a rigid 300 px sidebar, but
+// shouldn't dominate the viewport — the list underneath still needs to be
+// readable at a glance.
+const _kPanelRatio = 0.62;
+const _kPanelMinWidth = 520.0;
+const _kPanelMaxWidth = 1080.0;
 
 const _kAnimDuration = Duration(milliseconds: 260);
 const _kAnimCurve = Curves.easeOutCubic;

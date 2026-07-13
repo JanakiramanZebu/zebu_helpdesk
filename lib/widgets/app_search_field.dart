@@ -53,7 +53,9 @@ class _AppSearchFieldState extends State<AppSearchField> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final fill = isDark ? const Color(0xFF1E1E1E) : const Color(0xFFF1F1F1);
+    // Dark fill = GitHub `canvas-overlay` (`#161B22`) — sits one step above
+    // the scaffold's `canvas-default`. Light fill unchanged.
+    final fill = isDark ? const Color(0xFF161B22) : const Color(0xFFF1F1F1);
     final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final hasText = widget.controller.text.isNotEmpty;
 
