@@ -18,7 +18,9 @@ class Routes {
   static const canned = '/canned';
   static const queues = '/queues';
   static const reports = '/reports';
+  static const agents = '/agents';
   static const profile = '/profile';
+  static const serverSettings = '/settings/server';
 
   static const ticketNew = '/tickets/new';
   static const taskNew = '/tasks/new';

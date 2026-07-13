@@ -31,7 +31,16 @@ class MoreScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Menu')),
+      appBar: AppBar(
+        // Menu is a root bottom-nav tab, so there's no route to pop — send the
+        // back affordance to the Dashboard (home) tab instead.
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: 'Back to Dashboard',
+          onPressed: () => context.go(Routes.dashboard),
+        ),
+        title: const Text('Menu'),
+      ),
       body: ListView(
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).padding.bottom + 24,
@@ -78,6 +87,12 @@ class MoreScreen extends ConsumerWidget {
                 color: AppTheme.brandLight,
                 label: 'Organizations',
                 onTap: () => context.push(Routes.organizations),
+              ),
+              _MenuTile(
+                icon: Assets.menuAgents,
+                color: AppTheme.brand,
+                label: 'Agent Directory',
+                onTap: () => context.push(Routes.agents),
               ),
               _MenuTile(
                 icon: Assets.menuReports,

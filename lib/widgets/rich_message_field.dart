@@ -2,6 +2,7 @@ import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 
 import '../core/theme/app_text.dart';
+import 'composer_actions.dart';
 
 /// A bordered rich-text message field backed by a [FleatherController].
 ///
@@ -22,6 +23,9 @@ class RichMessageField extends StatefulWidget {
     this.errorText,
     this.minHeight = 120,
     this.maxHeight = 260,
+    this.bordered = true,
+    this.onInsertCanned,
+    this.onInsertFaq,
   });
 
   final FleatherController controller;
@@ -30,6 +34,16 @@ class RichMessageField extends StatefulWidget {
   final String? errorText;
   final double minHeight;
   final double maxHeight;
+
+  /// When false the field drops its outer border/fill and renders flat (just a
+  /// toolbar row, a hairline and the editor) so it can sit inside a grouped
+  /// "list" surface — the Gmail-compose look. Defaults to the bordered box.
+  final bool bordered;
+
+  /// Optional inline inserters. When set, a compact "saved replies" / "FAQ"
+  /// icon pair rides in the toolbar row next to the expand button.
+  final VoidCallback? onInsertCanned;
+  final VoidCallback? onInsertFaq;
 
   @override
   State<RichMessageField> createState() => _RichMessageFieldState();
@@ -75,6 +89,29 @@ class _RichMessageFieldState extends State<RichMessageField> {
     if (mounted) setState(() {});
   }
 
+  /// Wraps the toolbar+editor in a bordered box, or returns it flat (no border
+  /// or fill) when [RichMessageField.bordered] is false so it can nest inside a
+  /// grouped list surface.
+  Widget _wrap(
+    BuildContext context, {
+    required Color borderColor,
+    required bool hasError,
+    required Widget child,
+  }) {
+    if (!widget.bordered) return child;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).inputDecorationTheme.fillColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: borderColor,
+          width: _focus.hasFocus || hasError ? 1.6 : 1,
+        ),
+      ),
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -98,19 +135,14 @@ class _RichMessageFieldState extends State<RichMessageField> {
           ),
           const SizedBox(height: 6),
         ],
-        Container(
-          decoration: BoxDecoration(
-            color: theme.inputDecorationTheme.fillColor,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: borderColor,
-              width: _focus.hasFocus || hasError ? 1.6 : 1,
-            ),
-          ),
+        _wrap(
+          context,
+          borderColor: borderColor,
+          hasError: hasError,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Toolbar + expand row.
+              // Toolbar + insert/expand row.
               Row(
                 children: [
                   Expanded(
@@ -123,6 +155,12 @@ class _RichMessageFieldState extends State<RichMessageField> {
                       hideAlignment: true,
                     ),
                   ),
+                  if (widget.onInsertCanned != null ||
+                      widget.onInsertFaq != null)
+                    ComposerActionChips(
+                      onCanned: widget.onInsertCanned ?? () {},
+                      onFaq: widget.onInsertFaq ?? () {},
+                    ),
                   IconButton(
                     tooltip: 'Expand',
                     visualDensity: VisualDensity.compact,

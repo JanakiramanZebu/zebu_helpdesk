@@ -16,13 +16,14 @@ class ApiClient {
   ApiClient({
     required TokenStorage tokenStorage,
     this.onSessionExpired,
+    String? apiRoot,
     Dio? dio,
     Dio? refreshDio,
   }) : _tokens = tokenStorage,
        _dio = dio ?? Dio(),
        _refreshDio = refreshDio ?? Dio() {
     final base = BaseOptions(
-      baseUrl: AppConfig.apiRoot,
+      baseUrl: apiRoot ?? AppConfig.apiRoot,
       connectTimeout: AppConfig.connectTimeout,
       receiveTimeout: AppConfig.receiveTimeout,
       responseType: ResponseType.json,
@@ -115,8 +116,9 @@ class ApiClient {
     );
     final code = res.statusCode ?? 0;
     if (code >= 300 && code < 400) return res.headers.value('location');
-    if (code >= 200 && code < 300)
+    if (code >= 200 && code < 300) {
       return null; // already the bytes; no redirect
+    }
     throw _exceptionFromResponse(res);
   }
 

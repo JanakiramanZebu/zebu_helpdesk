@@ -192,9 +192,11 @@ class AppTheme {
       listTileTheme: const ListTileThemeData(
         contentPadding: EdgeInsets.symmetric(horizontal: 16),
       ),
-      // Jira/Asana/ClickUp-style modal sheets: large 24px top radius, a soft
-      // grabber, flat surface fill and a dimmed scrim. Applies to every
-      // showModalBottomSheet call across the app.
+      // Jira/Asana/ClickUp-style modal sheets: large 24px top radius, flat
+      // surface fill and a dimmed scrim. The built-in drag handle is left off
+      // here because it reserves a fixed 48px touch-target box (only its
+      // colour/size are themeable, not that height) — AppSheet draws its own
+      // compact grabber instead. Sheets that opt in explicitly still get one.
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: scheme.surface,
         surfaceTintColor: Colors.transparent,
@@ -202,7 +204,7 @@ class AppTheme {
         modalBarrierColor: Colors.black.withValues(alpha: isLight ? 0.32 : 0.55),
         elevation: 0,
         modalElevation: 0,
-        showDragHandle: true,
+        showDragHandle: false,
         dragHandleColor: scheme.onSurfaceVariant.withValues(alpha: 0.35),
         dragHandleSize: const Size(36, 4),
         clipBehavior: Clip.antiAlias,

@@ -3,9 +3,10 @@ import 'dart:typed_data';
 
 import 'package:excel/excel.dart' as xls;
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../widgets/svg_icon.dart';
 import '../assets.dart';
@@ -15,12 +16,15 @@ enum ExportFormat {
   pdf(
     label: 'PDF',
     ext: 'pdf',
+    mimeType: 'application/pdf',
     icon: Icons.picture_as_pdf_outlined,
     tint: Color(0xFFE53935),
   ),
   excel(
     label: 'Excel',
     ext: 'xlsx',
+    mimeType:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     icon: Icons.grid_on_outlined,
     tint: Color(0xFF1E8E3E),
   );
@@ -28,12 +32,16 @@ enum ExportFormat {
   const ExportFormat({
     required this.label,
     required this.ext,
+    required this.mimeType,
     required this.icon,
     required this.tint,
   });
 
   final String label;
   final String ext;
+
+  /// MIME type passed to open_filex so Android resolves the right viewer.
+  final String mimeType;
   final IconData icon;
 
   /// Brand-ish accent for the format's glyph in the download menu.
@@ -116,6 +124,10 @@ class ExportMenuButton extends StatelessWidget {
 /// return the written file.
 ///
 /// [rows] cells are plain strings; missing values should be passed as `''`.
+///
+/// Throws [ExportOpenException] if the file was written but no installed app
+/// could open it (so callers can distinguish "saved but couldn't open" from a
+/// build/write failure).
 Future<File> exportTable({
   required ExportFormat format,
   required String baseName,
@@ -128,10 +140,29 @@ Future<File> exportTable({
     ExportFormat.excel => _buildExcel(title, columns, rows),
   };
 
-  final file = File('${Directory.systemTemp.path}/$baseName.${format.ext}');
-  await file.writeAsBytes(bytes);
-  await launchUrl(Uri.file(file.path));
+  // Write to the app's cache dir and hand the path to open_filex, which exposes
+  // it through a FileProvider content:// URI. A raw file:// URI (the old
+  // launchUrl path) is blocked by Android and never opened anything.
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/$baseName.${format.ext}');
+  await file.writeAsBytes(bytes, flush: true);
+  final result = await OpenFilex.open(file.path, type: format.mimeType);
+  if (result.type != ResultType.done) {
+    throw ExportOpenException(file, result.message);
+  }
   return file;
+}
+
+/// Thrown by [exportTable] when the document was written but no app on the
+/// device could open it.
+class ExportOpenException implements Exception {
+  const ExportOpenException(this.file, this.message);
+
+  final File file;
+  final String message;
+
+  @override
+  String toString() => 'ExportOpenException: $message (${file.path})';
 }
 
 Future<Uint8List> _buildPdf(

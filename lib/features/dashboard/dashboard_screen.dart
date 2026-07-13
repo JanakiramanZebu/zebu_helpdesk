@@ -2,18 +2,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
+import '../../data/tickets_repository.dart';
 import '../../models/reports.dart';
+import '../../models/ticket.dart';
 import '../../providers.dart';
+import '../../widgets/glass.dart';
+import '../../widgets/skeleton.dart';
 import '../../widgets/states.dart';
+import '../../widgets/user_avatar.dart';
 import '../reports/widgets/activity_chart_card.dart';
 import '../reports/widgets/report_summary_card.dart';
+import 'widgets/attention_row.dart';
+import 'widgets/count_chip_row.dart';
+import 'widgets/focus_strip.dart';
 import 'widgets/mini_bar_chart.dart';
-import 'widgets/stat_grid_skeleton.dart';
-import 'widgets/stat_tile.dart';
+
+/// Height of the custom greeting app bar (excludes the status-bar inset).
+const double _kDashToolbar = 72;
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -22,13 +30,33 @@ class DashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
+    with SingleTickerProviderStateMixin {
   int _days = 30;
   ReportSummary? _summary;
   VolumeReport? _volume;
   Object? _error;
   bool _loading = true;
   bool _volumeLoading = false;
+
+  /// One-time fade-and-rise reveal for the content once it first loads, echoing
+  /// the sign-in screen's entrance. Created eagerly in [initState] (not lazily)
+  /// so that if the screen is disposed before it's ever built — e.g. navigating
+  /// away right after login while still loading — [dispose] tears down an
+  /// existing controller instead of creating one against a deactivated element.
+  late final AnimationController _entrance;
+  late final Animation<double> _fadeIn = CurvedAnimation(
+    parent: _entrance,
+    curve: Curves.easeOut,
+  );
+  late final Animation<Offset> _riseIn =
+      Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero).animate(
+        CurvedAnimation(parent: _entrance, curve: Curves.easeOutCubic),
+      );
+
+  // The short "needs attention" triage list (overdue tickets, oldest first).
+  // Null while loading; an empty list means "all caught up".
+  List<Ticket>? _attention;
 
   // Task counts (derived from /tasks list totals — there is no task report
   // endpoint). Null until loaded; the Tasks section is hidden until then.
@@ -42,7 +70,17 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    _entrance = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 700),
+    );
     _load();
+  }
+
+  @override
+  void dispose() {
+    _entrance.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -62,7 +100,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         _volume = results[1] as VolumeReport;
         _loading = false;
       });
+      _entrance.forward(); // reveal the content (no-op once already shown)
       _loadTaskCounts();
+      _loadAttention();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -96,24 +136,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     _reloadVolume();
   }
 
-  /// Switch to the Tickets tab pre-filtered to [view] (one of the ticket
-  /// list's filter keys: open / unassigned / overdue / mine / answered /
-  /// closed).
+  /// Switch to the Tickets tab pre-filtered to [view].
   void _openTickets(String view) {
     ref.read(ticketsViewRequestProvider.notifier).set(view);
     context.go(Routes.tickets);
   }
 
-  /// Switch to the Tasks tab pre-filtered to [view] (open / mine / overdue /
-  /// closed).
+  /// Switch to the Tasks tab pre-filtered to [view].
   void _openTasks(String view) {
     ref.read(tasksViewRequestProvider.notifier).set(view);
     context.go(Routes.tasks);
   }
 
-  /// Fetch task counts in parallel (cheap list-total queries). Non-blocking and
-  /// independently fault-tolerant, so a task failure never breaks the rest of
-  /// the dashboard.
+  /// Fetch task counts in parallel (cheap list-total queries).
   Future<void> _loadTaskCounts() async {
     try {
       final repo = ref.read(tasksRepositoryProvider);
@@ -139,68 +174,70 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     }
   }
 
-  Widget _sectionLabel(String title, {String? actionLabel, VoidCallback? onAction}) =>
-      Padding(
-        padding: const EdgeInsets.only(left: 4, top: 4, bottom: 10),
-        child: Row(
-          children: [
-            Expanded(child: AppText.titleText(context, title, fw: 2)),
-            if (actionLabel != null && onAction != null)
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onAction,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      AppText.paraText(
-                        context,
-                        actionLabel,
-                        color: AppTheme.brand,
-                        fw: 1,
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        size: 16,
-                        color: AppTheme.brand,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-
-  /// A responsive 2-column stat grid. Tiles are laid out in [Row]s wrapped in
-  /// [IntrinsicHeight] so each tile sizes to its own content (value + label +
-  /// padding) and both tiles in a row share the taller height — no hard-coded
-  /// box height to over- or under-shoot, and it respects text scaling.
-  Widget _statGrid(List<Widget> tiles) {
-    const spacing = 10.0;
-    final rows = <Widget>[];
-    for (var i = 0; i < tiles.length; i += 2) {
-      final left = tiles[i];
-      final right = i + 1 < tiles.length ? tiles[i + 1] : null;
-      rows.add(
-        Padding(
-          padding: EdgeInsets.only(top: i == 0 ? 0 : spacing),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: left),
-                const SizedBox(width: spacing),
-                Expanded(child: right ?? const SizedBox.shrink()),
-              ],
+  /// Fetch the top few overdue tickets for the triage list. Independently
+  /// fault-tolerant: on failure the list stays empty ("all caught up").
+  Future<void> _loadAttention() async {
+    try {
+      final page = await ref
+          .read(ticketsRepositoryProvider)
+          .list(
+            const TicketQuery(
+              view: 'overdue',
+              sort: 'created',
+              order: 'asc',
+              limit: 5,
             ),
+          );
+      if (!mounted) return;
+      setState(() => _attention = page.items);
+    } catch (_) {
+      if (mounted) setState(() => _attention = const []);
+    }
+  }
+
+  Widget _sectionLabel(
+    String title, {
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) => Padding(
+    padding: const EdgeInsets.only(left: 4, top: 4, bottom: 10),
+    child: Row(
+      children: [
+        Expanded(
+          child: AppText.titleText(
+            context,
+            title,
+            fw: 2,
+            color: Glass.textPrimary(context),
           ),
         ),
-      );
-    }
-    return Column(children: rows);
-  }
+        if (actionLabel != null && onAction != null)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onAction,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppText.paraText(
+                    context,
+                    actionLabel,
+                    color: Glass.link(context),
+                    fw: 1,
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    size: 16,
+                    color: Glass.link(context),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 
   /// Priority bar color, mirroring StatusChip.priority semantics.
   Color _priorityColor(String priority) {
@@ -223,19 +260,60 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       error: (_, _) => 'Hi there',
     );
 
+    // The dark aurora canvas + glass tint are provided app-wide (see app.dart);
+    // this screen floats a solid app bar and its content over the canvas.
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        toolbarHeight: 72,
+        toolbarHeight: _kDashToolbar,
         titleSpacing: 16,
+        backgroundColor: Glass.overlayFill(context),
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        shape: Border(bottom: BorderSide(color: Glass.border(context, 0.08))),
         title: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            AppText.headText(context, greeting, fw: 2),
+            AppText.headText(context, greeting, fw: 2,
+                color: Glass.textPrimary(context)),
             const SizedBox(height: 2),
-            AppText.paraText(context, "Here's your helpdesk overview"),
+            AppText.paraText(context, "Here's your helpdesk overview",
+                color: Glass.textMuted(context)),
           ],
         ),
+        // Profile avatar → the 'More' menu, now that the bottom bar's fifth
+        // slot was replaced by the center create button.
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Semantics(
+              button: true,
+              label: 'Profile and menu',
+              child: InkResponse(
+                onTap: () => context.go(Routes.more),
+                radius: 26,
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Glass.border(context, 0.18)),
+                  ),
+                  child: me.maybeWhen(
+                    data: (m) => UserAvatar(name: m.name, radius: 18),
+                    orElse: () => CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Glass.accent.withValues(alpha: 0.14),
+                      child: Icon(Icons.person_outline,
+                          size: 20, color: Glass.textMuted(context)),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: RefreshIndicator(onRefresh: _load, child: _buildBody(context)),
     );
@@ -249,147 +327,94 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     final t = summary.totals;
 
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: EdgeInsets.fromLTRB(
-        12,
-        12,
-        12,
-        12 + MediaQuery.of(context).padding.bottom,
+    final sections = <Widget>[
+      // --- Tickets focus: the three numbers that need action ----------------
+      _sectionLabel(
+        'Tickets',
+        actionLabel: 'View all',
+        onAction: () => _openTickets('open'),
       ),
-      children: [
-        _sectionLabel(
-          'Tickets',
-          actionLabel: 'View all',
-          onAction: () => _openTickets('open'),
-        ),
-        _statGrid([
-          StatTile(
+      FocusStrip(
+        metrics: [
+          FocusMetric(
             label: 'Open',
-            value: Fmt.count(t.open),
-            icon: Icons.inbox_outlined,
+            value: t.open,
             color: AppTheme.open,
             onTap: () => _openTickets('open'),
           ),
-          StatTile(
+          FocusMetric(
             label: 'Unassigned',
-            value: Fmt.count(t.unassigned),
-            icon: Icons.person_off_outlined,
+            value: t.unassigned,
             color: AppTheme.warning,
             onTap: () => _openTickets('unassigned'),
           ),
-          StatTile(
+          FocusMetric(
             label: 'Overdue',
-            value: Fmt.count(t.overdue),
-            icon: Icons.schedule_outlined,
+            value: t.overdue,
             color: AppTheme.overdue,
             onTap: () => _openTickets('overdue'),
           ),
-          StatTile(
-            label: 'Mine Open',
-            value: Fmt.count(t.mineOpen),
-            icon: Icons.assignment_ind_outlined,
-            color: AppTheme.brand,
+        ],
+      ),
+      const SizedBox(height: 10),
+      CountChipRow(
+        chips: [
+          CountChip(
+            label: 'Mine',
+            value: t.mineOpen,
+            color: Glass.indigo,
             onTap: () => _openTickets('mine'),
           ),
-          StatTile(
+          CountChip(
             label: 'Answered',
-            value: Fmt.count(t.answered),
-            icon: Icons.mark_email_read_outlined,
+            value: t.answered,
             color: AppTheme.open,
             onTap: () => _openTickets('answered'),
           ),
-          StatTile(
+          CountChip(
             label: 'Closed',
-            value: Fmt.count(t.closed),
-            icon: Icons.check_circle_outline,
+            value: t.closed,
             color: AppTheme.closed,
             onTap: () => _openTickets('closed'),
           ),
-        ]),
-        const SizedBox(height: 16),
-        if (_volume != null) ...[
-          ReportSummaryCard(
-            report: _volume!,
-            days: _days,
-            onDaysSelected: _selectDays,
-            loading: _volumeLoading,
-          ),
-          const SizedBox(height: 12),
-          ActivityChartCard(report: _volume!),
         ],
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 350),
-          switchInCurve: Curves.easeOutCubic,
-          transitionBuilder: (child, animation) => FadeTransition(
-            opacity: animation,
-            child: SizeTransition(
-              sizeFactor: animation,
-              axisAlignment: -1,
-              child: child,
-            ),
-          ),
-          child: _tasksOpen == null
-              ? const SizedBox.shrink()
-              : Column(
-                  key: const ValueKey('tasks-section'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 20),
-                    _sectionLabel(
-                      'Tasks',
-                      actionLabel: 'View all',
-                      onAction: () => _openTasks('all'),
-                    ),
-                    _statGrid([
-                      StatTile(
-                        label: 'Open',
-                        value: Fmt.count(_tasksOpen ?? 0),
-                        icon: Icons.radio_button_unchecked,
-                        color: AppTheme.open,
-                        onTap: () => _openTasks('open'),
-                      ),
-                      StatTile(
-                        label: 'Mine',
-                        value: Fmt.count(_tasksMine ?? 0),
-                        icon: Icons.assignment_ind_outlined,
-                        color: AppTheme.brand,
-                        onTap: () => _openTasks('mine'),
-                      ),
-                      StatTile(
-                        label: 'Overdue',
-                        value: Fmt.count(_tasksOverdue ?? 0),
-                        icon: Icons.schedule_outlined,
-                        color: AppTheme.overdue,
-                        onTap: () => _openTasks('overdue'),
-                      ),
-                      StatTile(
-                        label: 'Collaborator',
-                        value: Fmt.count(_tasksCollaborator ?? 0),
-                        icon: Icons.groups_outlined,
-                        color: AppTheme.warning,
-                        onTap: () => _openTasks('collaborator'),
-                      ),
-                      StatTile(
-                        label: 'All',
-                        value: Fmt.count(_tasksAll ?? 0),
-                        icon: Icons.all_inbox_outlined,
-                        color: AppTheme.brandDark,
-                        onTap: () => _openTasks('all'),
-                      ),
-                      StatTile(
-                        label: 'Closed',
-                        value: Fmt.count(_tasksClosed ?? 0),
-                        icon: Icons.task_alt,
-                        color: AppTheme.closed,
-                        onTap: () => _openTasks('closed'),
-                      ),
-                    ]),
-                  ],
-                ),
+      ),
+
+      // --- Needs attention: the actual actionable list ----------------------
+      const SizedBox(height: 22),
+      _sectionLabel(
+        'Needs attention',
+        actionLabel: (_attention?.isNotEmpty ?? false) ? 'View all' : null,
+        onAction: (_attention?.isNotEmpty ?? false)
+            ? () => _openTickets('overdue')
+            : null,
+      ),
+      _attentionPanel(),
+
+      // --- Overview: volume + activity --------------------------------------
+      if (_volume != null) ...[
+        const SizedBox(height: 22),
+        _sectionLabel('Overview'),
+        ReportSummaryCard(
+          report: _volume!,
+          days: _days,
+          onDaysSelected: _selectDays,
+          loading: _volumeLoading,
         ),
-        if (summary.byPriority.isNotEmpty) ...[
-          const SizedBox(height: 8),
+        const SizedBox(height: 12),
+        ActivityChartCard(report: _volume!),
+      ],
+
+      // --- Tasks: compact chip row (differentiated from tickets focus) ------
+      _tasksSection(),
+
+      // --- Breakdown charts, grouped under one header -----------------------
+      if (summary.byPriority.isNotEmpty ||
+          summary.byDepartment.isNotEmpty ||
+          summary.byAgent.isNotEmpty) ...[
+        const SizedBox(height: 22),
+        _sectionLabel('Breakdown'),
+        if (summary.byPriority.isNotEmpty)
           _Section(
             title: 'By priority',
             child: MiniBarChart(
@@ -403,7 +428,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
               ],
             ),
           ),
-        ],
         if (summary.byDepartment.isNotEmpty) ...[
           const SizedBox(height: 8),
           _Section(
@@ -411,7 +435,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: MiniBarChart(
               data: [
                 for (final d in summary.byDepartment)
-                  (label: d.dept, value: d.open, color: AppTheme.brand),
+                  (label: d.dept, value: d.open, color: Glass.indigo),
               ],
             ),
           ),
@@ -423,18 +447,172 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
             child: MiniBarChart(
               data: [
                 for (final a in summary.byAgent.take(8))
-                  (label: a.name, value: a.open, color: AppTheme.brandDark),
+                  (label: a.name, value: a.open, color: Glass.accent),
               ],
             ),
           ),
         ],
       ],
+    ];
+
+    return FadeTransition(
+      opacity: _fadeIn,
+      child: SlideTransition(
+        position: _riseIn,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(
+            12,
+            12,
+            12,
+            12 + MediaQuery.of(context).padding.bottom,
+          ),
+          children: sections,
+        ),
+      ),
     );
   }
 
-  /// Dashboard-shaped shimmer shown during the initial load, mirroring the two
-  /// stat grids so the layout doesn't jump when data arrives.
+  /// The bordered card holding the overdue triage rows, a loading shimmer, or
+  /// the positive "all caught up" state.
+  Widget _attentionPanel() {
+    Widget card(Widget child) => DecoratedBox(
+      decoration: BoxDecoration(
+        color: Glass.surfaceFill(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Glass.border(context)),
+      ),
+      child: ClipRRect(borderRadius: BorderRadius.circular(14), child: child),
+    );
+
+    final list = _attention;
+    if (list == null) {
+      return card(
+        Column(
+          children: [
+            for (var i = 0; i < 3; i++) ...[
+              if (i > 0) Divider(height: 1, color: Glass.border(context)),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                child: Row(
+                  children: [
+                    SkeletonBox(width: 3, height: 34, radius: 2),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SkeletonBox(width: 90, height: 11),
+                          SizedBox(height: 8),
+                          SkeletonBox(height: 13),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    SkeletonBox(width: 52, height: 22, radius: 7),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    if (list.isEmpty) return card(const AttentionEmpty());
+
+    return card(
+      Column(
+        children: [
+          for (var i = 0; i < list.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: Glass.border(context)),
+            AttentionRow(
+              ticket: list[i],
+              onTap: () => context.push(Routes.ticket(list[i].id)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Tasks as a single compact chip row, revealed once counts load. Kept
+  /// visually distinct from the tickets focus strip to avoid the old
+  /// "two identical grids" repetition.
+  Widget _tasksSection() {
+    if (_tasksOpen == null) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 22),
+        _sectionLabel(
+          'Tasks',
+          actionLabel: 'View all',
+          onAction: () => _openTasks('all'),
+        ),
+        FocusStrip(
+          metrics: [
+            FocusMetric(
+              label: 'Open',
+              value: _tasksOpen ?? 0,
+              color: AppTheme.open,
+              onTap: () => _openTasks('open'),
+            ),
+            FocusMetric(
+              label: 'Mine',
+              value: _tasksMine ?? 0,
+              color: Glass.indigo,
+              onTap: () => _openTasks('mine'),
+            ),
+            FocusMetric(
+              label: 'Overdue',
+              value: _tasksOverdue ?? 0,
+              color: AppTheme.overdue,
+              onTap: () => _openTasks('overdue'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        CountChipRow(
+          chips: [
+            CountChip(
+              label: 'Collaborator',
+              value: _tasksCollaborator ?? 0,
+              color: AppTheme.warning,
+              onTap: () => _openTasks('collaborator'),
+            ),
+            CountChip(
+              label: 'All',
+              value: _tasksAll ?? 0,
+              color: Glass.accent,
+              onTap: () => _openTasks('all'),
+            ),
+            CountChip(
+              label: 'Closed',
+              value: _tasksClosed ?? 0,
+              color: AppTheme.closed,
+              onTap: () => _openTasks('closed'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Dashboard-shaped shimmer shown during the initial load, mirroring the new
+  /// layout (focus strip → chips → attention list) so nothing jumps when data
+  /// arrives.
   Widget _buildSkeleton(BuildContext context) {
+    Widget bordered(Widget child, {double h = 0}) => Container(
+      height: h == 0 ? null : h,
+      decoration: BoxDecoration(
+        color: Glass.surfaceFill(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Glass.border(context)),
+      ),
+      child: child,
+    );
+
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
@@ -443,10 +621,57 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         12,
         12 + MediaQuery.of(context).padding.bottom,
       ),
-      children: const [
-        StatGridSkeleton(),
-        SizedBox(height: 24),
-        StatGridSkeleton(),
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, top: 4, bottom: 10),
+          child: SkeletonBox(width: 90, height: 16),
+        ),
+        bordered(const SizedBox.shrink(), h: 92),
+        const SizedBox(height: 10),
+        Row(
+          children: const [
+            SkeletonBox(width: 92, height: 34, radius: 10),
+            SizedBox(width: 8),
+            SkeletonBox(width: 110, height: 34, radius: 10),
+            SizedBox(width: 8),
+            SkeletonBox(width: 92, height: 34, radius: 10),
+          ],
+        ),
+        const SizedBox(height: 22),
+        const Padding(
+          padding: EdgeInsets.only(left: 4, top: 4, bottom: 10),
+          child: SkeletonBox(width: 130, height: 16),
+        ),
+        bordered(
+          Column(
+            children: [
+              for (var i = 0; i < 3; i++) ...[
+                if (i > 0) Divider(height: 1, color: Glass.border(context)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  child: Row(
+                    children: [
+                      SkeletonBox(width: 3, height: 34, radius: 2),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SkeletonBox(width: 90, height: 11),
+                            SizedBox(height: 8),
+                            SkeletonBox(height: 13),
+                          ],
+                        ),
+                      ),
+                      SizedBox(width: 10),
+                      SkeletonBox(width: 52, height: 22, radius: 7),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }

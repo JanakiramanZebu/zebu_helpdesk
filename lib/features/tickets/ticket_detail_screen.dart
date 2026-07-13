@@ -1,11 +1,9 @@
 ﻿import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/assets.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
@@ -13,13 +11,16 @@ import '../../models/common.dart';
 import '../../models/meta.dart';
 import '../../models/ticket.dart';
 import '../../providers.dart';
+import '../../widgets/action_menu.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/date_picker_sheet.dart';
+import '../../widgets/message_composer.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
+import 'widgets/dynamic_fields_section.dart';
 import 'widgets/thread_entry_tile.dart';
 
 class TicketDetailScreen extends ConsumerStatefulWidget {
@@ -44,6 +45,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   bool _loading = true;
   bool _acting = false;
   bool _subjectInBar = false;
+  // Message the composer is quoting (set from a bubble's long-press → Reply).
+  ThreadEntry? _replyTo;
 
   @override
   void initState() {
@@ -81,9 +84,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     super.dispose();
   }
 
-  Future<void> _load() async {
+  // [silent] refreshes the data in place without flashing the full-screen
+  // loader â€” used after sending a message so the conversation just updates.
+  Future<void> _load({bool silent = false}) async {
     setState(() {
-      _loading = true;
+      if (!silent) _loading = true;
       _error = null;
     });
     final repo = ref.read(ticketsRepositoryProvider);
@@ -104,6 +109,29 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         _error = e;
         _loading = false;
       });
+    }
+  }
+
+  /// Composer transport: post the body (reply or internal note) plus any
+  /// attachments, then silently refresh the thread. Returns false on failure so
+  /// the composer keeps the draft.
+  Future<bool> _sendMessage({
+    required bool note,
+    required String html,
+    required List<MultipartFile> files,
+  }) async {
+    final repo = ref.read(ticketsRepositoryProvider);
+    try {
+      if (note) {
+        await repo.note(widget.ticketId, body: html, files: files);
+      } else {
+        await repo.reply(widget.ticketId, body: html, alert: true, files: files);
+      }
+      await _load(silent: true);
+      return true;
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+      return false;
     }
   }
 
@@ -129,53 +157,42 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
 
   PopupMenuButton<String> _menu() => PopupMenuButton<String>(
     onSelected: _onMenu,
+    shape: AppActionMenu.shape,
+    color: Theme.of(context).colorScheme.surface,
+    elevation: AppActionMenu.elevation,
+    menuPadding: AppActionMenu.menuPadding,
     itemBuilder: (context) => [
       // Workflow / status.
-      _menuItem('status', Icons.published_with_changes, 'Change status'),
-      _menuItem('mark', Icons.rule, 'Mark answered/overdue'),
+      appMenuItem(value: 'status', asset: Assets.actStatus, label: 'Change status'),
+      appMenuItem(value: 'mark', asset: Assets.actMark, label: 'Mark answered/overdue'),
       const PopupMenuDivider(),
       // Assignment.
-      _menuItem('assign', Icons.assignment_ind_outlined, 'Assign'),
-      _menuItem('claim', Icons.how_to_reg_outlined, 'Claim'),
-      _menuItem('release', Icons.logout, 'Release'),
-      _menuItem('owner', Icons.manage_accounts_outlined, 'Change owner'),
+      appMenuItem(value: 'assign', asset: Assets.actAssign, label: 'Assign'),
+      appMenuItem(value: 'assign_team', asset: Assets.actCollaborators, label: 'Assign to team'),
+      appMenuItem(value: 'claim', asset: Assets.actClaim, label: 'Claim'),
+      appMenuItem(value: 'release', asset: Assets.actRelease, label: 'Release'),
+      appMenuItem(value: 'owner', asset: Assets.actOwner, label: 'Change owner'),
+      appMenuItem(value: 'refer', asset: Assets.actRefer, label: 'Refer'),
       const PopupMenuDivider(),
       // Attributes.
-      _menuItem('transfer', Icons.apartment_outlined, 'Transfer dept'),
-      _menuItem('priority', Icons.flag_outlined, 'Set priority'),
-      _menuItem('topic', Icons.topic_outlined, 'Change topic'),
-      _menuItem('duedate', Icons.event_outlined, 'Set due date'),
+      appMenuItem(value: 'transfer', asset: Assets.actTransfer, label: 'Transfer dept'),
+      appMenuItem(value: 'priority', asset: Assets.actPriority, label: 'Set priority'),
+      appMenuItem(value: 'topic', asset: Assets.actTopic, label: 'Change topic'),
+      appMenuItem(value: 'duedate', asset: Assets.actDuedate, label: 'Set due date'),
+      appMenuItem(value: 'fields', asset: Assets.actEdit, label: 'Edit fields'),
+      appMenuItem(value: 'tags', asset: Assets.actTag, label: 'Tags'),
+      const PopupMenuDivider(),
+      // Relations.
+      appMenuItem(value: 'link', asset: Assets.actLink, label: 'Link tickets'),
+      appMenuItem(value: 'merge', asset: Assets.actMerge, label: 'Merge tickets'),
       const PopupMenuDivider(),
       // Metadata.
-      _menuItem('collaborators', Icons.group_outlined, 'Collaborators'),
+      appMenuItem(value: 'collaborators', asset: Assets.actCollaborators, label: 'Collaborators'),
+      appMenuItem(value: 'ban', asset: Assets.actBan, label: 'Ban / unban email'),
       const PopupMenuDivider(),
-      _menuItem(
-        'delete',
-        Icons.delete_outline,
-        'Delete',
-        color: Theme.of(context).colorScheme.error,
-      ),
+      appMenuItem(value: 'delete', asset: Assets.actDelete, label: 'Delete', destructive: true),
     ],
   );
-
-  /// A â‹®-menu row with a leading icon; [color] tints destructive actions.
-  PopupMenuItem<String> _menuItem(
-    String value,
-    IconData icon,
-    String label, {
-    Color? color,
-  }) {
-    return PopupMenuItem<String>(
-      value: value,
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: color),
-          const SizedBox(width: 12),
-          Text(label, style: color == null ? null : TextStyle(color: color)),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -194,9 +211,9 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     }
 
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
+          Positioned.fill(
             child: NestedScrollView(
               controller: _headerScroll,
               headerSliverBuilder: (context, _) => [
@@ -250,7 +267,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                     child: TabBarView(
                       controller: _tabs,
                       children: [
-                        _ConversationTab(thread: _thread),
+                        _ConversationTab(
+                          thread: _thread,
+                          onReply: (e) => setState(() => _replyTo = e),
+                        ),
                         _DetailsTab(ticket: t, onEdit: _onMenu),
                         _ActivityTab(events: _events),
                       ],
@@ -260,14 +280,37 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
               ),
             ),
           ),
-          // Rebuild on every swipe frame (the controller's own listener only
-          // fires on settled index changes) so the composer hides the instant
-          // the user drags away from the Conversation tab.
-          ListenableBuilder(
-            listenable: _tabs.animation!,
-            builder: (context, _) => _onConversationTab
-                ? _InlineComposer(ticketId: widget.ticketId, onSent: _load)
-                : const SizedBox.shrink(),
+          // The composer floats over the bottom of the conversation (frosted
+          // glass), so messages scroll behind it. Rebuild on every swipe frame
+          // (the controller's own listener only fires on settled index changes)
+          // so the composer hides the instant the user drags off Conversation.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ListenableBuilder(
+              listenable: _tabs.animation!,
+              builder: (context, _) => _onConversationTab
+                  ? MessageComposer(
+                      hintReply: 'Reply to this ticket...',
+                      replyTo: _replyTo,
+                      onClearReply: () => setState(() => _replyTo = null),
+                      expandCanned: (c) async {
+                        final exp = await ref
+                            .read(cannedRepositoryProvider)
+                            .expand(c.id, ticketId: widget.ticketId);
+                        return exp.expanded;
+                      },
+                      onSend:
+                          ({required note, required html, required files}) =>
+                              _sendMessage(
+                                note: note,
+                                html: html,
+                                files: files,
+                              ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ),
         ],
       ),
@@ -321,6 +364,14 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
           );
           await _load();
         });
+      case 'assign_team':
+        await _pickMeta(MetaKind.teams, title: 'Assign to team', (id) async {
+          await _runAction(
+            () => repo.assign(widget.ticketId, teamId: id),
+            success: 'Assigned to team',
+          );
+          await _load();
+        });
       case 'topic':
         await _pickMeta(MetaKind.topics, title: 'Change topic', (id) async {
           await _runAction(
@@ -340,6 +391,18 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         }
       case 'duedate':
         await _setDueDate();
+      case 'fields':
+        await _editCustomFields();
+      case 'tags':
+        await _manageTags();
+      case 'refer':
+        await _manageReferrals();
+      case 'link':
+        await _linkOrMerge(merge: false);
+      case 'merge':
+        await _linkOrMerge(merge: true);
+      case 'ban':
+        await _banEmail();
       case 'mark':
         await _markState();
       case 'collaborators':
@@ -426,6 +489,78 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       context: context,
       builder: (_) => _CollaboratorsSheet(ticketId: widget.ticketId),
     );
+  }
+
+  /// Edit the ticket's dynamic custom fields via `GET /tickets/{id}/fields`
+  /// (schema + current values) and `POST /tickets/{id}/edit`. Reloads the
+  /// ticket on a successful save so the Details tab reflects the new values.
+  Future<void> _editCustomFields() async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _CustomFieldsSheet(ticketId: widget.ticketId),
+    );
+    if (saved == true) await _load();
+  }
+
+  Future<void> _manageTags() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _TagsSheet(ticketId: widget.ticketId),
+    );
+  }
+
+  Future<void> _manageReferrals() async {
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _ReferralsSheet(ticketId: widget.ticketId),
+    );
+  }
+
+  Future<void> _linkOrMerge({required bool merge}) async {
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _LinkMergeDialog(ticketId: widget.ticketId, merge: merge),
+    );
+    if (changed == true) await _load();
+  }
+
+  /// Ban or unban the requester's email address. Both operations are exposed
+  /// (the ticket carries no ban flag) via a small chooser sheet.
+  Future<void> _banEmail() async {
+    final choice = await showAppSheet<String>(
+      context: context,
+      builder: (_) => AppSheet(
+        title: 'Ban list',
+        subtitle: _ticket?.userEmail,
+        scrollable: false,
+        padding: EdgeInsets.zero,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PickerOptionTile(
+              label: 'Ban this email address',
+              selected: false,
+              onTap: () => Navigator.pop(context, 'ban'),
+            ),
+            PickerOptionTile(
+              label: 'Remove from ban list',
+              selected: false,
+              onTap: () => Navigator.pop(context, 'unban'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null) return;
+    final repo = ref.read(ticketsRepositoryProvider);
+    try {
+      final banned = choice == 'ban'
+          ? await repo.banEmail(widget.ticketId)
+          : await repo.unbanEmail(widget.ticketId);
+      if (mounted) _toast(banned ? 'Email banned' : 'Email removed from ban list');
+    } on ApiException catch (e) {
+      if (mounted) _toast(e.message);
+    }
   }
 
   Future<void> _pickMeta(
@@ -560,18 +695,20 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
 // --- Tabs -------------------------------------------------------------------
 
 class _ConversationTab extends StatelessWidget {
-  const _ConversationTab({required this.thread});
+  const _ConversationTab({required this.thread, this.onReply});
   final List<ThreadEntry> thread;
+  final ValueChanged<ThreadEntry>? onReply;
 
   @override
   Widget build(BuildContext context) {
     if (thread.isEmpty) {
       return const EmptyView(message: 'No messages yet');
     }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: thread.length,
-      itemBuilder: (_, i) => ThreadEntryTile(entry: thread[i]),
+    // Reserve room for the floating composer so the newest message clears it.
+    return ConversationList(
+      thread: thread,
+      onReply: onReply,
+      bottomReserve: 104 + MediaQuery.of(context).padding.bottom,
     );
   }
 }
@@ -802,560 +939,68 @@ class _ActivityTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (events.isEmpty) return const EmptyView(message: 'No activity');
     final scheme = Theme.of(context).colorScheme;
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-      itemCount: events.length,
-      itemBuilder: (context, i) {
-        final e = events[i];
-        final (icon, color) = _style(e.state);
-        final isLast = i == events.length - 1;
-        return IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Timeline rail: a coloured icon node with a connector below.
-              Column(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.14),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, size: 17, color: color),
-                  ),
-                  if (!isLast)
-                    Expanded(
-                      child: Container(
-                        width: 2,
-                        color: scheme.outlineVariant,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(bottom: isLast ? 0 : 18, top: 4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      AppText.subText(
-                        context,
-                        e.description ?? e.state,
-                        fw: 1,
-                        lineHeight: 1.3,
-                      ),
-                      const SizedBox(height: 2),
-                      AppText.paraText(
-                        context,
-                        [
-                          if ((e.actor ?? '').isNotEmpty) e.actor!,
-                          Fmt.ago(e.created),
-                        ].join(' Â· '),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-}
-
-// --- Inline composer (WhatsApp-style reply/note input) ----------------------
-
-class _InlineComposer extends ConsumerStatefulWidget {
-  const _InlineComposer({required this.ticketId, required this.onSent});
-  final int ticketId;
-  final Future<void> Function() onSent;
-
-  @override
-  ConsumerState<_InlineComposer> createState() => _InlineComposerState();
-}
-
-class _InlineComposerState extends ConsumerState<_InlineComposer> {
-  final FleatherController _controller = FleatherController();
-  final FocusNode _focus = FocusNode();
-  final List<PlatformFile> _files = [];
-  bool _note = false; // false = reply to requester, true = internal note
-  bool _sending = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _focus.addListener(_onChange);
-    _controller.addListener(_onChange);
-  }
-
-  // Rebuilds so the hint, send-enabled state and toolbar track edits/focus.
-  void _onChange() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _focus.removeListener(_onChange);
-    _controller.removeListener(_onChange);
-    _focus.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  bool get _isEmpty => _controller.document.toPlainText().trim().isEmpty;
-
-  void _clearDocument() {
-    final len = _controller.document.length;
-    if (len > 1) {
-      _controller.replaceText(
-        0,
-        len - 1,
-        '',
-        selection: const TextSelection.collapsed(offset: 0),
-      );
-    }
-  }
-
-  Future<void> _attach(AttachSource source) async {
-    final picked = await pickAttachmentsOf(source);
-    if (picked.isEmpty || !mounted) return;
-    setState(() {
-      for (final f in picked) {
-        if (!_files.any((e) => e.name == f.name)) _files.add(f);
-      }
-    });
-  }
-
-  /// Sends the document (as HTML) plus attachments. Returns true on success so
-  /// the fullscreen editor knows when to close.
-  Future<bool> _send() async {
-    final empty = _isEmpty;
-    if (empty && _files.isEmpty) return false;
-    setState(() => _sending = true);
-    final repo = ref.read(ticketsRepositoryProvider);
-    try {
-      final files = [
-        for (final f in _files)
-          if (f.bytes != null)
-            MultipartFile.fromBytes(f.bytes!, filename: f.name),
-      ];
-      final body = empty ? '' : parchmentHtml.encode(_controller.document);
-      if (_note) {
-        await repo.note(widget.ticketId, body: body, files: files);
-      } else {
-        await repo.reply(
-          widget.ticketId,
-          body: body,
-          alert: true,
-          files: files,
-        );
-      }
-      _clearDocument();
-      if (mounted) setState(() => _files.clear());
-      await widget.onSent();
-      return true;
-    } on ApiException catch (e) {
-      if (mounted) {
-        AppSnack.error(context, e.message);
-      }
-      return false;
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  Future<void> _openFullscreen() async {
-    _focus.unfocus();
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => _FullscreenEditor(
-          controller: _controller,
-          note: _note,
-          onSend: _send,
-        ),
-      ),
-    );
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = _note ? AppTheme.warning : scheme.primary;
-    final noteTint = AppTheme.warning.withValues(alpha: isDark ? 0.10 : 0.07);
-    final barColor = isDark ? const Color(0xFF121B22) : scheme.surface;
-    final pillColor = isDark ? const Color(0xFF1F2C34) : Colors.white;
-    final canSend = !_isEmpty || _files.isNotEmpty;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: _note ? Color.alphaBlend(noteTint, barColor) : barColor,
-        border: Border(
-          top: BorderSide(
-            color: _note
-                ? accent.withValues(alpha: 0.5)
-                : scheme.outlineVariant,
-          ),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _ModeToggle(
-                    note: _note,
-                    onChanged: (v) => setState(() => _note = v),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Expand',
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      Icons.open_in_full,
-                      size: 20,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    onPressed: _openFullscreen,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              if (_files.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final f in _files)
-                        Chip(
-                          visualDensity: VisualDensity.compact,
-                          avatar: const Icon(
-                            Icons.insert_drive_file_outlined,
-                            size: 16,
-                          ),
-                          label: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 140),
-                            child: Text(
-                              f.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          onDeleted: () => setState(() => _files.remove(f)),
-                        ),
-                    ],
-                  ),
-                ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Container(
+    return SafeArea(
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        itemCount: events.length,
+        itemBuilder: (context, i) {
+          final e = events[i];
+          final (icon, color) = _style(e.state);
+          final isLast = i == events.length - 1;
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Timeline rail: a coloured icon node with a connector below.
+                Column(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
                       decoration: BoxDecoration(
-                        color: pillColor,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _note
-                              ? accent
-                              : scheme.outlineVariant.withValues(alpha: 0.7),
-                          width: _note ? 1.4 : 1,
+                        color: color.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, size: 17, color: color),
+                    ),
+                    if (!isLast)
+                      Expanded(
+                        child: Container(
+                          width: 2,
+                          color: scheme.outlineVariant,
                         ),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Stack(
-                              children: [
-                                FleatherEditor(
-                                  controller: _controller,
-                                  focusNode: _focus,
-                                  minHeight: 24,
-                                  maxHeight: 120,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                  ),
-                                ),
-                                if (_isEmpty)
-                                  Positioned(
-                                    left: 0,
-                                    top: 10,
-                                    child: IgnorePointer(
-                                      child: Text(
-                                        _note
-                                            ? 'Internal note (staff only)'
-                                            : 'Add a comment',
-                                        style: TextStyle(
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          PopupMenuButton<AttachSource>(
-                            tooltip: 'Attach',
-                            position: PopupMenuPosition.over,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            icon: Transform.rotate(
-                              angle: -0.7,
-                              child: Icon(
-                                Icons.attach_file,
-                                size: 22,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                            onSelected: _attach,
-                            itemBuilder: (_) => attachMenuItems(),
-                          ),
-                        ],
-                      ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: isLast ? 0 : 18, top: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppText.subText(
+                          context,
+                          e.description ?? e.state,
+                          fw: 1,
+                          lineHeight: 1.3,
+                        ),
+                        const SizedBox(height: 2),
+                        AppText.paraText(
+                          context,
+                          [
+                            if ((e.actor ?? '').isNotEmpty) e.actor!,
+                            Fmt.ago(e.created),
+                          ].join(' Â· '),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  _sending
-                      ? const Padding(
-                          padding: EdgeInsets.all(8),
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2.6),
-                          ),
-                        )
-                      : Material(
-                          color: canSend
-                              ? accent
-                              : scheme.onSurfaceVariant.withValues(alpha: 0.3),
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: canSend ? _send : null,
-                            child: Padding(
-                              padding: const EdgeInsets.all(11),
-                              child: Icon(
-                                _note ? Icons.note_add : Icons.send,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                ],
-              ),
-              if (_focus.hasFocus) ...[
-                const SizedBox(height: 2),
-                FleatherToolbar.basic(
-                  controller: _controller,
-                  hideBackgroundColor: true,
-                  hideForegroundColor: true,
-                  hideDirection: true,
-                  hideListChecks: true,
-                  hideHorizontalRule: true,
-                  hideAlignment: true,
                 ),
               ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Full-screen rich-text editor that shares the composer's [FleatherController].
-class _FullscreenEditor extends StatefulWidget {
-  const _FullscreenEditor({
-    required this.controller,
-    required this.note,
-    required this.onSend,
-  });
-
-  final FleatherController controller;
-  final bool note;
-  final Future<bool> Function() onSend;
-
-  @override
-  State<_FullscreenEditor> createState() => _FullscreenEditorState();
-}
-
-class _FullscreenEditorState extends State<_FullscreenEditor> {
-  final FocusNode _focus = FocusNode();
-  bool _sending = false;
-
-  @override
-  void dispose() {
-    _focus.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    setState(() => _sending = true);
-    final ok = await widget.onSend();
-    if (!mounted) return;
-    if (ok) {
-      Navigator.of(context).pop();
-    } else {
-      setState(() => _sending = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = widget.note
-        ? AppTheme.warning
-        : Theme.of(context).colorScheme.primary;
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Collapse',
-          icon: const Icon(Icons.close_fullscreen),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(widget.note ? 'Internal note' : 'Reply'),
-        actions: [
-          _sending
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.6),
-                  ),
-                )
-              : Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: accent),
-                    onPressed: _send,
-                    icon: Icon(
-                      widget.note ? Icons.note_add : Icons.send,
-                      size: 18,
-                    ),
-                    label: const Text('Send'),
-                  ),
-                ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: FleatherEditor(
-              controller: widget.controller,
-              focusNode: _focus,
-              autofocus: true,
-              expands: true,
-              padding: const EdgeInsets.all(16),
             ),
-          ),
-          SafeArea(
-            top: false,
-            child: FleatherToolbar.basic(controller: widget.controller),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Segmented Reply / Internal note selector shown above the composer input.
-class _ModeToggle extends StatelessWidget {
-  const _ModeToggle({required this.note, required this.onChanged});
-
-  final bool note;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final trackColor = isDark
-        ? const Color(0xFF1E1E1E)
-        : const Color(0xFFF1F1F1);
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: trackColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _segment(
-            context: context,
-            label: 'Reply',
-            icon: Icons.reply_rounded,
-            selected: !note,
-            selectedColor: scheme.primary,
-            onTap: () => onChanged(false),
-          ),
-          _segment(
-            context: context,
-            label: 'Internal note',
-            icon: Icons.sticky_note_2_outlined,
-            selected: note,
-            selectedColor: AppTheme.warning,
-            onTap: () => onChanged(true),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _segment({
-    required BuildContext context,
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required Color selectedColor,
-    required VoidCallback onTap,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: selected ? selectedColor : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: selected ? Colors.white : scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                  color: selected ? Colors.white : scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -1477,6 +1122,556 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
                 ),
         ],
       ),
+    );
+  }
+}
+
+// --- Custom fields editor sheet ---------------------------------------------
+
+/// Loads a ticket's editable dynamic form fields and lets the agent edit them,
+/// posting the changed `{name: value}` map to `POST /tickets/{id}/edit`. Pops
+/// `true` when a save succeeds so the caller can reload the ticket.
+class _CustomFieldsSheet extends ConsumerStatefulWidget {
+  const _CustomFieldsSheet({required this.ticketId});
+  final int ticketId;
+
+  @override
+  ConsumerState<_CustomFieldsSheet> createState() => _CustomFieldsSheetState();
+}
+
+class _CustomFieldsSheetState extends ConsumerState<_CustomFieldsSheet> {
+  List<TicketField> _fields = const [];
+  Map<String, dynamic> _values = {};
+  Map<String, String> _errors = const {};
+  bool _loading = true;
+  bool _saving = false;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final fields = await ref
+          .read(ticketsRepositoryProvider)
+          .fields(widget.ticketId);
+      if (!mounted) return;
+      setState(() {
+        // Only fields the agent may actually change are worth showing.
+        _fields = fields.where((f) => f.editable).toList();
+        _values = {
+          for (final f in _fields)
+            if (f.value != null) f.name: f.value,
+        };
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    // Send every editable field (empty string clears a value), so the payload
+    // is never the empty map the server rejects with a 422.
+    final payload = {for (final f in _fields) f.name: _values[f.name] ?? ''};
+    setState(() {
+      _saving = true;
+      _errors = const {};
+    });
+    try {
+      await ref.read(ticketsRepositoryProvider).editFields(
+        widget.ticketId,
+        payload,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _errors = e.fields;
+        if (e.fields.isEmpty) AppSnack.error(context, e.message);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasFields = _fields.isNotEmpty;
+    return AppDialog(
+      title: 'Edit fields',
+      actionLabel: hasFields ? 'Save' : null,
+      actionBusy: _saving,
+      onAction: _save,
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _loadError != null
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AppText.subText(context, _loadError!),
+            )
+          : !hasFields
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AppText.subText(context, 'No editable fields'),
+            )
+          : DynamicFieldsSection(
+              fields: _fields,
+              values: _values,
+              errors: _errors,
+              onChanged: (v) => setState(() => _values = v),
+            ),
+    );
+  }
+}
+
+// --- Tags sheet -------------------------------------------------------------
+
+/// Lists a ticket's tags and lets the agent add (from the shared tag list) or
+/// remove them via `GET/POST/DELETE /tickets/{id}/tags`.
+class _TagsSheet extends ConsumerStatefulWidget {
+  const _TagsSheet({required this.ticketId});
+  final int ticketId;
+
+  @override
+  ConsumerState<_TagsSheet> createState() => _TagsSheetState();
+}
+
+class _TagsSheetState extends ConsumerState<_TagsSheet> {
+  List<Tag> _tags = const [];
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final t = await ref.read(ticketsRepositoryProvider).tags(widget.ticketId);
+      if (mounted) {
+        setState(() {
+          _tags = t;
+          _loading = false;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        AppSnack.error(context, e.message);
+      }
+    }
+  }
+
+  Future<void> _add() async {
+    final List<MetaItem> items;
+    try {
+      items = await ref.read(metaRepositoryProvider).get(MetaKind.tags);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+      return;
+    }
+    if (!mounted) return;
+    final chosen = await showDialog<int>(
+      context: context,
+      builder: (_) => _MetaPickerDialog(title: 'Add tag', items: items),
+    );
+    if (chosen == null) return;
+    setState(() => _busy = true);
+    try {
+      final t = await ref
+          .read(ticketsRepositoryProvider)
+          .addTag(widget.ticketId, tagId: chosen);
+      if (mounted) setState(() => _tags = t);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove(int tagId) async {
+    setState(() => _busy = true);
+    try {
+      final t = await ref
+          .read(ticketsRepositoryProvider)
+          .removeTag(widget.ticketId, tagId);
+      if (mounted) setState(() => _tags = t);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppDialog(
+      title: 'Tags',
+      actionLabel: 'Add tag',
+      onAction: _busy ? null : _add,
+      actionEnabled: !_busy,
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _tags.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AppText.subText(context, 'No tags'),
+            )
+          : Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in _tags)
+                  Chip(
+                    label: Text(t.name),
+                    onDeleted: _busy ? null : () => _remove(t.id),
+                  ),
+              ],
+            ),
+    );
+  }
+}
+
+// --- Referrals sheet --------------------------------------------------------
+
+/// Lists a ticket's referrals and lets the agent refer it to an agent, team or
+/// department, or remove a referral (`GET/POST/DELETE /tickets/{id}/referrals`).
+class _ReferralsSheet extends ConsumerStatefulWidget {
+  const _ReferralsSheet({required this.ticketId});
+  final int ticketId;
+
+  @override
+  ConsumerState<_ReferralsSheet> createState() => _ReferralsSheetState();
+}
+
+class _ReferralsSheetState extends ConsumerState<_ReferralsSheet> {
+  List<Referral> _refs = const [];
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await ref
+          .read(ticketsRepositoryProvider)
+          .referrals(widget.ticketId);
+      if (mounted) {
+        setState(() {
+          _refs = r;
+          _loading = false;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        AppSnack.error(context, e.message);
+      }
+    }
+  }
+
+  Future<void> _add() async {
+    final target = await showAppSheet<String>(
+      context: context,
+      builder: (_) => AppSheet(
+        title: 'Refer to',
+        scrollable: false,
+        padding: EdgeInsets.zero,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PickerOptionTile(
+              label: 'Agent',
+              selected: false,
+              onTap: () => Navigator.pop(context, 'agent'),
+            ),
+            PickerOptionTile(
+              label: 'Team',
+              selected: false,
+              onTap: () => Navigator.pop(context, 'team'),
+            ),
+            PickerOptionTile(
+              label: 'Department',
+              selected: false,
+              onTap: () => Navigator.pop(context, 'dept'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (target == null || !mounted) return;
+    final kind = target == 'agent'
+        ? MetaKind.agents
+        : target == 'team'
+        ? MetaKind.teams
+        : MetaKind.departments;
+    final List<MetaItem> items;
+    try {
+      items = await ref.read(metaRepositoryProvider).get(kind);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+      return;
+    }
+    if (!mounted) return;
+    final chosen = await showDialog<int>(
+      context: context,
+      builder: (_) => _MetaPickerDialog(title: 'Refer to', items: items),
+    );
+    if (chosen == null) return;
+    setState(() => _busy = true);
+    try {
+      final r = await ref.read(ticketsRepositoryProvider).addReferral(
+        widget.ticketId,
+        staffId: target == 'agent' ? chosen : null,
+        teamId: target == 'team' ? chosen : null,
+        deptId: target == 'dept' ? chosen : null,
+      );
+      if (mounted) setState(() => _refs = r);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove(int rid) async {
+    setState(() => _busy = true);
+    try {
+      final r = await ref
+          .read(ticketsRepositoryProvider)
+          .removeReferral(widget.ticketId, rid);
+      if (mounted) setState(() => _refs = r);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppDialog(
+      title: 'Referrals',
+      actionLabel: 'Add referral',
+      onAction: _busy ? null : _add,
+      actionEnabled: !_busy,
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _refs.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AppText.subText(context, 'No referrals'),
+            )
+          : ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: ListView(
+                shrinkWrap: true,
+                children: [
+                  for (final r in _refs)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(r.name),
+                      subtitle: Text(r.type),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: _busy ? null : () => _remove(r.id),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+// --- Link / merge dialog ----------------------------------------------------
+
+/// Links or merges other tickets into this one by their ticket numbers, showing
+/// any existing relations and offering to undo. Pops `true` when something
+/// changed so the caller reloads.
+class _LinkMergeDialog extends ConsumerStatefulWidget {
+  const _LinkMergeDialog({required this.ticketId, required this.merge});
+  final int ticketId;
+  final bool merge;
+
+  @override
+  ConsumerState<_LinkMergeDialog> createState() => _LinkMergeDialogState();
+}
+
+class _LinkMergeDialogState extends ConsumerState<_LinkMergeDialog> {
+  final _numbers = TextEditingController();
+  TicketRelations? _relations;
+  bool _loading = true;
+  bool _busy = false;
+  bool _combine = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _numbers.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await ref
+          .read(ticketsRepositoryProvider)
+          .relations(widget.ticketId);
+      if (mounted) {
+        setState(() {
+          _relations = r;
+          _loading = false;
+        });
+      }
+    } on ApiException catch (_) {
+      // Relations are informational only; a failure just hides the summary.
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  List<String> get _parsed => _numbers.text
+      .split(RegExp(r'[,\s]+'))
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
+
+  bool get _hasRelations {
+    final r = _relations;
+    return r != null && (r.parent != null || r.children.isNotEmpty);
+  }
+
+  Future<void> _submit() async {
+    final nums = _parsed;
+    if (nums.isEmpty) {
+      AppSnack.error(context, 'Enter at least one ticket number');
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(ticketsRepositoryProvider);
+      if (widget.merge) {
+        await repo.merge(widget.ticketId, nums, combine: _combine ? 1 : 0);
+      } else {
+        await repo.link(widget.ticketId, nums);
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        AppSnack.error(context, e.message);
+      }
+    }
+  }
+
+  Future<void> _undo() async {
+    setState(() => _busy = true);
+    try {
+      final repo = ref.read(ticketsRepositoryProvider);
+      if (widget.merge) {
+        await repo.unmerge(widget.ticketId);
+      } else {
+        await repo.unlink(widget.ticketId);
+      }
+      if (mounted) Navigator.of(context).pop(true);
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        AppSnack.error(context, e.message);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AppDialog(
+      title: widget.merge ? 'Merge tickets' : 'Link tickets',
+      actionLabel: widget.merge ? 'Merge' : 'Link',
+      actionBusy: _busy,
+      onAction: _submit,
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_hasRelations) ...[
+                  AppText.subText(
+                    context,
+                    () {
+                      final r = _relations!;
+                      if (r.children.isNotEmpty) {
+                        final nums = r.children.map((c) => '#${c.number}').join(', ');
+                        return 'Currently ${r.children.length} linked: $nums';
+                      }
+                      return 'Linked to #${r.parent!.number}';
+                    }(),
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: _busy ? null : _undo,
+                      icon: const Icon(Icons.link_off, size: 18),
+                      label: Text(widget.merge ? 'Unmerge' : 'Unlink'),
+                    ),
+                  ),
+                  const Divider(height: 20),
+                ],
+                TextField(
+                  controller: _numbers,
+                  keyboardType: TextInputType.text,
+                  decoration: const InputDecoration(
+                    labelText: 'Ticket numbers',
+                    hintText: 'e.g. 100234, 100235',
+                  ),
+                ),
+                if (widget.merge)
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: _combine,
+                    onChanged: _busy
+                        ? null
+                        : (v) => setState(() => _combine = v),
+                    title: AppText.subText(context, 'Combine threads', fw: 1),
+                    subtitle: AppText.paraText(
+                      context,
+                      'Merge conversations into one thread',
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }

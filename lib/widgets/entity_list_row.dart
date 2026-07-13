@@ -98,6 +98,24 @@ class EntityListRow extends StatelessWidget {
 
   static const _dangerColor = AppTheme.overdue;
 
+  /// The left accent color encodes *attention level*, not raw priority, so the
+  /// default "Normal" case stays neutral and genuinely urgent rows pop:
+  /// overdue / High / Emergency → red, Medium → amber, everything else neutral.
+  Color _accent(ColorScheme scheme) {
+    if (data.danger) return _dangerColor;
+    final p = (data.priorityLabel ?? '').toLowerCase();
+    if (p.contains('emergency') || p.contains('high')) return AppTheme.overdue;
+    if (p.contains('medium')) return AppTheme.warning;
+    return scheme.outlineVariant; // normal / low / none → neutral
+  }
+
+  /// Whether to render a priority chip at all. "Normal" is the implicit default
+  /// and adds noise, so it's suppressed — only meaningful priorities show.
+  bool get _showPriority {
+    final p = (data.priorityLabel ?? '').toLowerCase();
+    return p.isNotEmpty && !p.contains('normal');
+  }
+
   String get _semanticsLabel {
     final buf = StringBuffer('${data.number}, ${data.title}. Status ${data.statusName}.');
     if (data.priorityLabel != null) buf.write(' Priority ${data.priorityLabel}.');
@@ -118,7 +136,7 @@ class EntityListRow extends StatelessWidget {
   // ── Card view ──────────────────────────────────────────────────────────────
 
   Widget _buildCard(BuildContext context, ColorScheme scheme) {
-    final accent = data.accentColor ?? scheme.outlineVariant;
+    final accent = _accent(scheme);
 
     // Border priority: selection > danger accent > default hairline (theme).
     final RoundedRectangleBorder? shape = selected
@@ -145,11 +163,7 @@ class EntityListRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (!selectionMode)
-                Container(
-                  width: 4,
-                  color: data.danger ? _dangerColor : accent,
-                ),
+              if (!selectionMode) Container(width: 4, color: accent),
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(14, 11, 12, 11),
@@ -224,14 +238,14 @@ class EntityListRow extends StatelessWidget {
           lineHeight: 1.25,
         ),
         // Secondary chip row: priority + metadata.
-        if (data.priorityLabel != null || data.metaChips.isNotEmpty) ...[
+        if (_showPriority || data.metaChips.isNotEmpty) ...[
           const SizedBox(height: 9),
           Wrap(
             spacing: 6,
             runSpacing: 6,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              if (data.priorityLabel != null)
+              if (_showPriority)
                 StatusChip.priority(data.priorityLabel!, dense: true),
               for (final m in data.metaChips)
                 MetaChip(icon: m.icon, label: m.label, danger: m.danger),
@@ -270,10 +284,7 @@ class EntityListRow extends StatelessWidget {
     final statusColor = data.danger
         ? _dangerColor
         : StatusChip.status(data.statusName).color ?? AppTheme.open;
-    final subtitle = ['#${data.number}', ...data.subtitleParts].join('  ·  ');
-    final accent = data.danger
-        ? _dangerColor
-        : (data.accentColor ?? Colors.transparent);
+    final accent = _accent(scheme);
 
     return Material(
       color: selected
@@ -286,16 +297,16 @@ class EntityListRow extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Slim priority accent bar — the card view's cue, kept here too.
-              if (!selectionMode)
-                Container(width: 3, color: accent),
+              // Priority accent rail — the card view's cue, kept edge-to-edge
+              // here to match the inbox row's left rail.
+              if (!selectionMode) Container(width: 4, color: accent),
               Expanded(
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
-                    selectionMode ? 16 : 13,
-                    11,
+                    selectionMode ? 16 : 12,
+                    12,
                     16,
-                    11,
+                    12,
                   ),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,9 +326,7 @@ class EntityListRow extends StatelessWidget {
                         ),
                         const SizedBox(width: 14),
                       ],
-                      Expanded(
-                        child: _compactBody(context, scheme, subtitle),
-                      ),
+                      Expanded(child: _compactBody(context, scheme)),
                     ],
                   ),
                 ),
@@ -329,57 +338,71 @@ class EntityListRow extends StatelessWidget {
     );
   }
 
-  Widget _compactBody(BuildContext context, ColorScheme scheme, String subtitle) {
+  /// Inbox-style stacked body: a header line (id + time), the title as the
+  /// scannable anchor, then a muted person/meta line with the status (and
+  /// meaningful priority) chip on the right — mirroring the notification row.
+  Widget _compactBody(BuildContext context, ColorScheme scheme) {
+    // Number moves up to the header, so the footer is just person + any extra
+    // parts (department / progress).
+    final footer = [data.personName, ...data.subtitleParts].join('  ·  ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: AppText.subText(
-                context,
-                data.personName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                fw: 2,
-              ),
-            ),
-            const SizedBox(width: 8),
-            AppText.custmText(
-              context,
-              data.createdAgo,
-              fs: 11,
-              color: data.danger ? _dangerColor : scheme.onSurfaceVariant,
-              fw: data.danger ? 2 : 0,
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        AppText.subText(
-          context,
-          data.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          fw: 0,
-        ),
-        const SizedBox(height: 2),
+        // Header: id (left) + created time (right).
         Row(
           children: [
             Expanded(
               child: AppText.paraText(
                 context,
-                subtitle,
+                '#${data.number}',
+                color: scheme.primary,
+                fw: 2,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: data.createdTooltip ?? '',
+              child: AppText.captionText(
+                context,
+                data.createdAgo,
+                color: data.danger ? _dangerColor : scheme.onSurfaceVariant,
+                fw: data.danger ? 2 : 0,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 3),
+        // Title — the primary anchor (up to 2 lines, like the inbox message).
+        AppText.subText(
+          context,
+          data.title,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          fw: 2,
+          lineHeight: 1.3,
+        ),
+        const SizedBox(height: 6),
+        // Footer: person + meta (left), priority + status chips (right).
+        Row(
+          children: [
+            Expanded(
+              child: AppText.paraText(
+                context,
+                footer,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 color: scheme.onSurfaceVariant,
               ),
             ),
-            if (data.priorityLabel != null) ...[
+            if (_showPriority) ...[
               const SizedBox(width: 8),
               StatusChip.priority(data.priorityLabel!, dense: true),
             ],
+            const SizedBox(width: 8),
+            StatusChip.status(data.statusName, dense: true),
           ],
         ),
       ],

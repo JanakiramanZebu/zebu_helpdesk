@@ -1,7 +1,5 @@
 import 'dart:io';
 
-import '../config.dart';
-
 /// Accepts the helpdesk server's TLS certificate even though it serves an
 /// **incomplete chain** (the leaf's issuing intermediate isn't sent, so Android
 /// can't build a trust path and aborts the handshake — desktop/Postman tolerate
@@ -13,7 +11,7 @@ import '../config.dart';
 /// This is a stop-gap. The real fix is to install the correct intermediate
 /// bundle on `ticket.mynt.in` so the chain validates without this.
 class MyHttpOverrides extends HttpOverrides {
-  MyHttpOverrides() : _allowedHost = Uri.parse(AppConfig.baseUrl).host;
+  MyHttpOverrides(String baseUrl) : _allowedHost = Uri.parse(baseUrl).host;
 
   final String _allowedHost;
 

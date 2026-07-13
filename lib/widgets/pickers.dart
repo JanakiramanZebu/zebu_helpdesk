@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,67 +14,9 @@ import 'app_snack.dart';
 import 'app_sheet.dart';
 import 'states.dart';
 
-/// Where an attachment comes from. Surfaced as a popup menu on the composer.
+/// Where an attachment comes from. Surfaced as a bottom sheet on the composer
+/// (see `pickAttachSource`).
 enum AttachSource { photos, camera, files }
-
-/// Colourful (Telegram-style) popup-menu entries for the attachment sources.
-List<PopupMenuEntry<AttachSource>> attachMenuItems() => const [
-  PopupMenuItem(
-    value: AttachSource.photos,
-    child: _AttachTile(
-      icon: Icons.photo_library_rounded,
-      color: Color(0xFF2F80ED),
-      label: 'Photos',
-    ),
-  ),
-  PopupMenuItem(
-    value: AttachSource.camera,
-    child: _AttachTile(
-      icon: Icons.photo_camera_rounded,
-      color: Color(0xFFEB5757),
-      label: 'Camera',
-    ),
-  ),
-  PopupMenuItem(
-    value: AttachSource.files,
-    child: _AttachTile(
-      icon: Icons.insert_drive_file_rounded,
-      color: Color(0xFF27AE60),
-      label: 'Files',
-    ),
-  ),
-];
-
-class _AttachTile extends StatelessWidget {
-  const _AttachTile({
-    required this.icon,
-    required this.color,
-    required this.label,
-  });
-
-  final IconData icon;
-  final Color color;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 34,
-          height: 34,
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.16),
-            borderRadius: BorderRadius.circular(9),
-          ),
-          child: Icon(icon, color: color, size: 19),
-        ),
-        const SizedBox(width: 12),
-        AppText.subText(context, label, fw: 0),
-      ],
-    );
-  }
-}
 
 /// Picks attachment(s) from the given [source] and returns them with bytes,
 /// ready to upload. Empty if the user cancels. No UI of its own — the caller
@@ -205,6 +149,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
   bool _loading = false;
   Object? _error;
   String _lastQuery = '';
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -214,11 +159,20 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
 
+  /// Debounce keystrokes so we issue one `GET /users?q=` after the user pauses,
+  /// not one per character.
+  void _onChanged(String q) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _search(q));
+  }
+
   Future<void> _search(String q) async {
+    _debounce?.cancel(); // a submit/clear should win over a pending debounce
     _lastQuery = q;
     setState(() {
       _loading = true;
@@ -254,6 +208,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
             controller: _ctrl,
             autofocus: true,
             hintText: 'Search by name or email',
+            onChanged: _onChanged,
             onSubmitted: _search,
             onClear: () => _search(''),
           ),

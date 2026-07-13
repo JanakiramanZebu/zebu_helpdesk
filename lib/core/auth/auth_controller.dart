@@ -56,6 +56,9 @@ class AuthController extends Notifier<AuthState> {
   }
 
   Future<void> logout() async {
+    // Unregister this device from push while the session token is still valid,
+    // then clear local credentials.
+    await ref.read(pushServiceProvider).stop();
     await _auth.logout();
     state = const AuthState(status: AuthStatus.unauthenticated);
   }

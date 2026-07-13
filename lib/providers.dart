@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/api/api_client.dart';
 import 'core/auth/auth_controller.dart';
 import 'core/auth/token_storage.dart';
+import 'core/config.dart';
+import 'core/network/server_config.dart';
+import 'core/push/push_service.dart';
 import 'data/auth_repository.dart';
 import 'data/canned_repository.dart';
 import 'data/faq_repository.dart';
@@ -27,8 +30,11 @@ final tokenStorageProvider = Provider<TokenStorage>((ref) => TokenStorage());
 
 final apiClientProvider = Provider<ApiClient>((ref) {
   final tokens = ref.watch(tokenStorageProvider);
+  // Rebuild (and re-point Dio) whenever the configured base URL changes.
+  final baseUrl = ref.watch(serverConfigProvider);
   return ApiClient(
     tokenStorage: tokens,
+    apiRoot: AppConfig.apiRootFor(baseUrl),
     onSessionExpired: () =>
         ref.read(authControllerProvider.notifier).onSessionExpired(),
   );
@@ -93,6 +99,13 @@ final notificationsRepositoryProvider = Provider<NotificationsRepository>(
 
 final pushRepositoryProvider = Provider<PushRepository>(
   (ref) => PushRepository(ref.watch(apiClientProvider)),
+);
+
+/// FCM lifecycle manager: requests notification permission, registers the
+/// device token with the backend, and routes notification taps. Started once
+/// the user is authenticated (see `HomeShell`) and stopped on logout.
+final pushServiceProvider = Provider<PushService>(
+  (ref) => PushService(ref),
 );
 
 final reportsRepositoryProvider = Provider<ReportsRepository>(

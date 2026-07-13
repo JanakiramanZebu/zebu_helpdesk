@@ -18,6 +18,34 @@ class ThreadHtml extends StatelessWidget {
     return dot >= 0 ? path.substring(dot + 1) : '';
   }
 
+  /// Marketing / newsletter emails use fixed-width tables and spacer columns
+  /// (e.g. `<table width="600">`, `<td width="400">`) that, inside a phone-width
+  /// view, squeeze the real text column down to one word per line. Strip those
+  /// fixed sizes and centering so the content reflows to the available width.
+  /// Table *structure* is kept, so genuine data tables still render — only the
+  /// forced dimensions are removed.
+  static final _sizeAttr = RegExp(
+    '''\\s(?:width|height)\\s*=\\s*("[^"]*"|'[^']*'|[^\\s>]+)''',
+    caseSensitive: false,
+  );
+  // The lookbehind stops it matching the "height" inside "line-height" /
+  // "border-width" etc. — only standalone width/height (and max-/min- variants).
+  static final _sizeStyle = RegExp(
+    r'(?<![-\w])(?:max-|min-)?(?:width|height)\s*:\s*[^;"'
+    "'"
+    r']*;?',
+    caseSensitive: false,
+  );
+  static final _alignAttr = RegExp(
+    '''\\salign\\s*=\\s*("center"|'center'|center)''',
+    caseSensitive: false,
+  );
+
+  static String _reflow(String html) => html
+      .replaceAll(_sizeAttr, '')
+      .replaceAll(_sizeStyle, '')
+      .replaceAll(_alignAttr, '');
+
   static const _imageExts = {
     'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'heic',
   };
@@ -34,7 +62,7 @@ class ThreadHtml extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return HtmlWidget(
-      html,
+      _reflow(html),
       textStyle: textStyle,
       // Returning true tells the package we handled the tap, so it never falls
       // back to launching the external browser.

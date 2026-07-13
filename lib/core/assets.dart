@@ -22,6 +22,29 @@ class Assets {
   static const menuKnowledge = 'assets/icon/menu_knowledge.svg';
   static const menuCanned = 'assets/icon/menu_canned.svg';
   static const menuQueues = 'assets/icon/menu_queues.svg';
+  static const menuAgents = 'assets/icon/menu_agents.svg';
+
+  // Ticket/task detail â‹®-menu action glyphs (custom line set).
+  static const actStatus = 'assets/icon/action_status.svg';
+  static const actMark = 'assets/icon/action_mark.svg';
+  static const actAssign = 'assets/icon/action_assign.svg';
+  static const actClaim = 'assets/icon/claim.svg';
+  static const actRelease = 'assets/icon/action_release.svg';
+  static const actOwner = 'assets/icon/action_owner.svg';
+  static const actTransfer = 'assets/icon/action_transfer.svg';
+  static const actPriority = 'assets/icon/action_priority.svg';
+  static const actTopic = 'assets/icon/action_topic.svg';
+  static const actDuedate = 'assets/icon/action_duedate.svg';
+  static const actCollaborators = 'assets/icon/action_collaborators.svg';
+  static const actDelete = 'assets/icon/action_delete.svg';
+  static const actEdit = 'assets/icon/action_edit.svg';
+  static const actTag = 'assets/icon/action_tag.svg';
+  static const actRefer = 'assets/icon/action_refer.svg';
+  static const actLink = 'assets/icon/action_link.svg';
+  static const actMerge = 'assets/icon/action_merge.svg';
+  static const actBan = 'assets/icon/action_ban.svg';
+  static const actClose = 'assets/icon/action_close.svg';
+  static const actReopen = 'assets/icon/action_reopen.svg';
 
   // Profile screen row-action glyphs (custom line set).
   static const profileAvailable = 'assets/icon/profile_available.svg';

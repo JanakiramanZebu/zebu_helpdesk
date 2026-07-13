@@ -1,23 +1,22 @@
 ﻿import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:fleather/fleather.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/assets.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/theme/app_theme.dart';
 import '../../models/common.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
+import '../../widgets/action_menu.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
+import '../../widgets/message_composer.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
@@ -34,7 +33,7 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 4, vsync: this);
+  late final TabController _tabs = TabController(length: 2, vsync: this);
   // Controls the outer (header) scroll view of the NestedScrollView, so its
   // offset tells us when the collapsing header (which holds the title) has
   // scrolled behind the pinned app bar.
@@ -48,6 +47,8 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   bool _loading = true;
   bool _acting = false;
   bool _titleInBar = false;
+  // Message the composer is quoting (set from a bubble's long-press → Reply).
+  ThreadEntry? _replyTo;
 
   @override
   void initState() {
@@ -85,9 +86,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     super.dispose();
   }
 
-  Future<void> _load() async {
+  // [silent] refreshes the data in place without flashing the full-screen
+  // loader â€” used after sending a message so the conversation just updates.
+  Future<void> _load({bool silent = false}) async {
     setState(() {
-      _loading = true;
+      if (!silent) _loading = true;
       _error = null;
     });
     final repo = ref.read(tasksRepositoryProvider);
@@ -113,6 +116,29 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     }
   }
 
+  /// Composer transport: post the body (reply or internal note) plus any
+  /// attachments, then silently refresh the thread. Returns false on failure so
+  /// the composer keeps the draft.
+  Future<bool> _sendMessage({
+    required bool note,
+    required String html,
+    required List<MultipartFile> files,
+  }) async {
+    final repo = ref.read(tasksRepositoryProvider);
+    try {
+      if (note) {
+        await repo.note(widget.taskId, body: html, files: files);
+      } else {
+        await repo.reply(widget.taskId, body: html, alert: true, files: files);
+      }
+      await _load(silent: true);
+      return true;
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+      return false;
+    }
+  }
+
   void _apply(Task updated) => setState(() => _task = updated);
 
   void _toast(String msg) => AppSnack.info(context, msg);
@@ -135,37 +161,26 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
   PopupMenuButton<String> _menu(Task t) => PopupMenuButton<String>(
     onSelected: _onMenu,
+    shape: AppActionMenu.shape,
+    color: Theme.of(context).colorScheme.surface,
+    elevation: AppActionMenu.elevation,
+    menuPadding: AppActionMenu.menuPadding,
     itemBuilder: (_) => [
       // Workflow.
       if (t.isOpen)
-        _menuItem('close', Icons.check_circle_outline, 'Close')
+        appMenuItem(value: 'close', asset: Assets.actClose, label: 'Close')
       else
-        _menuItem('reopen', Icons.replay, 'Reopen'),
-      _menuItem('progress', Icons.percent, 'Edit progress'),
+        appMenuItem(value: 'reopen', asset: Assets.actReopen, label: 'Reopen'),
       const PopupMenuDivider(),
       // Assignment & attributes.
-      _menuItem('assign', Icons.assignment_ind_outlined, 'Assign'),
-      _menuItem('transfer', Icons.apartment_outlined, 'Transfer dept'),
-      _menuItem('priority', Icons.flag_outlined, 'Set priority'),
+      appMenuItem(value: 'assign', asset: Assets.actAssign, label: 'Assign'),
+      appMenuItem(value: 'transfer', asset: Assets.actTransfer, label: 'Transfer dept'),
+      appMenuItem(value: 'priority', asset: Assets.actPriority, label: 'Set priority'),
       const PopupMenuDivider(),
       // Metadata.
-      _menuItem('collaborators', Icons.group_outlined, 'Collaborators'),
+      appMenuItem(value: 'collaborators', asset: Assets.actCollaborators, label: 'Collaborators'),
     ],
   );
-
-  /// A â‹®-menu row with a leading icon.
-  PopupMenuItem<String> _menuItem(String value, IconData icon, String label) {
-    return PopupMenuItem<String>(
-      value: value,
-      child: Row(
-        children: [
-          Icon(icon, size: 20),
-          const SizedBox(width: 12),
-          AppText.subText(context, label),
-        ],
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -184,9 +199,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     }
 
     return Scaffold(
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
+          Positioned.fill(
             child: NestedScrollView(
               controller: _headerScroll,
               headerSliverBuilder: (context, _) => [
@@ -218,8 +233,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                   delegate: _SliverTabBarDelegate(
                     TabBar(
                       controller: _tabs,
-                      isScrollable: true,
-                      tabAlignment: TabAlignment.start,
                       indicatorPadding: const EdgeInsets.symmetric(
                         vertical: 6,
                         horizontal: 2,
@@ -227,8 +240,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                       tabs: const [
                         Tab(text: 'Conversation'),
                         Tab(text: 'Details'),
-                        Tab(text: 'Subtasks'),
-                        Tab(text: 'Dependencies'),
                       ],
                     ),
                   ),
@@ -241,17 +252,20 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                     child: TabBarView(
                       controller: _tabs,
                       children: [
-                        _ConversationTab(thread: _thread),
-                        _DetailsTab(task: t, onEdit: _onMenu),
-                        _SubtasksTab(
-                          subtasks: _subtasks,
-                          onTap: (st) => context.push(Routes.task(st.id)),
-                          onAdd: _addSubtask,
+                        _ConversationTab(
+                          thread: _thread,
+                          onReply: (e) => setState(() => _replyTo = e),
                         ),
-                        _DependenciesTab(
+                        _DetailsTab(
+                          task: t,
+                          onEdit: _onMenu,
+                          subtasks: _subtasks,
+                          onSubtaskTap: (st) =>
+                              context.push(Routes.task(st.id)),
+                          onAddSubtask: _addSubtask,
                           dependencies: _dependencies,
-                          onAdd: _addDependency,
-                          onRemove: _removeDependency,
+                          onAddDependency: _addDependency,
+                          onRemoveDependency: _removeDependency,
                         ),
                       ],
                     ),
@@ -260,14 +274,31 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               ),
             ),
           ),
-          // Rebuild on every swipe frame (the controller's own listener only
-          // fires on settled index changes) so the composer hides the instant
-          // the user drags away from the Conversation tab.
-          ListenableBuilder(
-            listenable: _tabs.animation!,
-            builder: (context, _) => _onConversationTab
-                ? _InlineComposer(taskId: widget.taskId, onSent: _load)
-                : const SizedBox.shrink(),
+          // The composer floats over the bottom of the conversation (frosted
+          // glass), so messages scroll behind it. Rebuild on every swipe frame
+          // (the controller's own listener only fires on settled index changes)
+          // so the composer hides the instant the user drags off Conversation.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: ListenableBuilder(
+              listenable: _tabs.animation!,
+              builder: (context, _) => _onConversationTab
+                  ? MessageComposer(
+                      hintReply: 'Reply to this task...',
+                      replyTo: _replyTo,
+                      onClearReply: () => setState(() => _replyTo = null),
+                      onSend:
+                          ({required note, required html, required files}) =>
+                              _sendMessage(
+                                note: note,
+                                html: html,
+                                files: files,
+                              ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ),
         ],
       ),
@@ -310,8 +341,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           );
           await _load();
         });
-      case 'progress':
-        await _editProgress();
       case 'priority':
         await _pickMeta(MetaKind.taskPriorities, title: 'Set priority',
             selectedId: _task?.priority?.id, (id) async {
@@ -395,21 +424,6 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       ),
     );
     if (chosen != null) await onPick(chosen);
-  }
-
-  Future<void> _editProgress() async {
-    final value = await showDialog<int>(
-      context: context,
-      builder: (_) => _ProgressDialog(initial: _task?.progress ?? 0),
-    );
-    if (value == null) return;
-    await _runAction(
-      () => ref
-          .read(tasksRepositoryProvider)
-          .edit(widget.taskId, progress: value),
-      success: 'Progress updated',
-    );
-    await _load();
   }
 
   /// Task status is binary (Open / Completed) driven by reopen/close. Present
@@ -562,115 +576,279 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
 // --- Tabs -------------------------------------------------------------------
 
 class _ConversationTab extends StatelessWidget {
-  const _ConversationTab({required this.thread});
+  const _ConversationTab({required this.thread, this.onReply});
   final List<ThreadEntry> thread;
+  final ValueChanged<ThreadEntry>? onReply;
 
   @override
   Widget build(BuildContext context) {
     if (thread.isEmpty) {
       return const EmptyView(message: 'No messages yet');
     }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: thread.length,
-      itemBuilder: (_, i) => ThreadEntryTile(entry: thread[i]),
+    // Reserve room for the floating composer so the newest message clears it.
+    return ConversationList(
+      thread: thread,
+      onReply: onReply,
+      bottomReserve: 104 + MediaQuery.of(context).padding.bottom,
     );
   }
 }
 
 class _DetailsTab extends StatelessWidget {
-  const _DetailsTab({required this.task, required this.onEdit});
+  const _DetailsTab({
+    required this.task,
+    required this.onEdit,
+    required this.subtasks,
+    required this.onSubtaskTap,
+    required this.onAddSubtask,
+    required this.dependencies,
+    required this.onAddDependency,
+    required this.onRemoveDependency,
+  });
   final Task task;
 
   /// Routes an edit intent (matching the â‹®-menu action keys) back to the host.
   final ValueChanged<String> onEdit;
 
+  final List<Task> subtasks;
+  final ValueChanged<Task> onSubtaskTap;
+  final VoidCallback onAddSubtask;
+
+  final List<TaskDependency> dependencies;
+  final VoidCallback onAddDependency;
+  final ValueChanged<int> onRemoveDependency;
+
   @override
   Widget build(BuildContext context) {
+    // Cards (subtasks/dependencies) carry their own horizontal margin, so the
+    // list itself is only padded vertically and the attribute sections get an
+    // explicit horizontal inset to line up with the cards.
+    const hPad = EdgeInsets.symmetric(horizontal: 16);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       children: [
         // Editable attributes â€” tap to open the matching picker/editor.
-        _DetailSection(
-          title: 'Attributes',
-          children: [
-            _DetailRow(
-              icon: Icons.published_with_changes,
-              label: 'Status',
-              value: task.statusName,
-              onTap: () => onEdit('status'),
-            ),
-            _DetailRow(
-              icon: Icons.flag_outlined,
-              label: 'Priority',
-              value: task.priority?.name,
-              placeholder: 'Set priority',
-              onTap: () => onEdit('priority'),
-            ),
-            _DetailRow(
-              icon: Icons.percent,
-              label: 'Progress',
-              value: '${task.progress}%',
-              onTap: () => onEdit('progress'),
-            ),
-            _DetailRow(
-              icon: Icons.apartment_outlined,
-              label: 'Department',
-              value: task.departmentName,
-              placeholder: 'Transfer',
-              onTap: () => onEdit('transfer'),
-            ),
-            _DetailRow(
-              icon: Icons.assignment_ind_outlined,
-              label: 'Assignee',
-              value: task.assignee,
-              placeholder: 'Assign',
-              onTap: () => onEdit('assign'),
-            ),
-          ],
+        Padding(
+          padding: hPad,
+          child: _DetailSection(
+            title: 'Attributes',
+            children: [
+              _DetailRow(
+                icon: Icons.published_with_changes,
+                label: 'Status',
+                value: task.statusName,
+                onTap: () => onEdit('status'),
+              ),
+              _DetailRow(
+                icon: Icons.flag_outlined,
+                label: 'Priority',
+                value: task.priority?.name,
+                placeholder: 'Set priority',
+                onTap: () => onEdit('priority'),
+              ),
+              _DetailRow(
+                icon: Icons.apartment_outlined,
+                label: 'Department',
+                value: task.departmentName,
+                placeholder: 'Transfer',
+                onTap: () => onEdit('transfer'),
+              ),
+              _DetailRow(
+                icon: Icons.assignment_ind_outlined,
+                label: 'Assignee',
+                value: task.assignee,
+                placeholder: 'Assign',
+                onTap: () => onEdit('assign'),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         // Read-only metadata.
-        _DetailSection(
-          title: 'Information',
-          children: [
-            _DetailRow(
-              icon: Icons.tag,
-              label: 'Number',
-              value: task.number,
-            ),
-            _DetailRow(
-              icon: Icons.schedule,
-              label: 'Created',
-              value: Fmt.dateTime(task.created),
-            ),
-            _DetailRow(
-              icon: Icons.update,
-              label: 'Updated',
-              value: Fmt.dateTime(task.updated),
-            ),
-            _DetailRow(
-              icon: Icons.event_outlined,
-              label: 'Due',
-              value: Fmt.dateTime(task.duedate),
-            ),
-          ],
+        Padding(
+          padding: hPad,
+          child: _DetailSection(
+            title: 'Information',
+            children: [
+              _DetailRow(
+                icon: Icons.tag,
+                label: 'Number',
+                value: task.number,
+              ),
+              _DetailRow(
+                icon: Icons.schedule,
+                label: 'Created',
+                value: Fmt.dateTime(task.created),
+              ),
+              _DetailRow(
+                icon: Icons.update,
+                label: 'Updated',
+                value: Fmt.dateTime(task.updated),
+              ),
+              _DetailRow(
+                icon: Icons.event_outlined,
+                label: 'Due',
+                value: Fmt.dateTime(task.duedate),
+              ),
+            ],
+          ),
         ),
         if (task.customFields.isNotEmpty) ...[
           const SizedBox(height: 16),
-          _DetailSection(
-            title: 'Custom fields',
-            children: [
-              for (final e in task.customFields.entries)
-                _DetailRow(
-                  icon: Icons.list_alt_outlined,
-                  label: e.key,
-                  value: e.value,
-                ),
-            ],
+          Padding(
+            padding: hPad,
+            child: _DetailSection(
+              title: 'Custom fields',
+              children: [
+                for (final e in task.customFields.entries)
+                  _DetailRow(
+                    icon: Icons.list_alt_outlined,
+                    label: e.key,
+                    value: e.value,
+                  ),
+              ],
+            ),
           ),
         ],
+        const SizedBox(height: 20),
+        Padding(
+          padding: hPad,
+          child: _SectionHeader(
+            title: 'Subtasks',
+            actionLabel: 'Add subtask',
+            onAction: onAddSubtask,
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (subtasks.isEmpty)
+          const _EmptySection(message: 'No subtasks')
+        else
+          for (final st in subtasks)
+            TaskCard(task: st, onTap: () => onSubtaskTap(st)),
+        const SizedBox(height: 20),
+        Padding(
+          padding: hPad,
+          child: _SectionHeader(
+            title: 'Dependencies',
+            actionLabel: 'Add dependency',
+            onAction: onAddDependency,
+          ),
+        ),
+        const SizedBox(height: 4),
+        if (dependencies.isEmpty)
+          const _EmptySection(message: 'No dependencies')
+        else
+          for (final dep in dependencies)
+            _DependencyCard(dep: dep, onRemove: () => onRemoveDependency(dep.id)),
       ],
+    );
+  }
+}
+
+/// A section heading with an optional trailing "add" text button, matching the
+/// uppercase caption style used by [_DetailSection].
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
+    this.actionLabel,
+    this.onAction,
+  });
+  final String title;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: AppText.custmText(
+            context,
+            title.toUpperCase(),
+            fs: 10,
+            color: scheme.onSurfaceVariant,
+            fw: 2,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const Spacer(),
+        if (actionLabel != null)
+          TextButton.icon(
+            onPressed: onAction,
+            icon: const Icon(Icons.add, size: 18),
+            label: Text(actionLabel!),
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// A muted placeholder shown when a Details section (subtasks/dependencies) is
+/// empty, inset to align with the cards.
+class _EmptySection extends StatelessWidget {
+  const _EmptySection({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: AppText.subText(
+        context,
+        message,
+        color: Theme.of(context).colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// A single dependency row rendered as a card (extracted from the former
+/// Dependencies tab so it can live inside the Details list).
+class _DependencyCard extends StatelessWidget {
+  const _DependencyCard({required this.dep, required this.onRemove});
+  final TaskDependency dep;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final blocker = dep.blocker;
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      child: ListTile(
+        leading: Icon(
+          blocker == null
+              ? Icons.link
+              : blocker.open
+              ? Icons.lock_outline
+              : Icons.check_circle_outline,
+          color: blocker != null && blocker.open
+              ? const Color(0xFFD32F2F)
+              : Theme.of(context).colorScheme.primary,
+        ),
+        title: AppText.subText(
+          context,
+          blocker == null
+              ? 'Dependency #${dep.id}'
+              : '#${blocker.number} ${blocker.title}',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: AppText.subText(
+          context,
+          dep.required ? 'Required' : 'Optional',
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.close),
+          tooltip: 'Remove',
+          onPressed: onRemove,
+        ),
+      ),
     );
   }
 }
@@ -767,183 +945,6 @@ class _DetailRow extends StatelessWidget {
               Icon(Icons.chevron_right, size: 20, color: scheme.onSurfaceVariant),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SubtasksTab extends StatelessWidget {
-  const _SubtasksTab({
-    required this.subtasks,
-    required this.onTap,
-    required this.onAdd,
-  });
-  final List<Task> subtasks;
-  final ValueChanged<Task> onTap;
-  final VoidCallback onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: TextButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add subtask'),
-            ),
-          ),
-        ),
-        Expanded(
-          child: subtasks.isEmpty
-              ? const EmptyView(message: 'No subtasks')
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  itemCount: subtasks.length,
-                  itemBuilder: (_, i) => TaskCard(
-                    task: subtasks[i],
-                    onTap: () => onTap(subtasks[i]),
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DependenciesTab extends StatelessWidget {
-  const _DependenciesTab({
-    required this.dependencies,
-    required this.onAdd,
-    required this.onRemove,
-  });
-  final List<TaskDependency> dependencies;
-  final VoidCallback onAdd;
-  final ValueChanged<int> onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            child: TextButton.icon(
-              onPressed: onAdd,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add dependency'),
-            ),
-          ),
-        ),
-        Expanded(
-          child: dependencies.isEmpty
-              ? const EmptyView(message: 'No dependencies')
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  itemCount: dependencies.length,
-                  itemBuilder: (context, i) {
-                    final dep = dependencies[i];
-                    final blocker = dep.blocker;
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 5,
-                      ),
-                      child: ListTile(
-                        leading: Icon(
-                          blocker == null
-                              ? Icons.link
-                              : blocker.open
-                              ? Icons.lock_outline
-                              : Icons.check_circle_outline,
-                          color: blocker != null && blocker.open
-                              ? const Color(0xFFD32F2F)
-                              : Theme.of(context).colorScheme.primary,
-                        ),
-                        title: AppText.subText(
-                          context,
-                          blocker == null
-                              ? 'Dependency #${dep.id}'
-                              : '#${blocker.number} ${blocker.title}',
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: AppText.subText(
-                          context,
-                          dep.required ? 'Required' : 'Optional',
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close),
-                          tooltip: 'Remove',
-                          onPressed: () => onRemove(dep.id),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-// --- Progress dialog --------------------------------------------------------
-
-class _ProgressDialog extends StatefulWidget {
-  const _ProgressDialog({required this.initial});
-  final int initial;
-
-  @override
-  State<_ProgressDialog> createState() => _ProgressDialogState();
-}
-
-class _ProgressDialogState extends State<_ProgressDialog> {
-  late double _value = widget.initial.toDouble().clamp(0, 100);
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return AppDialog(
-      title: 'Edit progress',
-      actionLabel: 'Save',
-      onAction: () => Navigator.pop(context, _value.round()),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          AppText.custmText(
-            context,
-            '${_value.round()}%',
-            fs: 20,
-            fw: 1,
-            color: scheme.primary,
-          ),
-          const SizedBox(height: 20),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: (_value / 100).clamp(0, 1),
-              minHeight: 10,
-              backgroundColor: scheme.outlineVariant.withValues(alpha: 0.3),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Slider(
-            value: _value,
-            min: 0,
-            max: 100,
-            divisions: 100,
-            label: '${_value.round()}%',
-            onChanged: (v) => setState(() => _value = v),
-            activeColor: scheme.primary,
-            inactiveColor: scheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ],
       ),
     );
   }
@@ -1054,494 +1055,6 @@ class _MetaPickerDialogState extends State<_MetaPickerDialog> {
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-// --- Composer (reply/note) --------------------------------------------------
-
-class _InlineComposer extends ConsumerStatefulWidget {
-  const _InlineComposer({required this.taskId, required this.onSent});
-  final int taskId;
-  final Future<void> Function() onSent;
-
-  @override
-  ConsumerState<_InlineComposer> createState() => _InlineComposerState();
-}
-
-class _InlineComposerState extends ConsumerState<_InlineComposer> {
-  final FleatherController _controller = FleatherController();
-  final FocusNode _focus = FocusNode();
-  final List<PlatformFile> _files = [];
-  bool _note = false; // false = reply, true = internal note
-  bool _sending = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _focus.addListener(_onChange);
-    _controller.addListener(_onChange);
-  }
-
-  // Rebuilds so the hint, send-enabled state and toolbar track edits/focus.
-  void _onChange() {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _focus.removeListener(_onChange);
-    _controller.removeListener(_onChange);
-    _focus.dispose();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  bool get _isEmpty => _controller.document.toPlainText().trim().isEmpty;
-
-  void _clearDocument() {
-    final len = _controller.document.length;
-    if (len > 1) {
-      _controller.replaceText(
-        0,
-        len - 1,
-        '',
-        selection: const TextSelection.collapsed(offset: 0),
-      );
-    }
-  }
-
-  Future<void> _attach(AttachSource source) async {
-    final picked = await pickAttachmentsOf(source);
-    if (picked.isEmpty || !mounted) return;
-    setState(() {
-      for (final f in picked) {
-        if (!_files.any((e) => e.name == f.name)) _files.add(f);
-      }
-    });
-  }
-
-  /// Sends the document (as HTML) plus attachments. Returns true on success so
-  /// the fullscreen editor knows when to close.
-  Future<bool> _send() async {
-    final empty = _isEmpty;
-    if (empty && _files.isEmpty) return false;
-    setState(() => _sending = true);
-    final repo = ref.read(tasksRepositoryProvider);
-    try {
-      final files = [
-        for (final f in _files)
-          if (f.bytes != null)
-            MultipartFile.fromBytes(f.bytes!, filename: f.name),
-      ];
-      final body = empty ? '' : parchmentHtml.encode(_controller.document);
-      if (_note) {
-        await repo.note(widget.taskId, body: body, files: files);
-      } else {
-        await repo.reply(widget.taskId, body: body, alert: true, files: files);
-      }
-      _clearDocument();
-      if (mounted) setState(() => _files.clear());
-      await widget.onSent();
-      return true;
-    } on ApiException catch (e) {
-      if (mounted) {
-        AppSnack.error(context, e.message);
-      }
-      return false;
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  Future<void> _openFullscreen() async {
-    _focus.unfocus();
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => _FullscreenEditor(
-          controller: _controller,
-          note: _note,
-          onSend: _send,
-        ),
-      ),
-    );
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = _note ? AppTheme.warning : scheme.primary;
-    final noteTint = AppTheme.warning.withValues(alpha: isDark ? 0.10 : 0.07);
-    final barColor = isDark ? const Color(0xFF121B22) : scheme.surface;
-    final pillColor = isDark ? const Color(0xFF1F2C34) : Colors.white;
-    final canSend = !_isEmpty || _files.isNotEmpty;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: _note ? Color.alphaBlend(noteTint, barColor) : barColor,
-        border: Border(
-          top: BorderSide(
-            color: _note
-                ? accent.withValues(alpha: 0.5)
-                : scheme.outlineVariant,
-          ),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  _ModeToggle(
-                    note: _note,
-                    onChanged: (v) => setState(() => _note = v),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    tooltip: 'Expand',
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      Icons.open_in_full,
-                      size: 20,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    onPressed: _openFullscreen,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 2),
-              if (_files.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6, left: 4, right: 4),
-                  child: Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final f in _files)
-                        Chip(
-                          visualDensity: VisualDensity.compact,
-                          avatar: const Icon(
-                            Icons.insert_drive_file_outlined,
-                            size: 16,
-                          ),
-                          label: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 140),
-                            child: AppText.subText(
-                              context,
-                              f.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          onDeleted: () => setState(() => _files.remove(f)),
-                        ),
-                    ],
-                  ),
-                ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: pillColor,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: _note
-                              ? accent
-                              : scheme.outlineVariant.withValues(alpha: 0.7),
-                          width: _note ? 1.4 : 1,
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: Stack(
-                              children: [
-                                FleatherEditor(
-                                  controller: _controller,
-                                  focusNode: _focus,
-                                  minHeight: 24,
-                                  maxHeight: 120,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 10,
-                                  ),
-                                ),
-                                if (_isEmpty)
-                                  Positioned(
-                                    left: 0,
-                                    top: 10,
-                                    child: IgnorePointer(
-                                      child: AppText.subText(
-                                        context,
-                                        _note
-                                            ? 'Internal note (staff only)'
-                                            : 'Add a comment',
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          PopupMenuButton<AttachSource>(
-                            tooltip: 'Attach',
-                            position: PopupMenuPosition.over,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            icon: Transform.rotate(
-                              angle: -0.7,
-                              child: Icon(
-                                Icons.attach_file,
-                                size: 22,
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                            onSelected: _attach,
-                            itemBuilder: (_) => attachMenuItems(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  _sending
-                      ? const Padding(
-                          padding: EdgeInsets.all(8),
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2.6),
-                          ),
-                        )
-                      : Material(
-                          color: canSend
-                              ? accent
-                              : scheme.onSurfaceVariant.withValues(alpha: 0.3),
-                          shape: const CircleBorder(),
-                          child: InkWell(
-                            customBorder: const CircleBorder(),
-                            onTap: canSend ? _send : null,
-                            child: Padding(
-                              padding: const EdgeInsets.all(11),
-                              child: Icon(
-                                _note ? Icons.note_add : Icons.send,
-                                color: Colors.white,
-                                size: 22,
-                              ),
-                            ),
-                          ),
-                        ),
-                ],
-              ),
-              if (_focus.hasFocus) ...[
-                const SizedBox(height: 2),
-                FleatherToolbar.basic(
-                  controller: _controller,
-                  hideBackgroundColor: true,
-                  hideForegroundColor: true,
-                  hideDirection: true,
-                  hideListChecks: true,
-                  hideHorizontalRule: true,
-                  hideAlignment: true,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Full-screen rich-text editor that shares the composer's [FleatherController].
-class _FullscreenEditor extends StatefulWidget {
-  const _FullscreenEditor({
-    required this.controller,
-    required this.note,
-    required this.onSend,
-  });
-
-  final FleatherController controller;
-  final bool note;
-  final Future<bool> Function() onSend;
-
-  @override
-  State<_FullscreenEditor> createState() => _FullscreenEditorState();
-}
-
-class _FullscreenEditorState extends State<_FullscreenEditor> {
-  final FocusNode _focus = FocusNode();
-  bool _sending = false;
-
-  @override
-  void dispose() {
-    _focus.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    setState(() => _sending = true);
-    final ok = await widget.onSend();
-    if (!mounted) return;
-    if (ok) {
-      Navigator.of(context).pop();
-    } else {
-      setState(() => _sending = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = widget.note
-        ? AppTheme.warning
-        : Theme.of(context).colorScheme.primary;
-    return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Collapse',
-          icon: const Icon(Icons.close_fullscreen),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: Text(widget.note ? 'Internal note' : 'Reply'),
-        actions: [
-          _sending
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2.6),
-                  ),
-                )
-              : Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: FilledButton.icon(
-                    style: FilledButton.styleFrom(backgroundColor: accent),
-                    onPressed: _send,
-                    icon: Icon(
-                      widget.note ? Icons.note_add : Icons.send,
-                      size: 18,
-                    ),
-                    label: const Text('Send'),
-                  ),
-                ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: FleatherEditor(
-              controller: widget.controller,
-              focusNode: _focus,
-              autofocus: true,
-              expands: true,
-              padding: const EdgeInsets.all(16),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: FleatherToolbar.basic(controller: widget.controller),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Segmented Reply / Internal note selector shown above the composer input.
-class _ModeToggle extends StatelessWidget {
-  const _ModeToggle({required this.note, required this.onChanged});
-
-  final bool note;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final trackColor = isDark
-        ? const Color(0xFF1E1E1E)
-        : const Color(0xFFF1F1F1);
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: trackColor,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _segment(
-            context: context,
-            label: 'Reply',
-            icon: Icons.reply_rounded,
-            selected: !note,
-            selectedColor: scheme.primary,
-            onTap: () => onChanged(false),
-          ),
-          _segment(
-            context: context,
-            label: 'Internal note',
-            icon: Icons.sticky_note_2_outlined,
-            selected: note,
-            selectedColor: AppTheme.warning,
-            onTap: () => onChanged(true),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _segment({
-    required BuildContext context,
-    required String label,
-    required IconData icon,
-    required bool selected,
-    required Color selectedColor,
-    required VoidCallback onTap,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    return Material(
-      color: selected ? selectedColor : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: selected ? Colors.white : scheme.onSurfaceVariant,
-              ),
-              const SizedBox(width: 6),
-              AppText.custmText(
-                context,
-                label,
-                fs: 13,
-                fw: selected ? 1 : 0,
-                color: selected ? Colors.white : scheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

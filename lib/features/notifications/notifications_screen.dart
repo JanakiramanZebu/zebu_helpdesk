@@ -14,8 +14,9 @@ import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/app_snack.dart';
+import '../../widgets/filter_chip_tabs.dart';
+import '../../widgets/glass.dart';
 import '../../widgets/paged_list_view.dart';
-import '../../widgets/segmented_tabs.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/user_avatar.dart';
 
@@ -43,13 +44,33 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   int _refreshKey = 0;
   int? _total;
+  // Ids swiped away this session. A dismissed Dismissible must leave the tree
+  // immediately, so we filter these out synchronously (before the network
+  // delete completes) rather than waiting for a refetch.
+  final Set<int> _deleted = {};
   String _view = 'all';
   String _search = '';
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
 
+  /// Semantic dot color per filter chip, distinct so the tabs read at a glance:
+  /// unread = red (attention, matches the nav badge), tickets = blue,
+  /// tasks = green, mentions = amber, all = neutral grey.
+  static Color _viewColor(String key) => switch (key) {
+    'unread' => AppTheme.overdue,
+    'tickets' => Glass.indigo,
+    'tasks' => AppTheme.open,
+    'mentions' => AppTheme.warning,
+    _ => AppTheme.closed, // 'all'
+  };
+
   void _refresh() {
-    setState(() => _refreshKey++);
+    setState(() {
+      _refreshKey++;
+      // The list reloads from the server (which no longer has the deleted
+      // rows), so the local tombstones are no longer needed.
+      _deleted.clear();
+    });
     ref.invalidate(unreadCountProvider);
   }
 
@@ -96,10 +117,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   Future<void> _deleteOne(AppNotification n) async {
+    // Drop the row from the tree this frame — a dismissed Dismissible must not
+    // stay mounted, or Flutter asserts.
+    setState(() => _deleted.add(n.id));
     try {
       await ref.read(notificationsRepositoryProvider).deleteOne(n.id);
       ref.invalidate(unreadCountProvider);
     } on ApiException catch (e) {
+      // Restore the row so the failed delete isn't silently lost.
+      setState(() => _deleted.remove(n.id));
       _toast(e.message);
       _refresh();
     }
@@ -125,15 +151,20 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
     ref.invalidate(unreadCountProvider);
     if (!mounted) return;
+    // Await the detail route so that on return we refetch the list — the tapped
+    // row is now read on the server, so a refresh clears its unread state (the
+    // swipe-to-mark-read path refreshes for the same reason).
     if (n.type == 'task') {
-      context.push(Routes.task(n.objectId));
+      await context.push(Routes.task(n.objectId));
     } else {
-      context.push(Routes.ticket(n.objectId));
+      await context.push(Routes.ticket(n.objectId));
     }
+    if (mounted) _refresh();
   }
 
   /// Client-side tab + search filter, mirroring the ticket/task list screens.
   bool _matches(AppNotification n) {
+    if (_deleted.contains(n.id)) return false;
     final viewOk = switch (_view) {
       'unread' => !n.read,
       'tickets' => n.type == 'ticket',
@@ -159,6 +190,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(notificationsRepositoryProvider);
+    // The Unread chip shows the live unread count; other views are filtered
+    // client-side and have no cheap total, so they stay count-less.
+    final unread = ref
+        .watch(unreadCountProvider)
+        .maybeWhen(data: (c) => c, orElse: () => null);
 
     return Scaffold(
       appBar: AppBar(
@@ -170,38 +206,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           ],
         ),
         actions: [
-          PopupMenuButton<String>(
-            position: PopupMenuPosition.under,
-            onSelected: (v) {
-              if (v == 'mark_all') _markAllRead();
-              if (v == 'delete_all') _deleteAll();
-            },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
-                value: 'mark_all',
-                child: Row(
-                  children: [
-                    Icon(Icons.done_all, size: 20),
-                    SizedBox(width: 12),
-                    Text('Mark all read'),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'delete_all',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_sweep_outlined, size: 20),
-                    SizedBox(width: 12),
-                    Text('Delete all'),
-                  ],
-                ),
-              ),
-            ],
+          _InboxMenuButton(
+            onMarkAllRead: _markAllRead,
+            onDeleteAll: _deleteAll,
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(90),
+          preferredSize: const Size.fromHeight(98),
           child: Column(
             children: [
               Padding(
@@ -214,34 +225,124 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                   onClear: () => _applySearch(''),
                 ),
               ),
-              SegmentedTabs(
+              FilterChipTabs(
                 items: _views,
                 selectedKey: _view,
+                counts: {if (unread != null) 'unread': unread},
+                colorFor: _viewColor,
                 onSelected: (k) => setState(() => _view = k),
               ),
             ],
           ),
         ),
       ),
-      body: PagedListView<AppNotification>(
-        fabClearance: true,
-        skeleton: const ListSkeleton(),
-        separated: true,
-        refreshKey: '$_view|$_refreshKey',
-        itemFilter: _matches,
-        onTotalChanged: (t) {
-          if (mounted && t != _total) setState(() => _total = t);
-        },
-        emptyMessage: 'No notifications',
-        emptyHint: 'You are all caught up.',
-        emptyIcon: Icons.notifications_none,
-        fetch: (page) => repo.list(page: page),
-        itemBuilder: (context, n) => _NotificationRow(
-          n: n,
-          onTap: () => _open(n),
-          onDelete: () => _deleteOne(n),
-          onMarkRead: () => _markRead(n),
+      body: Glass.listBackdrop(
+        context: context,
+        child: PagedListView<AppNotification>(
+          fabClearance: true,
+          skeleton: const ListSkeleton(),
+          separated: true,
+          refreshKey: '$_view|$_refreshKey',
+          itemFilter: _matches,
+          onTotalChanged: (t) {
+            if (mounted && t != _total) setState(() => _total = t);
+          },
+          emptyMessage: 'No notifications',
+          emptyHint: 'You are all caught up.',
+          emptyIcon: Icons.notifications_none,
+          fetch: (page) => repo.list(page: page),
+          itemBuilder: (context, n) => _NotificationRow(
+            n: n,
+            onTap: () => _open(n),
+            onDelete: () => _deleteOne(n),
+            onMarkRead: () => _markRead(n),
+          ),
         ),
+      ),
+    );
+  }
+}
+
+/// App-bar overflow menu for the Inbox, styled to match the list-screen
+/// download menu: a rounded, elevated popup whose rows pair a tinted icon tile
+/// with a bold label. "Delete all" reads in the error color to signal it's
+/// destructive.
+class _InboxMenuButton extends StatelessWidget {
+  const _InboxMenuButton({
+    required this.onMarkAllRead,
+    required this.onDeleteAll,
+  });
+
+  final VoidCallback onMarkAllRead;
+  final VoidCallback onDeleteAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<String>(
+      tooltip: 'More',
+      position: PopupMenuPosition.under,
+      offset: const Offset(0, 8),
+      elevation: 8,
+      color: scheme.surface,
+      shadowColor: Colors.black.withValues(alpha: 0.18),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      icon: const Icon(Icons.more_vert),
+      onSelected: (v) {
+        if (v == 'mark_all') onMarkAllRead();
+        if (v == 'delete_all') onDeleteAll();
+      },
+      itemBuilder: (context) => [
+        _menuItem(
+          context,
+          value: 'mark_all',
+          icon: Icons.done_all,
+          label: 'Mark all read',
+          tint: AppTheme.open,
+        ),
+        _menuItem(
+          context,
+          value: 'delete_all',
+          icon: Icons.delete_sweep_outlined,
+          label: 'Delete all',
+          tint: scheme.error,
+          danger: true,
+        ),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _menuItem(
+    BuildContext context, {
+    required String value,
+    required IconData icon,
+    required String label,
+    required Color tint,
+    bool danger = false,
+  }) {
+    return PopupMenuItem<String>(
+      value: value,
+      height: 48,
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: tint.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: tint),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: danger ? tint : null,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -313,9 +414,10 @@ class _NotificationRow extends StatelessWidget {
         alignment: Alignment.centerRight,
       ),
       child: Material(
-        color: unread
-            ? scheme.primary.withValues(alpha: 0.05)
-            : Colors.transparent,
+        // Transparent over the neutral list backdrop so the Inbox reads the
+        // same background as Tickets/Tasks; unread is still cued by the left
+        // rail, the bold text, and the unread dot on the avatar.
+        color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
           child: IntrinsicHeight(

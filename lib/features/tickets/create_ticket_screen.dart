@@ -10,12 +10,12 @@ import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
-import '../../models/canned.dart';
 import '../../models/meta.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
 import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
+import '../../widgets/composer_actions.dart';
 import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/rich_message_field.dart';
@@ -53,7 +53,6 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   MetaItem? _agent;
   MetaItem? _team;
   DateTime? _due;
-  CannedResponse? _canned;
   final List<PlatformFile> _files = [];
 
   bool _saving = false;
@@ -181,16 +180,15 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   }
 
   Future<void> _pickFiles() async {
-    final res = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: true, // need bytes to upload on every platform
-    );
-    if (res == null || !mounted) return;
+    // Offer Camera / Photo / File, then pick from the chosen source (mirrors
+    // the reply composer's "+" attach flow).
+    final source = await pickAttachSource(context);
+    if (source == null || !mounted) return;
+    final picked = await pickAttachmentsOf(source);
+    if (picked.isEmpty || !mounted) return;
     setState(() {
-      for (final f in res.files) {
-        if (f.bytes != null && !_files.any((e) => e.name == f.name)) {
-          _files.add(f);
-        }
+      for (final f in picked) {
+        if (!_files.any((e) => e.name == f.name)) _files.add(f);
       }
     });
   }
@@ -225,26 +223,34 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     if (s != null) setState(() => _source = s);
   }
 
-  Future<void> _pickCanned() async {
-    final c = await showAppSheet<CannedResponse>(
-      context: context,
-      builder: (_) => const _CannedPickerSheet(),
-    );
-    if (c == null) return;
-    // Insert the canned body's text into the rich document. The document
-    // always ends with a trailing "\n", so its editable length is length - 1.
-    final doc = _message.document;
-    final end = doc.length - 1;
-    final text = Fmt.stripHtml(c.body);
-    final insert = end > 0 ? '\n\n$text' : text;
-    _message.replaceText(
-      end,
-      0,
-      insert,
-      selection: TextSelection.collapsed(offset: end + insert.length),
-    );
+  /// Picks a saved reply and splices its (rich) body into the message at the
+  /// cursor.
+  Future<void> _insertCanned() async {
+    final canned = await pickCannedResponse(context, ref);
+    if (canned == null || !mounted) return;
+    insertRichHtml(_message, canned.body);
     setState(() {
-      _canned = c;
+      if (_messageError != null) _messageError = null;
+    });
+  }
+
+  /// Picks a knowledgebase article and splices its answer into the message. The
+  /// list payload may omit the body, so we fetch the full article when needed.
+  Future<void> _insertFaq() async {
+    final faq = await pickFaqArticle(context, ref);
+    if (faq == null || !mounted) return;
+    var html = faq.answer ?? '';
+    if (html.trim().isEmpty) {
+      try {
+        final full = await ref.read(faqRepositoryProvider).get(faq.id);
+        html = full.answer ?? '';
+      } on ApiException {
+        // Nothing to insert.
+      }
+    }
+    if (!mounted || html.trim().isEmpty) return;
+    insertRichHtml(_message, html);
+    setState(() {
       if (_messageError != null) _messageError = null;
     });
   }
@@ -277,10 +283,46 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     setState(() => _due = picked);
   }
 
-  Widget _section(String title) => Padding(
-    padding: const EdgeInsets.only(top: 20, bottom: 6),
-    child: AppText.subText(context, title, fw: 2),
+  /// Uppercase caption header sitting above a grouped card section — matches
+  /// the settings-style section headers used across the app (e.g. the More tab).
+  Widget _sectionLabel(String title) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
+    child: AppText.captionText(
+      context,
+      title.toUpperCase(),
+      color: Theme.of(context).colorScheme.onSurfaceVariant,
+      fw: 2,
+    ),
   );
+
+  /// Wraps a set of list [rows] in a flat, rounded "list group" surface —
+  /// a hairline border, no card elevation — with an inset divider between each
+  /// row (aligned under the label column: 16 pad + 20 icon + 14 gap = 50).
+  Widget _group(List<Widget> rows, {double dividerIndent = 50}) {
+    final scheme = Theme.of(context).colorScheme;
+    final children = <Widget>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (i > 0) {
+        children.add(
+          Divider(
+            height: 1,
+            indent: dividerIndent,
+            color: scheme.outlineVariant,
+          ),
+        );
+      }
+      children.add(rows[i]);
+    }
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(children: children),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -297,271 +339,316 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                 : AutovalidateMode.disabled,
             child: ListView(
               controller: _scrollCtrl,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
               children: [
-                if (_saving) const LinearProgressIndicator(minHeight: 2),
-                if (_error != null) ...[
-                  _ErrorBanner(message: _error!),
-                  const SizedBox(height: 12),
-                ],
-
-              // --- User & collaborators ---------------------------------
-              _section('User & collaborators'),
-              _PickerTile(
-                icon: Icons.person_outline,
-                label: 'Requester',
-                value: _user?.name,
-                hint: 'Required',
-                error: _fieldErrors['user_id'] ??
-                    (_attempted && _user == null
-                        ? 'Please select a requester'
-                        : null),
-                onTap: () async {
-                  final u = await pickUser(context, ref);
-                  if (u != null) setState(() => _user = u);
-                },
-              ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.group_outlined),
-                title: AppText.subText(context, 'Collaborators (Cc)'),
-                subtitle: AppText.paraText(
-                  context,
-                  _collaborators.isEmpty
-                      ? 'Optional'
-                      : '${_collaborators.length} added',
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: _addCollaborator,
-                ),
-                onTap: _addCollaborator,
-              ),
-              if (_collaborators.isNotEmpty)
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final c in _collaborators)
-                      Chip(
-                        label: Text(c.name),
-                        onDeleted: () =>
-                            setState(() => _collaborators.remove(c)),
-                      ),
-                  ],
-                ),
-
-              // --- Ticket details ---------------------------------------
-              _section('Ticket details'),
-              TextFormField(
-                controller: _subject,
-                focusNode: _subjectFocus,
-                textInputAction: TextInputAction.next,
-                validator: (v) => (v ?? '').trim().isEmpty
-                    ? 'Subject is required'
-                    : null,
-                decoration: InputDecoration(
-                  labelText: 'Subject',
-                  errorText: _fieldErrors['subject'],
-                ),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _pickCanned,
-                icon: const Icon(Icons.bolt_outlined, size: 18),
-                label: Text(
-                  _canned == null
-                      ? 'Insert canned response'
-                      : 'Canned: ${_canned!.title}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(height: 12),
-              RichMessageField(
-                controller: _message,
-                label: 'Message',
-                hintText: 'Type your message…',
-                errorText: _messageError ?? _fieldErrors['message'],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  AppText.subText(context, 'Attachments'),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: _pickFiles,
-                    icon: const Icon(Icons.attach_file, size: 18),
-                    label: const Text('Add files'),
+                if (_saving)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: LinearProgressIndicator(minHeight: 2),
                   ),
+                if (_error != null) ...[
+                  const SizedBox(height: 8),
+                  _ErrorBanner(message: _error!),
                 ],
-              ),
-              if (_files.isEmpty)
-                AppText.subText(
-                  context,
-                  'No files added',
-                  color: scheme.onSurfaceVariant,
-                )
-              else
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final f in _files)
-                      Chip(
-                        avatar: const Icon(
-                          Icons.insert_drive_file_outlined,
-                          size: 18,
+
+                // --- Requester & collaborators ---------------------------
+                _sectionLabel('Requester'),
+                _group([
+                  _ListRow(
+                    icon: Icons.person_outline,
+                    label: 'Requester',
+                    value: _user?.name,
+                    hint: 'Required · tap to choose',
+                    error:
+                        _fieldErrors['user_id'] ??
+                        (_attempted && _user == null
+                            ? 'Please select a requester'
+                            : null),
+                    onTap: () async {
+                      final u = await pickUser(context, ref);
+                      if (u != null) setState(() => _user = u);
+                    },
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ListRow(
+                        icon: Icons.group_outlined,
+                        label: 'Collaborators (Cc)',
+                        value: _collaborators.isEmpty
+                            ? null
+                            : '${_collaborators.length} added',
+                        hint: 'Optional',
+                        trailing: IconButton(
+                          icon: const Icon(Icons.add, size: 20),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: _addCollaborator,
                         ),
-                        label: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 180),
-                          child: Text(
-                            '${f.name}  ·  ${Fmt.fileSize(f.size)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                        onTap: _addCollaborator,
+                      ),
+                      if (_collaborators.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final c in _collaborators)
+                                Chip(
+                                  label: Text(c.name),
+                                  onDeleted: () => setState(
+                                    () => _collaborators.remove(c),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                        onDeleted: () => setState(() => _files.remove(f)),
-                      ),
-                  ],
-                ),
+                    ],
+                  ),
+                ]),
 
-              // --- Options ----------------------------------------------
-              _section('Options'),
-              _PickerTile(
-                icon: Icons.podcasts_outlined,
-                label: 'Source',
-                value: _source,
-                onTap: _pickSource,
-              ),
-              _PickerTile(
-                icon: Icons.topic_outlined,
-                label: 'Help topic',
-                value: _topic?.name,
-                onTap: () async {
-                  final m = await pickMeta(
-                    context,
-                    ref,
-                    MetaKind.topics,
-                    title: 'Help topic',
-                    selectedId: _topic?.id,
-                  );
-                  if (m != null) setState(() => _topic = m);
-                },
-              ),
-              _PickerTile(
-                icon: Icons.apartment_outlined,
-                label: 'Department',
-                value: _department?.name,
-                onTap: () async {
-                  final m = await pickMeta(
-                    context,
-                    ref,
-                    MetaKind.departments,
-                    title: 'Department',
-                    selectedId: _department?.id,
-                  );
-                  if (m != null) setState(() => _department = m);
-                },
-              ),
-              _PickerTile(
-                icon: Icons.flag_outlined,
-                label: 'Priority',
-                value: _priority?.name,
-                onTap: () async {
-                  final m = await pickMeta(
-                    context,
-                    ref,
-                    MetaKind.priorities,
-                    title: 'Priority',
-                    selectedId: _priority?.id,
-                  );
-                  if (m != null) setState(() => _priority = m);
-                },
-              ),
-              _PickerTile(
-                icon: Icons.event_outlined,
-                label: 'Due date',
-                value: _due == null ? null : Fmt.dateTime(_due),
-                trailing: _due == null
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() => _due = null),
+                // --- Ticket details (Gmail-style compose) ----------------
+                _sectionLabel('Ticket details'),
+                _group([
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                    child: TextFormField(
+                      controller: _subject,
+                      focusNode: _subjectFocus,
+                      textInputAction: TextInputAction.next,
+                      style: AppText.style(context, fontSize: 15, fw: 1),
+                      validator: (v) => (v ?? '').trim().isEmpty
+                          ? 'Subject is required'
+                          : null,
+                      decoration: InputDecoration(
+                        hintText: 'Subject',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        errorText: _fieldErrors['subject'],
                       ),
-                onTap: _pickDue,
-              ),
-              _PickerTile(
-                icon: Icons.assignment_ind_outlined,
-                label: 'Assign to agent',
-                value: _agent?.name,
-                trailing: _agent == null
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() => _agent = null),
-                      ),
-                onTap: () async {
-                  final m = await pickMeta(
-                    context,
-                    ref,
-                    MetaKind.agents,
-                    title: 'Assign to agent',
-                    selectedId: _agent?.id,
-                  );
-                  if (m != null) setState(() => _agent = m);
-                },
-              ),
-              _PickerTile(
-                icon: Icons.groups_outlined,
-                label: 'Assign to team',
-                value: _team?.name,
-                trailing: _team == null
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() => _team = null),
-                      ),
-                onTap: () async {
-                  final m = await pickMeta(
-                    context,
-                    ref,
-                    MetaKind.teams,
-                    title: 'Assign to team',
-                    selectedId: _team?.id,
-                  );
-                  if (m != null) setState(() => _team = m);
-                },
-              ),
-              _PickerTile(
-                icon: Icons.label_outline,
-                label: 'Status',
-                value: _status?.name,
-                onTap: () async {
-                  final m = await pickMeta(
-                    context,
-                    ref,
-                    MetaKind.statuses,
-                    title: 'Status',
-                    selectedId: _status?.id,
-                  );
-                  if (m != null) setState(() => _status = m);
-                },
-              ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: RichMessageField(
+                      controller: _message,
+                      hintText: 'Type your message…',
+                      bordered: false,
+                      onInsertCanned: _insertCanned,
+                      onInsertFaq: _insertFaq,
+                      errorText: _messageError ?? _fieldErrors['message'],
+                    ),
+                  ),
+                ], dividerIndent: 0),
 
-              // --- Internal note ----------------------------------------
-              _section('Internal note'),
-              TextField(
-                controller: _internalNote,
-                minLines: 2,
-                maxLines: 6,
-                decoration: const InputDecoration(
-                  labelText: 'Internal note (optional)',
-                  alignLabelWithHint: true,
-                  hintText: 'Visible to staff only',
-                ),
-              ),
-            ],
+                // --- Attachments -----------------------------------------
+                _sectionLabel('Attachments'),
+                _group([
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _ListRow(
+                        icon: Icons.attach_file,
+                        label: 'Files',
+                        value: _files.isEmpty
+                            ? null
+                            : '${_files.length} attached',
+                        hint: 'No files added',
+                        trailing: TextButton.icon(
+                          onPressed: _pickFiles,
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add'),
+                        ),
+                        onTap: _pickFiles,
+                      ),
+                      if (_files.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final f in _files)
+                                Chip(
+                                  avatar: const Icon(
+                                    Icons.insert_drive_file_outlined,
+                                    size: 18,
+                                  ),
+                                  label: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 180,
+                                    ),
+                                    child: Text(
+                                      '${f.name}  ·  ${Fmt.fileSize(f.size)}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  onDeleted: () =>
+                                      setState(() => _files.remove(f)),
+                                ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ]),
+
+                // --- Properties ------------------------------------------
+                _sectionLabel('Properties'),
+                _group([
+                  _ListRow(
+                    icon: Icons.podcasts_outlined,
+                    label: 'Source',
+                    value: _source,
+                    onTap: _pickSource,
+                  ),
+                  _ListRow(
+                    icon: Icons.topic_outlined,
+                    label: 'Help topic',
+                    value: _topic?.name,
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.topics,
+                        title: 'Help topic',
+                        selectedId: _topic?.id,
+                      );
+                      if (m != null) setState(() => _topic = m);
+                    },
+                  ),
+                  _ListRow(
+                    icon: Icons.apartment_outlined,
+                    label: 'Department',
+                    value: _department?.name,
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.departments,
+                        title: 'Department',
+                        selectedId: _department?.id,
+                      );
+                      if (m != null) setState(() => _department = m);
+                    },
+                  ),
+                  _ListRow(
+                    icon: Icons.flag_outlined,
+                    label: 'Priority',
+                    value: _priority?.name,
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.priorities,
+                        title: 'Priority',
+                        selectedId: _priority?.id,
+                      );
+                      if (m != null) setState(() => _priority = m);
+                    },
+                  ),
+                  _ListRow(
+                    icon: Icons.event_outlined,
+                    label: 'Due date',
+                    value: _due == null ? null : Fmt.dateTime(_due),
+                    trailing: _due == null
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _due = null),
+                          ),
+                    onTap: _pickDue,
+                  ),
+                  _ListRow(
+                    icon: Icons.assignment_ind_outlined,
+                    label: 'Assign to agent',
+                    value: _agent?.name,
+                    trailing: _agent == null
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _agent = null),
+                          ),
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.agents,
+                        title: 'Assign to agent',
+                        selectedId: _agent?.id,
+                      );
+                      if (m != null) setState(() => _agent = m);
+                    },
+                  ),
+                  _ListRow(
+                    icon: Icons.groups_outlined,
+                    label: 'Assign to team',
+                    value: _team?.name,
+                    trailing: _team == null
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _team = null),
+                          ),
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.teams,
+                        title: 'Assign to team',
+                        selectedId: _team?.id,
+                      );
+                      if (m != null) setState(() => _team = m);
+                    },
+                  ),
+                  _ListRow(
+                    icon: Icons.label_outline,
+                    label: 'Status',
+                    value: _status?.name,
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.statuses,
+                        title: 'Status',
+                        selectedId: _status?.id,
+                      );
+                      if (m != null) setState(() => _status = m);
+                    },
+                  ),
+                ]),
+
+                // --- Internal note ---------------------------------------
+                _sectionLabel('Internal note'),
+                _group([
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
+                    child: TextField(
+                      controller: _internalNote,
+                      minLines: 2,
+                      maxLines: 6,
+                      decoration: const InputDecoration(
+                        hintText: 'Visible to staff only',
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                        icon: Icon(Icons.lock_outline, size: 20),
+                      ),
+                    ),
+                  ),
+                ]),
+              ],
             ),
           ),
         ),
@@ -579,16 +666,32 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (!_canSubmit && !_saving) ...[
-                  AppText.paraText(
-                    context,
-                    _missingHint,
-                    color: scheme.onSurfaceVariant,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 15,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: AppText.paraText(
+                          context,
+                          _missingHint,
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                 ],
-                FilledButton(
+                FilledButton.icon(
                   onPressed: (_saving || !_canSubmit) ? null : _submit,
-                  child: _saving
+                  icon: _saving
+                      ? const SizedBox.shrink()
+                      : const Icon(Icons.check_circle_outline, size: 20),
+                  label: _saving
                       ? const SizedBox(
                           height: 20,
                           width: 20,
@@ -654,9 +757,12 @@ class _ErrorBanner extends StatelessWidget {
   }
 }
 
-/// A tappable row that shows a selected value (or a hint) — used for pickers.
-class _PickerTile extends StatelessWidget {
-  const _PickerTile({
+/// A compact, single-line "settings list" row: a small muted leading icon, the
+/// field label, its selected value (or a hint) trailing on the right, and a
+/// chevron. Flat and simple — no tinted badge, no stacked value. An [error]
+/// paints the value line in the error color.
+class _ListRow extends StatelessWidget {
+  const _ListRow({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -676,109 +782,48 @@ class _PickerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: Icon(icon),
-      title: AppText.subText(context, label),
-      subtitle: AppText.subText(
-        context,
-        value ?? hint ?? 'Not set',
-        color: error != null
-            ? theme.colorScheme.error
-            : value != null
-            ? theme.colorScheme.onSurface
-            : theme.colorScheme.onSurfaceVariant,
-        fw: value != null ? 1 : null,
-      ),
-      trailing: trailing ?? const Icon(Icons.chevron_right),
+    final scheme = Theme.of(context).colorScheme;
+    final hasError = error != null;
+    final display = error ?? value ?? hint;
+    final valueColor = hasError
+        ? scheme.error
+        : value != null
+        ? scheme.onSurface
+        : scheme.onSurfaceVariant;
+    return InkWell(
       onTap: onTap,
-    );
-  }
-}
-
-/// Bottom-sheet picker over the canned-response list.
-class _CannedPickerSheet extends ConsumerStatefulWidget {
-  const _CannedPickerSheet();
-
-  @override
-  ConsumerState<_CannedPickerSheet> createState() => _CannedPickerSheetState();
-}
-
-class _CannedPickerSheetState extends ConsumerState<_CannedPickerSheet> {
-  List<CannedResponse> _items = [];
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final page = await ref.read(cannedRepositoryProvider).list(limit: 50);
-      if (!mounted) return;
-      setState(() {
-        _items = page.items;
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppSheet(
-      title: 'Canned responses',
-      scrollable: false,
-      padding: EdgeInsets.zero,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.7,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
           children: [
-            Flexible(
-              child: _loading
-                  ? const Padding(
-                      padding: EdgeInsets.all(40),
-                      child: Center(child: CircularProgressIndicator()),
-                    )
-                  : _error != null
-                  ? Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: AppText.subText(context, _error!),
-                    )
-                  : _items.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: AppText.subText(context, 'No canned responses'),
-                    )
-                  : ListView.builder(
-                      itemCount: _items.length,
-                      itemBuilder: (_, i) {
-                        final c = _items[i];
-                        return ListTile(
-                          title: AppText.subText(context, c.title),
-                          subtitle: AppText.paraText(
-                            context,
-                            Fmt.stripHtml(c.body),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onTap: () => Navigator.pop(context, c),
-                        );
-                      },
+            Icon(
+              icon,
+              size: 20,
+              color: hasError ? scheme.error : scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: 14),
+            AppText.subText(context, label, fw: 0),
+            const SizedBox(width: 12),
+            Expanded(
+              child: display == null
+                  ? const SizedBox.shrink()
+                  : AppText.subText(
+                      context,
+                      display,
+                      color: valueColor,
+                      fw: value != null ? 1 : 0,
+                      align: TextAlign.right,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
             ),
+            const SizedBox(width: 4),
+            trailing ??
+                Icon(
+                  Icons.chevron_right,
+                  size: 20,
+                  color: scheme.onSurfaceVariant,
+                ),
           ],
         ),
       ),

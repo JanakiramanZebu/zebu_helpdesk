@@ -12,6 +12,7 @@ import '../../core/format.dart';
 import '../../core/list_layout.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/theme/app_theme.dart';
 import '../../data/tickets_repository.dart';
 import '../../models/meta.dart';
 import '../../models/ticket.dart';
@@ -20,9 +21,11 @@ import '../../widgets/app_dialog.dart';
 import '../../widgets/app_search_field.dart';
 import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
+import '../../widgets/filter_chip_tabs.dart';
+import '../../widgets/filter_sheet.dart';
+import '../../widgets/glass.dart';
 import '../../widgets/list_controls.dart';
 import '../../widgets/paged_list_view.dart';
-import '../../widgets/segmented_tabs.dart';
 import '../../widgets/selection_controls.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/svg_icon.dart';
@@ -65,6 +68,8 @@ class TicketsListScreen extends ConsumerStatefulWidget {
 
 class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   String _view = 'open';
+  // Drives the swipeable filter pages; kept in sync with [_view] and the chips.
+  late final PageController _pageController;
   String _search = '';
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
@@ -100,6 +105,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
         () => ref.read(ticketsViewRequestProvider.notifier).set(null),
       );
     }
+    _pageController = PageController(initialPage: _indexOf(_view));
     _loadCounts();
     _loadFacets();
   }
@@ -108,7 +114,49 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   void dispose() {
     _debounce?.cancel();
     _searchCtrl.dispose();
+    _pageController.dispose();
     super.dispose();
+  }
+
+  // --- Tab / page sync ------------------------------------------------------
+
+  int _indexOf(String view) {
+    final i = _views.indexWhere((v) => v.key == view);
+    return i < 0 ? 0 : i;
+  }
+
+  /// Chip tapped → highlight it immediately, then move the pager. Neighboring
+  /// pages glide; distant ones jump so the PageView doesn't build every list in
+  /// between. [_onPageChanged] re-adopts the same view when the move settles.
+  void _selectView(String view) {
+    if (view == _view) return;
+    final from = _indexOf(_view);
+    final to = _indexOf(view);
+    setState(() => _view = view);
+    if (!_pageController.hasClients) return;
+    if ((to - from).abs() > 1) {
+      _pageController.jumpToPage(to);
+    } else {
+      _pageController.animateToPage(
+        to,
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  /// Swipe settled on a new page → adopt that view.
+  void _onPageChanged(int index) {
+    final next = _views[index].key;
+    if (next != _view) setState(() => _view = next);
+  }
+
+  /// Jump the pager to [view] without animation (cross-tab filter requests).
+  void _jumpToView(String view) {
+    setState(() => _view = view);
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(_indexOf(view));
+    }
   }
 
   void _toast(String msg) => AppSnack.info(context, msg);
@@ -149,15 +197,19 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     if (next != _search) setState(() => _search = next);
   }
 
-  Future<void> _createTicket() async {
-    await context.push(Routes.ticketNew);
-    if (mounted) {
-      setState(() => _refresh++); // reflect any new ticket
-      _loadCounts();
-    }
-  }
-
   String get _order => _sort == 'due' ? 'asc' : 'desc';
+
+  /// Semantic dot color for each view chip, mirroring the dashboard's status
+  /// palette (open/answered green, mine brand, unassigned amber, overdue red,
+  /// closed grey).
+  static Color _viewColor(String key) => switch (key) {
+    'open' || 'answered' => AppTheme.open,
+    'mine' => Glass.indigo,
+    'unassigned' => AppTheme.warning,
+    'overdue' => AppTheme.overdue,
+    'closed' => AppTheme.closed,
+    _ => Glass.indigo,
+  };
 
   (DateTime, DateTime)? get _dateBounds => _dateRange.bounds(DateTime.now());
 
@@ -182,40 +234,43 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     setState(() => _facetOptions = {for (final e in entries) e.key: e.value});
   }
 
-  /// Build the dropdown-pill specs for the controls bar — one per facet that
-  /// has options loaded.
-  List<FacetControl> _facetControls() => [
-    for (final f in _filterFacets)
-      if ((_facetOptions[f.key] ?? const []).isNotEmpty)
-        (
-          label: f.label,
-          selected: _filters[f.key]?.id.toString() ?? 'all',
-          items: [
-            (value: 'all', text: 'All ${f.label.toLowerCase()}'),
-            for (final m in _facetOptions[f.key]!)
-              (value: '${m.id}', text: m.name),
-          ],
-          onSelected: (v) => setState(() {
-            if (v == 'all') {
-              _filters.remove(f.key);
-            } else {
-              _filters[f.key] = _facetOptions[f.key]!.firstWhere(
-                (m) => '${m.id}' == v,
-              );
-            }
-          }),
-        ),
-  ];
+  /// Whether any create-date or facet filter is currently narrowing the list
+  /// (drives the search bar's filter-button active state). Sort is excluded — it
+  /// reorders rather than filters.
+  bool get _hasActiveFilters =>
+      _dateRange != DateRange.all || _filters.values.any((v) => v != null);
+
+  /// Open the filter/sort bottom sheet and apply the result on Apply.
+  Future<void> _openFilters() async {
+    final result = await showFilterSheet(
+      context: context,
+      dateRange: _dateRange,
+      sort: _sort,
+      defaultSort: 'created',
+      sortItems: _sortItems,
+      facets: _filterFacets,
+      facetOptions: _facetOptions,
+      selected: _filters,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _dateRange = result.dateRange;
+      _sort = result.sort;
+      _filters
+        ..clear()
+        ..addAll(result.filters);
+    });
+  }
 
   // Search and the date range are also enforced client-side (see [_matches]);
   // the query carries the tab's view, sort, create-date window and facet
   // filters for the server.
-  TicketQuery get _query {
+  TicketQuery _queryFor(String view) {
     final b = _dateBounds;
     final status = _filters['status'];
     final tag = _filters['tag'];
     return TicketQuery(
-      view: _view,
+      view: view,
       sort: _sort,
       order: _order,
       createdFrom: b == null ? null : Fmt.apiDate(b.$1),
@@ -377,13 +432,12 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
 
   Future<void> _runExport(ExportFormat format) async {
     final view = _views.firstWhere((v) => v.key == _view).label;
-    final meName = ref.read(meProvider).asData?.value.name;
     setState(() => _exporting = true);
     try {
       // Export exactly what's visible: the view's rows, narrowed by the active
       // search.
-      final tickets = (await _gatherAll(_query))
-          .where((t) => _matches(t, meName))
+      final tickets = (await _gatherAll(_queryFor(_view)))
+          .where((t) => _matches(t, _view))
           .toList();
       if (tickets.isEmpty) {
         _toast('No tickets to export');
@@ -431,22 +485,16 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     }
   }
 
-  /// Best-effort client-side filter so each tab visibly differs even if the
-  /// backend ignores `view`, plus instant text matching as the user types.
-  bool _matches(Ticket t, String? meName) {
-    final viewOk = switch (_view) {
-      'open' => !t.isClosed,
-      'closed' => t.isClosed,
-      'overdue' => t.isOverdue,
-      'unassigned' => (t.assignee ?? '').trim().isEmpty,
-      'mine' =>
-        meName == null || meName.isEmpty
-            ? true // identity not loaded yet — defer to the server
-            : (t.assignee ?? '').toLowerCase().contains(meName.toLowerCase()),
-      _ => true, // 'answered' isn't derivable client-side — rely on the server
-    };
-    if (!viewOk) return false;
-
+  /// Narrows the server's rows by the fields we can trust client-side (live
+  /// search text, create-date window, facet selections) plus instant text
+  /// matching as the user types.
+  ///
+  /// View membership is deliberately NOT re-derived here. The server already
+  /// filters by `view` (proven by the per-tab counts), and the list summary
+  /// doesn't reliably carry the flags needed to reproduce that filter —
+  /// overdue/answered state, closed vs open, assignment. Re-deriving it silently
+  /// dropped rows the server returned, which is what emptied the Overdue tab.
+  bool _matches(Ticket t, String view) {
     final b = _dateBounds;
     if (b != null) {
       final c = t.created;
@@ -520,7 +568,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     ],
   );
 
-  PreferredSizeWidget _normalAppBar() {
+  PreferredSizeWidget _normalAppBar(bool compact) {
     return AppBar(
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,14 +579,17 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
         ],
       ),
       actions: [
-        // IconButton(
-        //   icon: const SvgIcon(Assets.bell, size: 22),
-        //   onPressed: () => context.push(Routes.notifications),
-        // ),
+        IconButton(
+          tooltip: compact ? 'Comfortable view' : 'Compact view',
+          icon: Icon(
+            compact ? Icons.view_agenda_outlined : Icons.view_headline,
+          ),
+          onPressed: () => ref.read(listLayoutProvider.notifier).toggle(),
+        ),
         ExportMenuButton(busy: _exporting, onSelected: _runExport),
       ],
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(90),
+        preferredSize: const Size.fromHeight(84),
         child: Column(
           children: [
             Padding(
@@ -549,13 +600,18 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
                 onChanged: _onSearchChanged,
                 onSubmitted: _applySearch,
                 onClear: () => _applySearch(''),
+                trailing: FilterButton(
+                  active: _hasActiveFilters,
+                  onTap: _openFilters,
+                ),
               ),
             ),
-            SegmentedTabs(
+            FilterChipTabs(
               items: _views,
               selectedKey: _view,
               counts: _counts,
-              onSelected: (k) => setState(() => _view = k),
+              colorFor: _viewColor,
+              onSelected: _selectView,
             ),
           ],
         ),
@@ -569,72 +625,71 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     // alive (the shell keeps branches in an IndexedStack), then clear it.
     ref.listen<String?>(ticketsViewRequestProvider, (_, next) {
       if (next == null) return;
-      if (next != _view) setState(() => _view = next);
+      if (next != _view) _jumpToView(next);
       ref.read(ticketsViewRequestProvider.notifier).set(null);
     });
 
-    final meName = ref.watch(meProvider).asData?.value.name;
-    final repo = ref.watch(ticketsRepositoryProvider);
-    final query = _query;
     final layout = ref.watch(listLayoutProvider);
     final compact = layout == ListLayout.compact;
 
     return Scaffold(
-      appBar: _selectionMode ? _selectionAppBar() : _normalAppBar(),
-      floatingActionButton: _selectionMode
-          ? null
-          : Padding(
-              // Lift above the floating nav bar (it overlaps the body).
-              padding: const EdgeInsets.only(bottom: 120),
-              child: FloatingActionButton(
-                heroTag: 'fab-tickets',
-                onPressed: _createTicket,
-                tooltip: 'New ticket',
-                child: const Icon(Icons.add),
+      appBar: _selectionMode ? _selectionAppBar() : _normalAppBar(compact),
+      // Creating a ticket now lives on the bottom nav's center "+" button.
+      body: Glass.listBackdrop(
+        context: context,
+        child: Column(
+          children: [
+            if (_selectionMode) _selectionBar(),
+            Expanded(
+              // Each filter tab is a swipeable page; the chips above jump the
+              // pager and a swipe adopts the target view. Swiping is locked
+              // during multi-select so bulk actions stay on one list.
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: _onPageChanged,
+                physics: _selectionMode
+                    ? const NeverScrollableScrollPhysics()
+                    : null,
+                itemCount: _views.length,
+                itemBuilder: (context, index) =>
+                    _buildList(_views[index].key, compact),
               ),
             ),
-      body: Column(
-        children: [
-          if (_selectionMode)
-            _selectionBar()
-          else
-            ListControlsBar(
-              dateRange: _dateRange,
-              onDateRange: (r) => setState(() => _dateRange = r),
-              sortItems: _sortItems,
-              sortKey: _sort,
-              onSort: (s) => setState(() => _sort = s),
-              facets: _facetControls(),
-              compact: compact,
-              onToggleLayout: () =>
-                  ref.read(listLayoutProvider.notifier).toggle(),
-            ),
-          Expanded(
-            child: PagedListView(
-              fabClearance: !_selectionMode,
-              skeleton: const ListSkeleton(),
-              separated: compact,
-              refreshKey: '$_view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
-              itemFilter: (t) => _matches(t, meName),
-              itemSort: _sort == 'thread' ? null : _compare,
-              onItems: _onItems,
-              onTotalChanged: (t) {
-                if (mounted && t != _total) setState(() => _total = t);
-              },
-              emptyMessage: 'No tickets',
-              emptyHint: 'Try a different filter or search.',
-              fetch: (page) => repo.list(query.copyWith(page: page)),
-              itemBuilder: (context, t) => TicketRow(
-                ticket: t,
-                compact: compact,
-                selectionMode: _selectionMode,
-                selected: _selected.contains(t.id),
-                onToggle: () => _toggle(t.id),
-                onTap: () => context.push(Routes.ticket(t.id)),
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The paginated list for a single filter [view] — one PageView page.
+  Widget _buildList(String view, bool compact) {
+    final active = view == _view;
+    final repo = ref.watch(ticketsRepositoryProvider);
+    final query = _queryFor(view);
+    return PagedListView<Ticket>(
+      fabClearance: !_selectionMode,
+      skeleton: ListSkeleton(compact: compact),
+      separated: compact,
+      refreshKey: '$view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
+      itemFilter: (t) => _matches(t, view),
+      itemSort: _sort == 'thread' ? null : _compare,
+      // Only the visible page feeds selection state and the app-bar total.
+      onItems: active ? _onItems : null,
+      onTotalChanged: active
+          ? (t) {
+              if (mounted && t != _total) setState(() => _total = t);
+            }
+          : null,
+      emptyMessage: 'No tickets',
+      emptyHint: 'Try a different filter or search.',
+      fetch: (page) => repo.list(query.copyWith(page: page)),
+      itemBuilder: (context, t) => TicketRow(
+        ticket: t,
+        compact: compact,
+        selectionMode: _selectionMode,
+        selected: _selected.contains(t.id),
+        onToggle: () => _toggle(t.id),
+        onTap: () => context.push(Routes.ticket(t.id)),
       ),
     );
   }

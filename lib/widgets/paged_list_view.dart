@@ -241,10 +241,10 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
                         row,
                         Divider(
                           height: 1,
-                          thickness: 1,
+                          thickness: 0.3,
                           indent: 66,
                           color: Theme.of(context).colorScheme.outlineVariant
-                              .withValues(alpha: 0.7),
+                              .withValues(alpha: 0.4),
                         ),
                       ],
                     )

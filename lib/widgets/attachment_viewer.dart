@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -49,6 +50,8 @@ Future<void> openAttachment(
     await _push(context, PdfAttachmentView(url: url, title: attachment.name));
   } else if (attachment.isVideo) {
     await _push(context, VideoAttachmentView(url: url, title: attachment.name));
+  } else if (attachment.isText) {
+    await _push(context, TextAttachmentView(url: url, title: attachment.name));
   } else {
     await downloadAndOpen(context, attachment: attachment, url: url);
   }
@@ -284,6 +287,72 @@ class _PdfAttachmentViewState extends ConsumerState<PdfAttachmentView>
           : controller == null
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : PdfViewPinch(controller: controller),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Text / source-code viewer
+// ---------------------------------------------------------------------------
+
+/// In-app viewer for plain-text and source-code attachments. Renders the
+/// (authed) bytes as selectable, monospaced text so `.txt`/`.log`/code files
+/// open reliably without depending on an external app being installed.
+class TextAttachmentView extends ConsumerStatefulWidget {
+  const TextAttachmentView({super.key, required this.url, this.title});
+  final String url;
+  final String? title;
+
+  @override
+  ConsumerState<TextAttachmentView> createState() =>
+      _TextAttachmentViewState();
+}
+
+class _TextAttachmentViewState extends ConsumerState<TextAttachmentView>
+    with _BytesLoader {
+  @override
+  String get sourceUrl => widget.url;
+
+  /// Decode bytes as UTF-8, tolerating malformed sequences, then fall back to
+  /// Latin-1 so binary-ish text never throws.
+  String _decode(Uint8List data) {
+    try {
+      return const Utf8Decoder(allowMalformed: true).convert(data);
+    } catch (_) {
+      return const Latin1Decoder(allowInvalid: true).convert(data);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = bytes;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: _viewerBar(
+        widget.title ?? 'Text',
+        () => openUrlInApp(widget.url, external: true),
+      ),
+      body: error != null
+          ? Center(
+              child: _ViewerError(label: "Couldn't load file", onRetry: reload),
+            )
+          : data == null
+          ? const Center(child: CircularProgressIndicator(color: Colors.white))
+          : Scrollbar(
+              child: SingleChildScrollView(
+                primary: true,
+                padding: const EdgeInsets.all(16),
+                child: SelectableText(
+                  _decode(data),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ),
     );
   }
 }

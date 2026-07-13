@@ -114,20 +114,20 @@ class _DatePickerSheetState extends State<_DatePickerSheet> {
   Widget build(BuildContext context) {
     return AppSheet(
       title: 'Select date',
+      subtitle: '${_weekdayShort(_selected.weekday)}, ${_selected.day} '
+          '${_monthShort(_selected.month)} ${_selected.year}',
       scrollable: false,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _Header(date: _selected),
-          const SizedBox(height: 10),
           _QuickChips(
             selected: _selected,
             inRange: _inRange,
             onPick: _jumpTo,
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           _MonthNav(
             month: _monthAt(_pageIndex),
             canPrev: _pageIndex > 0,
@@ -141,11 +141,11 @@ class _DatePickerSheetState extends State<_DatePickerSheet> {
               curve: Curves.easeOut,
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           const _WeekdayRow(),
           const SizedBox(height: 2),
           SizedBox(
-            height: 232,
+            height: 234,
             child: PageView.builder(
               controller: _pages,
               itemCount: _monthCount,
@@ -158,7 +158,7 @@ class _DatePickerSheetState extends State<_DatePickerSheet> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
@@ -180,38 +180,6 @@ class _DatePickerSheetState extends State<_DatePickerSheet> {
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Compact header showing the currently selected day of week and full date.
-class _Header extends StatelessWidget {
-  const _Header({required this.date});
-  final DateTime date;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.brand.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(Icons.event_rounded, color: AppTheme.brand, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: AppText.subText(
-              context,
-              '${_weekdayShort(date.weekday)}, ${date.day} '
-              '${_monthShort(date.month)} ${date.year}',
-              color: AppTheme.brand,
-              fw: 1,
-            ),
           ),
         ],
       ),
@@ -429,6 +397,7 @@ class _MonthGrid extends StatelessWidget {
     return GridView.count(
       physics: const NeverScrollableScrollPhysics(),
       crossAxisCount: 7,
+      childAspectRatio: 1.28,
       padding: EdgeInsets.zero,
       children: cells,
     );

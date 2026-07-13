@@ -117,55 +117,35 @@ class AppDialog extends StatelessWidget {
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxHeight),
         child: SingleChildScrollView(
           physics: const ClampingScrollPhysics(),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            padding: const EdgeInsets.fromLTRB(24, 22, 24, 24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
                   children: [
-                    Expanded(child: AppText.titleText(context, title, fw: 2)),
+                    Expanded(child: AppText.headText(context, title, fw: 1)),
                     const SizedBox(width: 8),
                     _DialogCloseButton(scheme: scheme),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Divider(height: 1, thickness: 1, color: scheme.outlineVariant),
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
                 child,
                 if (actionLabel != null) ...[
-                  const SizedBox(height: 22),
-                  SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(48),
-                        backgroundColor: actionColor,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: (actionBusy || !actionEnabled)
-                          ? null
-                          : onAction,
-                      child: actionBusy
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(actionLabel!),
-                    ),
+                  const SizedBox(height: 26),
+                  _DialogPrimaryButton(
+                    label: actionLabel!,
+                    color: actionColor,
+                    busy: actionBusy,
+                    onPressed: (actionBusy || !actionEnabled)
+                        ? null
+                        : onAction,
                   ),
                 ],
               ],
@@ -177,9 +157,56 @@ class AppDialog extends StatelessWidget {
   }
 }
 
+/// The shared pill-shaped (stadium) primary action button used by both the
+/// input dialog and the confirm/message card. Shows a spinner when [busy].
+class _DialogPrimaryButton extends StatelessWidget {
+  const _DialogPrimaryButton({
+    required this.label,
+    required this.color,
+    required this.onPressed,
+    this.busy = false,
+  });
+
+  final String label;
+  final Color color;
+  final VoidCallback? onPressed;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size.fromHeight(52),
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          shape: const StadiumBorder(),
+          textStyle: AppText.style(context, fontSize: 15, fw: 1),
+        ),
+        onPressed: busy ? null : onPressed,
+        child: busy
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: Colors.white,
+                ),
+              )
+            : Text(label),
+      ),
+    );
+  }
+}
+
 class _DialogCloseButton extends StatelessWidget {
-  const _DialogCloseButton({required this.scheme});
+  const _DialogCloseButton({required this.scheme, this.onClose});
   final ColorScheme scheme;
+
+  /// Custom dismiss handler (e.g. pop with a `false` result). Defaults to
+  /// [NavigatorState.maybePop] when null.
+  final VoidCallback? onClose;
 
   @override
   Widget build(BuildContext context) {
@@ -188,7 +215,7 @@ class _DialogCloseButton extends StatelessWidget {
       shape: const CircleBorder(),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: () => Navigator.of(context).maybePop(),
+        onTap: onClose ?? () => Navigator.of(context).maybePop(),
         child: Padding(
           padding: const EdgeInsets.all(7),
           child: Icon(Icons.close, size: 18, color: scheme.onSurfaceVariant),
@@ -224,52 +251,38 @@ class _AppDialogCard extends StatelessWidget {
 
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Align(
               alignment: Alignment.centerRight,
-              child: IconButton(
-                icon: const Icon(Icons.close, size: 22),
-                color: scheme.onSurfaceVariant,
-                visualDensity: VisualDensity.compact,
-                onPressed: onClose,
-              ),
+              child: _DialogCloseButton(scheme: scheme, onClose: onClose),
             ),
+            const SizedBox(height: 2),
             if (title != null) ...[
-              AppText.titleText(
+              AppText.headText(
                 context,
                 title!,
-                fw: 2,
+                fw: 1,
                 align: TextAlign.center,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
             ],
             AppText.subText(
               context,
               message,
               align: TextAlign.center,
               color: scheme.onSurfaceVariant,
-              lineHeight: 1.35,
+              lineHeight: 1.4,
             ),
-            const SizedBox(height: 22),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  backgroundColor: actionColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                onPressed: onAction,
-                child: Text(actionLabel),
-              ),
+            const SizedBox(height: 26),
+            _DialogPrimaryButton(
+              label: actionLabel,
+              color: actionColor,
+              onPressed: onAction,
             ),
           ],
         ),

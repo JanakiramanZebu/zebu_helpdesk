@@ -11,7 +11,7 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _colorFor(name);
+    final color = colorFor(name);
     return CircleAvatar(
       radius: radius,
       backgroundColor: color.withValues(alpha: 0.18),
@@ -25,7 +25,9 @@ class UserAvatar extends StatelessWidget {
     );
   }
 
-  static Color _colorFor(String name) {
+  /// Deterministic accent color for a display [name] (shared so chat bubbles
+  /// can tint the sender's name to match their avatar).
+  static Color colorFor(String name) {
     const palette = [
       Color(0xFF3D5AFE),
       Color(0xFF00897B),

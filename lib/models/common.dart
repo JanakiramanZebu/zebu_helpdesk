@@ -77,6 +77,21 @@ class Attachment {
       _t.startsWith('audio/') ||
       const {'mp3', 'wav', 'm4a', 'aac', 'ogg'}.contains(_ext);
 
+  /// Plain-text / source-code files we can render in an in-app text viewer
+  /// instead of handing off to an external app (which may not exist for
+  /// `.txt`/`.log`/code files, and would fail to open).
+  bool get isText =>
+      _t.startsWith('text/') ||
+      _t == 'application/json' ||
+      _t == 'application/xml' ||
+      const {
+        'txt', 'log', 'csv', 'tsv', 'json', 'xml', 'md', 'markdown',
+        'yaml', 'yml', 'ini', 'conf', 'cfg', 'env', 'properties',
+        'css', 'js', 'ts', 'dart', 'py', 'java', 'c', 'cpp', 'cc', 'h',
+        'hpp', 'cs', 'go', 'rb', 'php', 'sh', 'bash', 'sql', 'kt', 'kts',
+        'swift', 'rs', 'html', 'htm', 'srt', 'vtt',
+      }.contains(_ext);
+
   factory Attachment.fromJson(Map<String, dynamic> j) => Attachment(
     id: J.intOr(j['id']),
     name: J.strOr(j['name'], 'file'),

@@ -3,14 +3,28 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
-import '../../core/theme/app_theme.dart';
 import '../../providers.dart';
 import '../../widgets/app_snack.dart';
+import 'widgets/auth_ui.dart';
+
+/// Vertical rhythm for the sign-in card, on an 8dp grid so spacing stays
+/// consistent and easy to reason about.
+class _Gap {
+  _Gap._();
+  static const afterLogo = 28.0;
+  static const label = 10.0; // between overline / heading / subtitle
+  static const beforeForm = 28.0;
+  static const betweenFields = 14.0;
+  static const beforeActions = 20.0;
+  static const beforeButton = 22.0;
+  static const beforeFooter = 12.0;
+}
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -19,19 +33,64 @@ class LoginScreen extends ConsumerStatefulWidget {
   ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends ConsumerState<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _username = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
   bool _busy = false;
+  bool _remember = false;
   Map<String, String> _fieldErrors = {};
+
+  /// Drives the staggered fade-and-rise entrance of the card's contents.
+  late final AnimationController _entrance;
+
+  /// SharedPreferences key for the remembered (lowercase) username.
+  static const _kRememberedUser = 'remembered_username';
+
+  @override
+  void initState() {
+    super.initState();
+    _entrance = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..forward();
+    _loadRemembered();
+  }
 
   @override
   void dispose() {
+    _entrance.dispose();
     _username.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  /// Prefill and tick "Remember me" if a username was saved on a prior sign-in.
+  /// Stored lowercase; shown uppercase to match the in-field formatting.
+  Future<void> _loadRemembered() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_kRememberedUser);
+    if (!mounted || saved == null || saved.trim().isEmpty) return;
+    setState(() {
+      _username.text = saved.trim().toUpperCase();
+      _remember = true;
+    });
+  }
+
+  /// Persist (or clear) the remembered username per the checkbox state. The
+  /// password is never stored.
+  Future<void> _persistRemembered() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_remember) {
+      await prefs.setString(
+        _kRememberedUser,
+        _username.text.trim().toLowerCase(),
+      );
+    } else {
+      await prefs.remove(_kRememberedUser);
+    }
   }
 
   /// Surface a login failure as an error SnackBar rather than an inline banner.
@@ -52,6 +111,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             username: _username.text.trim().toLowerCase(),
             password: _password.text,
           );
+      // Remember the username only once the credentials are known good.
+      await _persistRemembered();
       // Router redirect handles navigation on auth state change.
     } on ApiException catch (e) {
       setState(() => _fieldErrors = e.fields);
@@ -65,125 +126,143 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _forgotPassword() => context.push(Routes.forgotPassword);
 
-  /// Clean underline-style field used by the login form (overrides the global
-  /// filled-pill input theme for a lighter sign-in look).
-  InputDecoration _fieldDecoration(
-    BuildContext context, {
-    required String label,
-    Widget? suffix,
-    String? error,
-  }) {
-    final scheme = Theme.of(context).colorScheme;
-    return InputDecoration(
-      labelText: label,
-      filled: false,
-      suffixIcon: suffix,
-      errorText: error,
-      contentPadding: const EdgeInsets.symmetric(vertical: 10),
-      border: UnderlineInputBorder(
-        borderSide: BorderSide(color: scheme.outlineVariant),
-      ),
-      enabledBorder: UnderlineInputBorder(
-        borderSide: BorderSide(color: scheme.outlineVariant),
-      ),
-      focusedBorder: const UnderlineInputBorder(
-        borderSide: BorderSide(color: AppTheme.brand, width: 1.6),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    // Wrap each row in a staggered entrance; `order` yields the cascade.
+    var order = 0;
+    Widget stagger(Widget child) =>
+        AuthFadeSlideIn(controller: _entrance, order: order++, child: child);
+
     return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: SvgPicture.asset(Assets.zebuLogo, height: 54),
-                    ),
-                    const SizedBox(height: 48),
-                    AppText.headText(context, 'Sign in to Helpdesk', fw: 2),
-                    const SizedBox(height: 6),
-                    AppText.subText(
-                      context,
-                      'Use your Zebu staff credentials',
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(height: 32),
-                    TextFormField(
-                      controller: _username,
-                      textInputAction: TextInputAction.next,
-                      autocorrect: false,
-                      enableSuggestions: false,
-                      textCapitalization: TextCapitalization.characters,
-                      inputFormatters: [UpperCaseTextFormatter()],
-                      style: const TextStyle(letterSpacing: 0.4),
-                      decoration: _fieldDecoration(
-                        context,
-                        label: 'Username / Email',
-                        error: _fieldErrors['username'],
-                      ),
-                      validator: (v) =>
-                          (v == null || v.trim().isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: _password,
-                      obscureText: _obscure,
-                      textInputAction: TextInputAction.done,
-                      onFieldSubmitted: (_) => _submit(),
-                      decoration: _fieldDecoration(
-                        context,
-                        label: 'Password',
-                        error: _fieldErrors['passwd'],
-                        suffix: IconButton(
-                          icon: Icon(
-                            _obscure
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                            size: 20,
+      body: AuthUi.canvas(
+        context,
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: AuthUi.glassCard(
+                  context,
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        stagger(
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: SvgPicture.asset(
+                              Assets.zebuLogo,
+                              height: 38,
+                            ),
                           ),
-                          color: theme.colorScheme.onSurfaceVariant,
-                          onPressed: () => setState(() => _obscure = !_obscure),
                         ),
-                      ),
-                      validator: (v) =>
-                          (v == null || v.isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 32),
-                    FilledButton(
-                      onPressed: _busy ? null : _submit,
-                      child: _busy
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.4,
-                                color: Colors.white,
+                        const SizedBox(height: _Gap.afterLogo),
+                        stagger(AuthUi.overline(context, 'Staff portal')),
+                        const SizedBox(height: _Gap.label),
+                        stagger(AuthUi.heading(context, 'Welcome back')),
+                        const SizedBox(height: _Gap.label),
+                        stagger(
+                          AuthUi.subtitle(
+                            context,
+                            'Sign in to continue to your helpdesk',
+                          ),
+                        ),
+                        const SizedBox(height: _Gap.beforeForm),
+                        stagger(
+                          TextFormField(
+                            controller: _username,
+                            textInputAction: TextInputAction.next,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            textCapitalization: TextCapitalization.characters,
+                            inputFormatters: [UpperCaseTextFormatter()],
+                            style: const TextStyle(letterSpacing: 0.4),
+                            decoration: AuthUi.fieldDecoration(
+                              context,
+                              label: 'Email or username',
+                              icon: Icons.person_outline,
+                              error: _fieldErrors['username'],
+                            ),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Required'
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: _Gap.betweenFields),
+                        stagger(
+                          TextFormField(
+                            controller: _password,
+                            obscureText: _obscure,
+                            textInputAction: TextInputAction.done,
+                            onFieldSubmitted: (_) => _submit(),
+                            decoration: AuthUi.fieldDecoration(
+                              context,
+                              label: 'Password',
+                              icon: Icons.lock_outline,
+                              error: _fieldErrors['passwd'],
+                              suffix: IconButton(
+                                tooltip: _obscure
+                                    ? 'Show password'
+                                    : 'Hide password',
+                                icon: Icon(
+                                  !_obscure
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                  size: 20,
+                                ),
+                                color: AuthUi.mutedIconColor(context),
+                                onPressed: () =>
+                                    setState(() => _obscure = !_obscure),
                               ),
-                            )
-                          : const Text('Login'),
+                            ),
+                            validator: (v) =>
+                                (v == null || v.isEmpty) ? 'Required' : null,
+                          ),
+                        ),
+                        const SizedBox(height: _Gap.beforeActions),
+                        stagger(
+                          Row(
+                            children: [
+                              AuthUi.rememberMe(
+                                context,
+                                value: _remember,
+                                onChanged: (v) {
+                                  if (!_busy) setState(() => _remember = v);
+                                },
+                              ),
+                              const Spacer(),
+                              AuthUi.link(
+                                context,
+                                label: 'Forgot password?',
+                                onPressed: _busy ? null : _forgotPassword,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: _Gap.beforeButton),
+                        stagger(
+                          AuthUi.primaryButton(
+                            context,
+                            label: 'Sign in',
+                            icon: Icons.arrow_forward,
+                            busy: _busy,
+                            onPressed: _submit,
+                          ),
+                        ),
+                        const SizedBox(height: _Gap.beforeFooter),
+                        stagger(
+                          AppText.paraText(
+                            context,
+                            'Trouble signing in? Contact your administrator.',
+                            align: TextAlign.center,
+                            color: AuthUi.subtitleColor(context),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 6),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: _busy ? null : _forgotPassword,
-                        child: const Text('Forgot password?'),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -193,7 +272,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     );
   }
 }
-
 /// Forces the visible username text to uppercase while typing. The value is
 /// lowercased again at submit time (helpdesk logins are case-insensitive).
 class UpperCaseTextFormatter extends TextInputFormatter {

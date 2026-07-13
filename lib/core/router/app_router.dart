@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/agents/agents_directory_screen.dart';
 import '../../features/auth/forgot_password_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/canned/canned_screen.dart';
@@ -15,6 +16,7 @@ import '../../features/organizations/orgs_list_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/queues/queues_screen.dart';
 import '../../features/reports/reports_screen.dart';
+import '../../features/settings/server_settings_screen.dart';
 import '../../features/shell/home_shell.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/tasks/create_task_screen.dart';
@@ -189,8 +191,18 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
+        path: Routes.agents,
+        builder: (_, __) => const AgentsDirectoryScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
         path: Routes.profile,
         builder: (_, __) => const ProfileScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: Routes.serverSettings,
+        builder: (_, __) => const ServerSettingsScreen(),
       ),
     ],
   );

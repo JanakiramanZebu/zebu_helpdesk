@@ -21,10 +21,19 @@ class SkeletonBox extends StatefulWidget {
 
 class _SkeletonBoxState extends State<SkeletonBox>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1200),
-  )..repeat();
+  // Created eagerly in initState (not lazily) so that if a skeleton is disposed
+  // before it ever builds, dispose tears down an existing controller rather
+  // than creating a Ticker against a deactivated element.
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
 
   @override
   void dispose() {
@@ -107,11 +116,67 @@ class ListRowSkeleton extends StatelessWidget {
   }
 }
 
-/// A column of [count] shimmering [ListRowSkeleton]s — drop-in initial-load
-/// placeholder for a paged list.
+/// A placeholder shaped like a compact (Gmail-style) list row: a leading avatar
+/// circle, a title line, and a shorter meta line. Divider matches the real
+/// compact rows so the loading state lines up with what replaces it.
+class CompactRowSkeleton extends StatelessWidget {
+  const CompactRowSkeleton({super.key, this.divider = true});
+
+  /// Draw a hairline divider below, mirroring the separated compact list.
+  final bool divider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(13, 11, 16, 11),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SkeletonBox(width: 38, height: 38, radius: 19),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Row(
+                      children: [
+                        Expanded(child: SkeletonBox(height: 14)),
+                        SizedBox(width: 8),
+                        SkeletonBox(width: 36, height: 11),
+                      ],
+                    ),
+                    SizedBox(height: 7),
+                    SkeletonBox(width: 180, height: 12),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // if (divider)
+        //   Divider(
+        //     height: 1,
+        //     thickness: 0.5,
+        //     indent: 66,
+        //     color: scheme.outlineVariant.withValues(alpha: 0.4),
+        //   ),
+      ],
+    );
+  }
+}
+
+/// A column of [count] shimmering placeholders — drop-in initial-load
+/// placeholder for a paged list. Set [compact] to mirror the dense single-line
+/// layout; otherwise it shows card-shaped rows.
 class ListSkeleton extends StatelessWidget {
-  const ListSkeleton({super.key, this.count = 6});
+  const ListSkeleton({super.key, this.count = 6, this.compact = false});
   final int count;
+
+  /// Match the compact (Gmail-style) row layout instead of the rich card.
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -119,7 +184,9 @@ class ListSkeleton extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 6),
       physics: const NeverScrollableScrollPhysics(),
       itemCount: count,
-      itemBuilder: (_, __) => const ListRowSkeleton(),
+      itemBuilder: (_, i) => compact
+          ? CompactRowSkeleton(divider: i < count - 1)
+          : const ListRowSkeleton(),
     );
   }
 }

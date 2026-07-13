@@ -6,9 +6,10 @@ import '../core/theme/app_text.dart';
 ///
 /// Gives every sheet the same Jira / Asana / ClickUp-style treatment:
 /// the theme's grabber up top (from [AppTheme.bottomSheetTheme]), a bold
-/// title row with a circular close button, a hairline divider, and a
-/// keyboard-aware, scrollable body. All colours and fonts come from the
-/// global [ThemeData] — this widget adds no hard-coded palette of its own.
+/// title row, a hairline divider, and a keyboard-aware, scrollable body.
+/// All colours and fonts come from the global [ThemeData] — this widget
+/// adds no hard-coded palette of its own. Sheets are dismissed by the
+/// grabber, a downward swipe, or tapping the scrim (no close button).
 ///
 /// Present it with [showAppSheet], or drop [AppSheet] straight into any
 /// existing `showModalBottomSheet` builder.
@@ -29,8 +30,8 @@ class AppSheet extends StatelessWidget {
   /// Optional muted line under the title.
   final String? subtitle;
 
-  /// Optional trailing widgets placed before the close button (e.g. an
-  /// "Add" action). The close (✕) button is always appended after these.
+  /// Optional trailing widgets placed at the end of the header row (e.g. an
+  /// "Add" action).
   final List<Widget>? actions;
 
   /// Sheet body. Typically a [Column] of form fields or a list.
@@ -50,8 +51,22 @@ class AppSheet extends StatelessWidget {
     final scheme = theme.colorScheme;
     final viewInsets = MediaQuery.of(context).viewInsets.bottom;
 
+    // Compact grabber (~20px tall) in place of Material's 48px handle box, so
+    // the sheet header sits close to the top edge.
+    final grabber = Center(
+      child: Container(
+        width: 32,
+        height: 4,
+        margin: const EdgeInsets.only(top: 10, bottom: 8),
+        decoration: BoxDecoration(
+          color: scheme.onSurfaceVariant.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(100),
+        ),
+      ),
+    );
+
     final header = Padding(
-      padding: const EdgeInsets.fromLTRB(20, 4, 12, 12),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -73,8 +88,6 @@ class AppSheet extends StatelessWidget {
             ),
           ),
           if (actions != null) ...actions!,
-          const SizedBox(width: 4),
-          _CloseButton(scheme: scheme),
         ],
       ),
     );
@@ -95,6 +108,7 @@ class AppSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          grabber,
           header,
           divider,
           if (scrollable)
@@ -190,27 +204,6 @@ class SheetSearchField extends StatelessWidget {
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _CloseButton extends StatelessWidget {
-  const _CloseButton({required this.scheme});
-  final ColorScheme scheme;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: scheme.onSurface.withValues(alpha: 0.06),
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.of(context).maybePop(),
-        child: Padding(
-          padding: const EdgeInsets.all(7),
-          child: Icon(Icons.close, size: 18, color: scheme.onSurfaceVariant),
-        ),
       ),
     );
   }

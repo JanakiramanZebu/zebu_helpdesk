@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 /// Owns the app's [ThemeMode] (system / light / dark) and persists the choice
-/// so it survives restarts. Starts on [ThemeMode.system] until the stored value
-/// loads.
+/// so it survives restarts. Defaults to [ThemeMode.system] so the first frame
+/// (the splash) matches the device's light/dark setting instead of flashing a
+/// fixed theme before the saved preference loads; once the user picks a mode,
+/// that saved choice is restored on every launch.
 class ThemeModeController extends Notifier<ThemeMode> {
   static const _key = 'theme_mode';
   static const _storage = FlutterSecureStorage();
@@ -17,6 +19,8 @@ class ThemeModeController extends Notifier<ThemeMode> {
 
   Future<void> _load() async {
     final raw = await _storage.read(key: _key);
+    // No saved preference yet → follow the device (system) default.
+    if (raw == null) return;
     final mode = _parse(raw);
     if (mode != state) state = mode;
   }

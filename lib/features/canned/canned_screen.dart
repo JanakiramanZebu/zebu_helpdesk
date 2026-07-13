@@ -12,6 +12,7 @@ import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/attachment_tile.dart';
 import '../../widgets/paged_list_view.dart';
+import '../../widgets/thread_html.dart';
 
 class CannedScreen extends ConsumerStatefulWidget {
   const CannedScreen({super.key});
@@ -68,7 +69,10 @@ class _CannedScreenState extends ConsumerState<CannedScreen> {
               controller: scroll,
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
               children: [
-                AppText.subText(context, Fmt.stripHtml(c.body)),
+                ThreadHtml(
+                  html: c.body,
+                  textStyle: Theme.of(context).textTheme.bodyMedium,
+                ),
               if (c.notes != null && c.notes!.trim().isNotEmpty) ...[
                 const SizedBox(height: 16),
                 AppText.subText(context, 'Notes', fw: 1),
