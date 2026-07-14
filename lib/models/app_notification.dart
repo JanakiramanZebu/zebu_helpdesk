@@ -7,7 +7,7 @@ class AppNotification {
     required this.id,
     required this.type, // ticket | task
     required this.objectId,
-    required this.event, // assigned | message | note | transferred | overdue
+    required this.event, // message|note|assigned|transfer|status|mention|overdue|new_unassigned
     required this.title,
     this.label, // non-null only for "assigned" events
     this.body,

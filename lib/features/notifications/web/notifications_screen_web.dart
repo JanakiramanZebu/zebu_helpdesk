@@ -351,10 +351,17 @@ class _NotificationsScreenWebState
 
   Future<void> _open(AppNotification n) async {
     try {
-      await ref.read(notificationsRepositoryProvider).read(n.id);
-      // Flip the local override so the row visually flips to Read
+      // Match osTicket's inbox flow: selecting a ticket/task marks ALL of the
+      // agent's notifications for that object read (POST /notifications/
+      // read-object), not just the tapped row — mirrors
+      // NotificationsV2Controller::readObject.
+      await ref
+          .read(notificationsRepositoryProvider)
+          .readObject(n.type, n.objectId);
+      // Flip the local override so the tapped row visually flips to Read
       // immediately — the backend is now in sync but we don't re-fetch
-      // (see [_locallyRead] docs for why).
+      // (see [_locallyRead] docs for why). Sibling rows for the same object
+      // reconcile on the next fetch/filter change.
       if (mounted && !n.read) {
         setState(() => _locallyRead.add(n.id));
       }
@@ -1028,19 +1035,26 @@ class _NotificationRowState extends State<_NotificationRow> {
   bool _hover = false;
 
   // Cleaner, cohesive icon set for the Type column pill — every glyph is
-  // rounded so the row rhythm reads as one family.
-  //   assigned    → person + checkmark (matches an "assigned to me" cue)
-  //   message     → speech-bubble outline (matches "reply/thread")
-  //   note        → pencil-on-note (matches "internal comment")
-  //   transferred → circular refresh (matches "ownership moved")
-  //   overdue     → clock (matches "past due")
-  //   default     → bell with a badge (generic notification)
+  // rounded so the row rhythm reads as one family. Event keys are the raw
+  // osTicket notification events (see inbox.inc.php $LABELS).
+  //   assigned       → person + checkmark ("assigned to me")
+  //   message        → speech-bubble outline ("reply/thread")
+  //   note           → pencil-on-note ("internal comment")
+  //   transfer       → circular refresh ("ownership moved")
+  //   status         → change ("status changed")
+  //   mention        → @ ("you were mentioned")
+  //   overdue        → clock ("past due")
+  //   new_unassigned → inbox ("new unassigned ticket")
+  //   default        → bell with a badge (generic notification)
   IconData get _eventIcon => switch (widget.notification.event) {
         'assigned' => Icons.how_to_reg_rounded,
         'message' => Icons.chat_bubble_outline_rounded,
         'note' => Icons.edit_note_rounded,
-        'transferred' => Icons.sync_alt_rounded,
+        'transfer' => Icons.sync_alt_rounded,
+        'status' => Icons.change_circle_outlined,
+        'mention' => Icons.alternate_email_rounded,
         'overdue' => Icons.schedule_rounded,
+        'new_unassigned' => Icons.move_to_inbox_rounded,
         _ => Icons.notifications_active_rounded,
       };
 

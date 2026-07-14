@@ -70,7 +70,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
 
   Future<void> _open(AppNotification n) async {
     try {
-      await ref.read(notificationsRepositoryProvider).read(n.id);
+      // Match osTicket's inbox flow: selecting a ticket/task marks ALL of the
+      // agent's notifications for that object read (POST /notifications/
+      // read-object), not just the tapped row — mirrors
+      // NotificationsV2Controller::readObject.
+      await ref
+          .read(notificationsRepositoryProvider)
+          .readObject(n.type, n.objectId);
     } on ApiException catch (_) {
       // Best-effort; navigate regardless.
     }
@@ -132,12 +138,16 @@ class _NotificationTile extends StatelessWidget {
   final VoidCallback onDismissed;
 
   /// Distinct color + glyph per notification event, so the inbox is scannable.
+  /// Event keys are the raw osTicket events (see inbox.inc.php $LABELS).
   (Color, IconData) _style(ColorScheme scheme) => switch (n.event) {
     'assigned' => (AppTheme.brand, Icons.person_add_alt),
     'message' => (AppTheme.open, Icons.mail_outline),
     'note' => (AppTheme.warning, Icons.sticky_note_2_outlined),
-    'transferred' => (AppTheme.brandLight, Icons.swap_horiz),
+    'transfer' => (AppTheme.brandLight, Icons.swap_horiz),
+    'status' => (AppTheme.brandLight, Icons.change_circle_outlined),
+    'mention' => (AppTheme.warning, Icons.alternate_email),
     'overdue' => (AppTheme.overdue, Icons.warning_amber_rounded),
+    'new_unassigned' => (AppTheme.brand, Icons.move_to_inbox_outlined),
     _ => (scheme.primary, Icons.notifications_outlined),
   };
 
