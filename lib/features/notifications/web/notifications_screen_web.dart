@@ -9,8 +9,8 @@ import '../../../models/app_notification.dart';
 import '../../../providers.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../../widgets/app_toast.dart';
-import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
+import '../../../widgets/states.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
@@ -64,7 +64,6 @@ class NotificationsScreenWeb extends ConsumerStatefulWidget {
 
 class _NotificationsScreenWebState
     extends ConsumerState<NotificationsScreenWeb> {
-  int _refreshKey = 0;
   String _view = 'all';
   String _search = '';
   Timer? _debounce;
@@ -93,33 +92,49 @@ class _NotificationsScreenWebState
   /// skeleton flashing back in.
   final Set<int> _locallyDeleted = {};
 
-  /// Rows the user has ticked via the leading checkbox column. Maps the
-  /// notification id to its **effective read state at click time** — the
-  /// header uses this to decide whether the bulk button reads "Mark read"
-  /// or "Mark unread" *without* depending on state populated later during
-  /// the same frame (which caused the earlier off-by-one label bug).
-  final Map<int, bool> _selectedReadState = {};
+  /// Objects (ticket/task) the user has ticked via the leading checkbox —
+  /// selection is per OBJECT now that each row is one collapsed object. Maps a
+  /// group key ("type:objectId") to whether EVERY notification in that object
+  /// was read at click time, so the header can label the bulk button "Mark
+  /// read" vs "Mark unread" synchronously.
+  final Map<String, bool> _selectedReadState = {};
 
-  /// The ids currently rendered in the list (after filter/search). Cleared
-  /// inside [_matches] on a filter-signature change rather than at the top
-  /// of build, so the header's select-all checkbox sees the previous frame's
-  /// set and reflects it correctly on the NEXT frame after a user click
-  /// (the "select-all didn't tick the rows" bug).
-  final Set<int> _visibleIds = {};
-  /// Effective read state per visible id. Kept in step with [_visibleIds]
-  /// and used only by [_toggleSelectAll] to seed [_selectedReadState] with
-  /// each row's current read value when the user select-alls.
-  final Map<int, bool> _visibleReadState = {};
+  /// Group keys currently rendered (after filter/search) and their aggregate
+  /// read state — the select-all checkbox's universe. Rebuilt each frame from
+  /// the grouped, filtered list; safe because grouping now happens up-front in
+  /// build(), before both the header and the list body are constructed.
+  final Set<String> _visibleKeys = {};
+  final Map<String, bool> _visibleReadState = {};
 
-  /// Signature of the filter inputs that produced the last [_visibleIds]
-  /// snapshot. When [_matches] sees a new signature it wipes the set and
-  /// starts fresh, so cross-tab / cross-search state doesn't leak.
-  String _visibleFilterSig = '';
+  /// Currently-visible groups by key — resolves a selected key to its
+  /// notification ids for the bulk read/unread/delete actions.
+  final Map<String, NotificationGroup> _groupsByKey = {};
 
-  Set<int> get _selectedIds => _selectedReadState.keys.toSet();
+  Set<String> get _selectedKeys => _selectedReadState.keys.toSet();
   bool get _allSelectedRead =>
       _selectedReadState.isNotEmpty &&
       _selectedReadState.values.every((r) => r);
+
+  /// Notification ids across all currently-selected (and still-visible) groups.
+  List<int> _selectedNotificationIds() {
+    final ids = <int>[];
+    for (final key in _selectedReadState.keys) {
+      final g = _groupsByKey[key];
+      if (g != null) ids.addAll(g.ids);
+    }
+    return ids;
+  }
+
+  /// Accumulated notification pages. Grouping is done client-side over EVERY
+  /// loaded page (not per page), so an object whose events straddle a page
+  /// boundary still collapses into one row once both pages are loaded.
+  final List<AppNotification> _all = [];
+  int _page = 1;
+  bool _loadingPage = false;
+  bool _hasMore = true;
+  bool _initialLoad = true;
+  Object? _pageError;
+  final ScrollController _vScroll = ScrollController();
 
   /// Mutates the notification with any client-side read overrides applied.
   /// Local unread wins over local read so a user who reads then unreads a
@@ -136,33 +151,31 @@ class _NotificationsScreenWebState
     return n;
   }
 
-  /// Toggle a single row's selection. Captures the row's effective read
-  /// state at click time so the header's "Mark read" ↔ "Mark unread" label
-  /// can be computed synchronously.
-  void _toggleSelected(int id, bool isRead) {
+  /// Toggle one object's selection. Captures its aggregate read state at click
+  /// time so the header's "Mark read" ↔ "Mark unread" label stays consistent.
+  void _toggleSelected(String key, bool allRead) {
     setState(() {
-      if (_selectedReadState.containsKey(id)) {
-        _selectedReadState.remove(id);
+      if (_selectedReadState.containsKey(key)) {
+        _selectedReadState.remove(key);
       } else {
-        _selectedReadState[id] = isRead;
+        _selectedReadState[key] = allRead;
       }
     });
   }
 
   void _toggleSelectAll() {
     setState(() {
-      final selectedIds = _selectedReadState.keys.toSet();
-      final allSelected =
-          _visibleIds.isNotEmpty && selectedIds.containsAll(_visibleIds);
+      final allSelected = _visibleKeys.isNotEmpty &&
+          _selectedReadState.keys.toSet().containsAll(_visibleKeys);
       if (allSelected) {
-        for (final id in _visibleIds) {
-          _selectedReadState.remove(id);
+        for (final key in _visibleKeys) {
+          _selectedReadState.remove(key);
         }
       } else {
-        // Seed each newly-selected row with its current read state so the
-        // header's Mark read/unread decision stays consistent.
-        for (final id in _visibleIds) {
-          _selectedReadState[id] = _visibleReadState[id] ?? false;
+        // Seed each newly-selected object with its current aggregate read
+        // state so the header's Mark read/unread decision stays consistent.
+        for (final key in _visibleKeys) {
+          _selectedReadState[key] = _visibleReadState[key] ?? false;
         }
       }
     });
@@ -177,14 +190,66 @@ class _NotificationsScreenWebState
   void _closeTicket() => setState(() => _openTicketId = null);
 
   @override
+  void initState() {
+    super.initState();
+    _vScroll.addListener(_onVScroll);
+    _loadPage(reset: true);
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _tableHScroll.dispose();
+    _vScroll.dispose();
     super.dispose();
   }
 
+  void _onVScroll() {
+    if (_vScroll.position.pixels >= _vScroll.position.maxScrollExtent - 320) {
+      _loadPage();
+    }
+  }
+
+  /// Fetch the next flat page of notifications and accumulate it; [reset] starts
+  /// over (used on refresh + after bulk mutations). Local read/delete overrides
+  /// are cleared on reset since a fresh fetch supersedes them.
+  Future<void> _loadPage({bool reset = false}) async {
+    if (_loadingPage) return;
+    if (!reset && !_hasMore) return;
+    setState(() {
+      _loadingPage = true;
+      if (reset) {
+        _initialLoad = true;
+        _pageError = null;
+        _page = 1;
+        _hasMore = true;
+        _all.clear();
+        _locallyRead.clear();
+        _locallyUnread.clear();
+        _locallyDeleted.clear();
+      }
+    });
+    try {
+      final result = await ref
+          .read(notificationsRepositoryProvider)
+          .list(page: _page, limit: 50);
+      if (!mounted) return;
+      setState(() {
+        _all.addAll(result.items);
+        _hasMore = result.hasMore && result.items.isNotEmpty;
+        _page += 1;
+        _initialLoad = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _pageError = e);
+    } finally {
+      if (mounted) setState(() => _loadingPage = false);
+    }
+  }
+
   void _refresh() {
-    setState(() => _refreshKey++);
+    _loadPage(reset: true);
     ref.invalidate(unreadCountProvider);
   }
 
@@ -217,167 +282,174 @@ class _NotificationsScreenWebState
     }
   }
 
-  Future<void> _deleteOne(AppNotification n) async {
+  /// Delete every notification for one collapsed object (a row). No
+  /// delete-by-object endpoint exists, so clear each id. Optimistic: the ids go
+  /// to [_locallyDeleted] so the row vanishes without a full refetch.
+  Future<void> _deleteGroup(NotificationGroup g) async {
     final ok = await showAppConfirmDialog(
       context,
-      title: 'Delete this notification?',
+      title: 'Delete notifications for this ${g.type}?',
       message: 'This cannot be undone.',
       confirmLabel: 'Delete',
       destructive: true,
     );
     if (ok != true) return;
-    try {
-      await ref.read(notificationsRepositoryProvider).deleteOne(n.id);
-      if (!mounted) return;
-      // Optimistic — flag the id as locally deleted and setState so the
-      // row disappears from the visible list immediately. `_matches`
-      // filters it out. No `_refresh()` (bumping refreshKey) so the scroll
-      // position + loaded pages stay intact.
-      setState(() {
-        _locallyDeleted.add(n.id);
-        _selectedReadState.remove(n.id);
-        _locallyRead.remove(n.id);
-        _locallyUnread.remove(n.id);
-      });
-      ref.invalidate(unreadCountProvider);
-    } on ApiException catch (e) {
-      _toast(e.message, type: ToastType.error);
-    }
-  }
-
-  /// Mark every selected row read via the per-id endpoint (there's no bulk
-  /// read endpoint in the repo). Records each id in [_locallyRead] so the
-  /// pill/weight flips right away without waiting for the next refetch.
-  Future<void> _markSelectedRead() async {
-    if (_selectedIds.isEmpty) return;
-    final ids = _selectedIds.toList();
     final repo = ref.read(notificationsRepositoryProvider);
-    var failed = 0;
-    for (final id in ids) {
-      try {
-        await repo.read(id);
-      } on ApiException {
-        failed++;
-      }
-    }
-    if (!mounted) return;
-    setState(() {
-      _locallyRead.addAll(ids);
-      _selectedReadState.clear();
-    });
-    ref.invalidate(unreadCountProvider);
-    if (failed > 0) {
-      _toast(
-        'Marked ${ids.length - failed}/${ids.length} — $failed failed',
-        type: ToastType.error,
-      );
-    } else {
-      _toast('Marked ${ids.length} as read', type: ToastType.success);
-    }
-  }
-
-  Future<void> _deleteSelected() async {
-    if (_selectedIds.isEmpty) return;
-    final ids = _selectedIds.toList();
-    final ok = await showAppConfirmDialog(
-      context,
-      title: 'Delete ${ids.length} notifications?',
-      message: 'This cannot be undone.',
-      confirmLabel: 'Delete ${ids.length}',
-      destructive: true,
-    );
-    if (ok != true) return;
-    final repo = ref.read(notificationsRepositoryProvider);
-    final deletedIds = <int>[];
+    final ids = g.ids.toList();
+    final deleted = <int>[];
     var failed = 0;
     for (final id in ids) {
       try {
         await repo.deleteOne(id);
-        deletedIds.add(id);
+        deleted.add(id);
       } on ApiException {
         failed++;
       }
     }
     if (!mounted) return;
-    // Optimistic — flag every successful id as locally deleted and clear
-    // the selection. Rows disappear from the visible list on the next
-    // build without triggering a full refetch.
     setState(() {
-      _locallyDeleted.addAll(deletedIds);
-      _selectedReadState.clear();
-      _locallyRead.removeAll(deletedIds);
-      _locallyUnread.removeAll(deletedIds);
+      _locallyDeleted.addAll(deleted);
+      _selectedReadState.remove(g.key);
+      _locallyRead.removeAll(deleted);
+      _locallyUnread.removeAll(deleted);
     });
     ref.invalidate(unreadCountProvider);
     if (failed > 0) {
-      _toast(
-        'Deleted ${ids.length - failed}/${ids.length} — $failed failed',
-        type: ToastType.error,
-      );
+      _toast('Deleted ${deleted.length}/${ids.length} — $failed failed',
+          type: ToastType.error);
+    }
+  }
+
+  /// Mark every selected object read — one `read-object` call per object marks
+  /// all of that object's notifications read (mirrors readObject). Records the
+  /// ids in [_locallyRead] so rows flip right away without a refetch.
+  Future<void> _markSelectedRead() async {
+    final keys = _selectedKeys;
+    if (keys.isEmpty) return;
+    final repo = ref.read(notificationsRepositoryProvider);
+    final readIds = <int>[];
+    var failed = 0;
+    for (final key in keys) {
+      final g = _groupsByKey[key];
+      if (g == null) continue;
+      try {
+        await repo.readObject(g.type, g.objectId);
+        readIds.addAll(g.ids);
+      } on ApiException {
+        failed++;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _locallyRead.addAll(readIds);
+      _locallyUnread.removeAll(readIds);
+      _selectedReadState.clear();
+    });
+    ref.invalidate(unreadCountProvider);
+    if (failed > 0) {
+      _toast('Marked ${keys.length - failed}/${keys.length} — $failed failed',
+          type: ToastType.error);
+    } else {
+      _toast('Marked ${keys.length} as read', type: ToastType.success);
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    final keys = _selectedKeys;
+    if (keys.isEmpty) return;
+    final ok = await showAppConfirmDialog(
+      context,
+      title:
+          'Delete notifications for ${keys.length} ${keys.length == 1 ? 'object' : 'objects'}?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (ok != true) return;
+    final repo = ref.read(notificationsRepositoryProvider);
+    final ids = _selectedNotificationIds();
+    final deleted = <int>[];
+    var failed = 0;
+    for (final id in ids) {
+      try {
+        await repo.deleteOne(id);
+        deleted.add(id);
+      } on ApiException {
+        failed++;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _locallyDeleted.addAll(deleted);
+      _selectedReadState.clear();
+      _locallyRead.removeAll(deleted);
+      _locallyUnread.removeAll(deleted);
+    });
+    ref.invalidate(unreadCountProvider);
+    if (failed > 0) {
+      _toast('Deleted ${deleted.length}/${ids.length} — $failed failed',
+          type: ToastType.error);
     }
   }
 
   /// Reverse of [_markSelectedRead] — calls `POST /notifications/{id}/unread`
-  /// per id and records each in [_locallyUnread] so the row's pill flips
-  /// back to Unread instantly without a refetch.
+  /// per id across the selected objects and records each in [_locallyUnread].
   Future<void> _markSelectedUnread() async {
-    if (_selectedIds.isEmpty) return;
-    final ids = _selectedIds.toList();
+    final keys = _selectedKeys;
+    if (keys.isEmpty) return;
     final repo = ref.read(notificationsRepositoryProvider);
+    final ids = _selectedNotificationIds();
+    final done = <int>[];
     var failed = 0;
     for (final id in ids) {
       try {
         await repo.unread(id);
+        done.add(id);
       } on ApiException {
         failed++;
       }
     }
     if (!mounted) return;
     setState(() {
-      _locallyUnread.addAll(ids);
-      _locallyRead.removeAll(ids);
+      _locallyUnread.addAll(done);
+      _locallyRead.removeAll(done);
       _selectedReadState.clear();
     });
     ref.invalidate(unreadCountProvider);
     if (failed > 0) {
-      _toast(
-        'Marked ${ids.length - failed}/${ids.length} — $failed failed',
-        type: ToastType.error,
-      );
+      _toast('Marked ${keys.length - failed}/${keys.length} — $failed failed',
+          type: ToastType.error);
     } else {
-      _toast('Marked ${ids.length} as unread', type: ToastType.success);
+      _toast('Marked ${keys.length} as unread', type: ToastType.success);
     }
   }
 
-  Future<void> _open(AppNotification n) async {
+  Future<void> _open(NotificationGroup g) async {
     try {
       // Match osTicket's inbox flow: selecting a ticket/task marks ALL of the
       // agent's notifications for that object read (POST /notifications/
-      // read-object), not just the tapped row — mirrors
-      // NotificationsV2Controller::readObject.
+      // read-object) — mirrors NotificationsV2Controller::readObject.
       await ref
           .read(notificationsRepositoryProvider)
-          .readObject(n.type, n.objectId);
-      // Flip the local override so the tapped row visually flips to Read
-      // immediately — the backend is now in sync but we don't re-fetch
-      // (see [_locallyRead] docs for why). Sibling rows for the same object
-      // reconcile on the next fetch/filter change.
-      if (mounted && !n.read) {
-        setState(() => _locallyRead.add(n.id));
+          .readObject(g.type, g.objectId);
+      // Flip the local override so the card flips to Read immediately — the
+      // backend is in sync but we don't re-fetch (see [_locallyRead] docs).
+      if (mounted && g.hasUnread) {
+        setState(() => _locallyRead.addAll(g.ids));
       }
     } on ApiException catch (_) {
       // Best-effort; open regardless.
     }
     ref.invalidate(unreadCountProvider);
     if (!mounted) return;
-    if (n.type == 'task') {
+    if (g.type == 'task') {
       setState(() {
-        _openTaskId = n.objectId;
+        _openTaskId = g.objectId;
         _openTicketId = null;
       });
     } else {
       setState(() {
-        _openTicketId = n.objectId;
+        _openTicketId = g.objectId;
         _openTaskId = null;
       });
     }
@@ -391,51 +463,53 @@ class _NotificationsScreenWebState
     });
   }
 
-  bool _matches(AppNotification n) {
-    // Clear the visible ledger only when the filter inputs actually
-    // change — NOT at the top of build. If we cleared per-build, the
-    // `_TableHeader` (which builds before PagedListView runs `_matches`)
-    // would see an empty set every frame and render "select-all" as
-    // unchecked even when every row is selected. Detecting a signature
-    // change here means the previous frame's set stays valid for the
-    // header, and only gets replaced when a real filter transition
-    // happens.
-    final sig = '$_view|$_search|${_typeFlags.join(',')}|$_refreshKey';
-    if (sig != _visibleFilterSig) {
-      _visibleIds.clear();
-      _visibleReadState.clear();
-      _visibleFilterSig = sig;
-    }
-    // Optimistic-delete filter — rows the user just deleted disappear
-    // immediately without waiting for a refetch.
-    if (_locallyDeleted.contains(n.id)) return false;
-    // Apply the read-override so `Unread` / `Read` tabs reflect
-    // client-side reads immediately (see [_locallyRead] / [_locallyUnread]).
-    final effective = _withReadOverride(n);
-    final viewOk = switch (_view) {
-      'unread' => !effective.read,
-      'read' => effective.read,
-      _ => true,
-    };
-    if (!viewOk) return false;
-    if (_typeFlags.isNotEmpty && !_typeFlags.contains(n.type)) return false;
+  /// Group the accumulated notifications into per-object cards and apply the
+  /// active view/type/search filters, mirroring osTicket's inbox (one row per
+  /// ticket/task, newest activity first). Also refreshes the selection ledgers
+  /// ([_groupsByKey], [_visibleKeys], [_visibleReadState]) so the header's
+  /// select-all reflects exactly what's rendered. Called once at the top of
+  /// build(), before the header and list body are constructed.
+  List<NotificationGroup> _computeVisibleGroups() {
     final q = _search.trim();
-    final ok = q.isEmpty
+    bool matchesSearch(AppNotification n) => q.isEmpty
         ? true
         : (_norm(n.displayLabel).contains(_norm(q)) ||
             _norm(Fmt.stripHtml(n.body)).contains(_norm(q)) ||
             _norm(n.actor ?? '').contains(_norm(q)) ||
             _norm('${n.type}${n.objectId}').contains(_norm(q)));
-    // Record every row that passes the filter so the header select-all
-    // checkbox knows the visible-row universe. Also record its effective
-    // read state so the trailing button label can flip between "Mark read"
-    // and "Mark unread" based on the current selection. Both are cleared
-    // at the top of each build so they stay in step with the rendered list.
-    if (ok) {
-      _visibleIds.add(n.id);
-      _visibleReadState[n.id] = effective.read;
+
+    // Notification-level filter: drop optimistic-delete tombstones, apply the
+    // read overrides, then type + search. The view (unread/read) is applied
+    // per object after grouping.
+    final filtered = <AppNotification>[];
+    for (final raw in _all) {
+      if (_locallyDeleted.contains(raw.id)) continue;
+      if (_typeFlags.isNotEmpty && !_typeFlags.contains(raw.type)) continue;
+      final n = _withReadOverride(raw);
+      if (!matchesSearch(n)) continue;
+      filtered.add(n);
     }
-    return ok;
+
+    final groups = NotificationGroup.from(filtered).where((g) {
+      return switch (_view) {
+        'unread' => g.hasUnread,
+        'read' => !g.hasUnread,
+        _ => true,
+      };
+    }).toList(growable: false);
+
+    // Refresh the selection ledgers for the header select-all + bulk actions.
+    _groupsByKey
+      ..clear()
+      ..addEntries(groups.map((g) => MapEntry(g.key, g)));
+    _visibleKeys
+      ..clear()
+      ..addAll(groups.map((g) => g.key));
+    _visibleReadState
+      ..clear()
+      ..addEntries(groups.map((g) => MapEntry(g.key, !g.hasUnread)));
+
+    return groups;
   }
 
   List<WebQuickFilter> _quickFilters() {
@@ -455,18 +529,62 @@ class _NotificationsScreenWebState
   static String _norm(String s) =>
       s.toLowerCase().replaceAll(RegExp(r'[#,\s₹]'), '');
 
+  /// The scrolling list of grouped object rows (or skeleton / error / empty).
+  Widget _buildGroupedBody(List<NotificationGroup> groups) {
+    if (_initialLoad && _loadingPage) {
+      return const _NotificationTableSkeleton();
+    }
+    if (_pageError != null && _all.isEmpty) {
+      return ErrorView(
+        error: _pageError!,
+        onRetry: () => _loadPage(reset: true),
+      );
+    }
+    if (groups.isEmpty) {
+      return const EmptyView(
+        icon: Icons.notifications_none,
+        message: 'No notifications',
+        hint: 'You are all caught up.',
+      );
+    }
+    return ListView.builder(
+      controller: _vScroll,
+      padding: EdgeInsets.zero,
+      itemCount: groups.length + (_hasMore ? 1 : 0),
+      itemBuilder: (context, index) {
+        if (index >= groups.length) {
+          return const Padding(
+            padding: EdgeInsets.all(16),
+            child: Center(
+              child: SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2.2),
+              ),
+            ),
+          );
+        }
+        final g = groups[index];
+        return _NotificationGroupRow(
+          group: g,
+          selected: _selectedReadState.containsKey(g.key),
+          // Selecting an object captures whether it's fully read so the header
+          // can label the bulk button Mark read / Mark unread.
+          onToggleSelected: () => _toggleSelected(g.key, !g.hasUnread),
+          onTap: () => _open(g),
+          onDelete: () => _deleteGroup(g),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final repo = ref.watch(notificationsRepositoryProvider);
 
-    // NOTE: `_visibleIds` / `_visibleReadState` are NOT cleared here.
-    // Clearing per-build wiped the set before `_TableHeader` could read
-    // it (header builds before `PagedListView` runs `_matches`), which
-    // made select-all appear unchecked even when every row was
-    // selected. The clear now lives inside [_matches], guarded by a
-    // filter-signature check so the sets only reset on real filter
-    // transitions.
+    // Group + filter up-front so the header's select-all and the list body
+    // both read the same visible-object ledger this frame.
+    final groups = _computeVisibleGroups();
 
     final tabItems = [
       for (final v in _views)
@@ -616,45 +734,21 @@ class _NotificationsScreenWebState
                             children: [
                               _TableHeader(
                                 scrollGutter: horizontalScroll,
-                                allChecked: _visibleIds.isNotEmpty &&
+                                allChecked: _visibleKeys.isNotEmpty &&
                                     _selectedReadState.keys
                                         .toSet()
-                                        .containsAll(_visibleIds),
+                                        .containsAll(_visibleKeys),
                                 someChecked:
                                     _selectedReadState.isNotEmpty &&
                                         !_selectedReadState.keys
                                             .toSet()
-                                            .containsAll(_visibleIds),
+                                            .containsAll(_visibleKeys),
                                 onToggleAll: _toggleSelectAll,
                               ),
                               Expanded(
                                 child: ColoredBox(
                                   color: t.bgElevated,
-                                  child: PagedListView<AppNotification>(
-                                    padding: EdgeInsets.zero,
-                                    refreshKey:
-                                        '$_refreshKey|$_view|$_search',
-                                    itemFilter: _matches,
-                                    emptyMessage: 'No notifications',
-                                    emptyHint: 'You are all caught up.',
-                                    emptyIcon: Icons.notifications_none,
-                                    fetch: (page) => repo.list(page: page),
-                                    loadingBuilder: (_) =>
-                                        const _NotificationTableSkeleton(),
-                                    itemBuilder: (context, n) {
-                                      final effective = _withReadOverride(n);
-                                      return _NotificationRow(
-                                        notification: effective,
-                                        selected: _selectedReadState
-                                            .containsKey(n.id),
-                                        onToggleSelected: () =>
-                                            _toggleSelected(
-                                                n.id, effective.read),
-                                        onTap: () => _open(n),
-                                        onDelete: () => _deleteOne(n),
-                                      );
-                                    },
-                                  ),
+                                  child: _buildGroupedBody(groups),
                                 ),
                               ),
                             ],
@@ -1007,46 +1101,37 @@ class _SelectCheckbox extends StatelessWidget {
 // scannable at a glance without needing to tint the entire row.
 // ---------------------------------------------------------------------------
 
-class _NotificationRow extends StatefulWidget {
-  const _NotificationRow({
-    required this.notification,
+class _NotificationGroupRow extends StatefulWidget {
+  const _NotificationGroupRow({
+    required this.group,
     required this.onTap,
     required this.onDelete,
     required this.selected,
     required this.onToggleSelected,
   });
 
-  final AppNotification notification;
+  /// One collapsed object (all of an agent's notifications for a ticket/task).
+  final NotificationGroup group;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
-  /// True when the row's leading checkbox is ticked. Drives the bulk-action
-  /// selection set on the parent screen.
+  /// True when the row's leading checkbox is ticked. Drives the object-level
+  /// bulk-action selection on the parent screen.
   final bool selected;
 
   /// Fired when the row's leading checkbox is toggled.
   final VoidCallback onToggleSelected;
 
   @override
-  State<_NotificationRow> createState() => _NotificationRowState();
+  State<_NotificationGroupRow> createState() => _NotificationGroupRowState();
 }
 
-class _NotificationRowState extends State<_NotificationRow> {
+class _NotificationGroupRowState extends State<_NotificationGroupRow> {
   bool _hover = false;
 
-  // Cleaner, cohesive icon set for the Type column pill — every glyph is
-  // rounded so the row rhythm reads as one family. Event keys are the raw
-  // osTicket notification events (see inbox.inc.php $LABELS).
-  //   assigned       → person + checkmark ("assigned to me")
-  //   message        → speech-bubble outline ("reply/thread")
-  //   note           → pencil-on-note ("internal comment")
-  //   transfer       → circular refresh ("ownership moved")
-  //   status         → change ("status changed")
-  //   mention        → @ ("you were mentioned")
-  //   overdue        → clock ("past due")
-  //   new_unassigned → inbox ("new unassigned ticket")
-  //   default        → bell with a badge (generic notification)
-  IconData get _eventIcon => switch (widget.notification.event) {
+  // Rounded icon set for the Type-column pill, keyed on the latest activity's
+  // event — raw osTicket events (see inbox.inc.php $LABELS).
+  IconData get _eventIcon => switch (widget.group.latest.event) {
         'assigned' => Icons.how_to_reg_rounded,
         'message' => Icons.chat_bubble_outline_rounded,
         'note' => Icons.edit_note_rounded,
@@ -1058,35 +1143,28 @@ class _NotificationRowState extends State<_NotificationRow> {
         _ => Icons.notifications_active_rounded,
       };
 
-  /// Tone the Type-column icon + label by the notification's **object
-  /// type**, not by the event. The eye can then scan a column of green
-  /// (Task) versus blue (Ticket) and separate them at a glance — the
-  /// icon glyph still tells you what event happened.
+  /// Tone the Type-column icon + label by object type (Task = green,
+  /// Ticket = accent blue) so the column scans as two colour bands.
   Color _typeTone(WebTokens t) =>
-      widget.notification.type == 'task' ? WebTokens.success : t.accent;
+      widget.group.type == 'task' ? WebTokens.success : t.accent;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final n = widget.notification;
+    final g = widget.group;
+    final latest = g.latest;
     final typeTone = _typeTone(t);
-    final unread = !n.read;
-    final snippet = (n.body != null && n.body!.isNotEmpty)
-        ? Fmt.stripHtml(n.body)
+    final unread = g.hasUnread;
+    final snippet = (latest.body != null && latest.body!.isNotEmpty)
+        ? Fmt.stripHtml(latest.body)
         : null;
-    final isTask = n.type == 'task';
-
-    // Left accent stripe — brand-blue on unread rows (permanent) or hover,
-    // transparent otherwise. Kept in the layout on every row so content
-    // never shifts.
-    final Color stripeColor;
-    if (unread) {
-      stripeColor = t.accent;
-    } else if (_hover) {
-      stripeColor = t.accent;
-    } else {
-      stripeColor = Colors.transparent;
-    }
+    final isTask = g.type == 'task';
+    // Latest activity as the row's headline; a "(N)" prefix flags a collapsed
+    // object that carries more than one activity.
+    final headline = snippet == null || snippet.isEmpty
+        ? latest.displayLabel
+        : '${latest.displayLabel} — $snippet';
+    final title = g.count > 1 ? '(${g.count}) $headline' : headline;
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -1109,21 +1187,14 @@ class _NotificationRowState extends State<_NotificationRow> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // AnimatedContainer(
-                //   duration: const Duration(milliseconds: 120),
-                //   curve: Curves.easeOut,
-                //   width: 3,
-                //   color: stripeColor,
-                // ),
                 Expanded(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _BodyCell(
                         width: _kColSelectWidth,
-                        // Wrapped in a nested GestureDetector that swallows
-                        // the tap so it doesn't bubble up to the row's own
-                        // `onTap` (which would open the detail panel).
+                        // Nested GestureDetector swallows the tap so it doesn't
+                        // bubble to the row's own onTap (which opens the panel).
                         child: Center(
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
@@ -1139,23 +1210,15 @@ class _NotificationRowState extends State<_NotificationRow> {
                         width: _kColTypeWidth,
                         child: StatusPill(
                           label: isTask ? 'Task' : 'Ticket',
-                          // Colour is by object type (Task = success green,
-                          // Ticket = accent blue) so the whole column can
-                          // be scanned as two colour bands. The glyph
-                          // itself still carries the event meaning.
                           color: typeTone,
                           icon: _eventIcon,
-                          // Bolder label so "Task"/"Ticket" reads as the
-                          // row's identity, not a soft tag.
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                       _BodyCell(
                         flex: _kColTitleFlex,
                         child: Text(
-                          snippet == null || snippet.isEmpty
-                              ? n.displayLabel
-                              : '${n.displayLabel} — $snippet',
+                          title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: t.bodySm.copyWith(
@@ -1168,12 +1231,12 @@ class _NotificationRowState extends State<_NotificationRow> {
                       ),
                       _BodyCell(
                         flex: _kColActorFlex,
-                        child: _TextCell(text: n.actor ?? ''),
+                        child: _TextCell(text: latest.actor ?? ''),
                       ),
                       _BodyCell(
                         width: _kColRefWidth,
                         child: Text(
-                          '#${n.objectId}',
+                          '#${g.objectId}',
                           style: t.bodySm
                               .copyWith(
                                 fontWeight: FontWeight.w600,
@@ -1193,7 +1256,9 @@ class _NotificationRowState extends State<_NotificationRow> {
                         width: _kColReceivedWidth,
                         alignRight: true,
                         child: Text(
-                          n.created != null ? Fmt.ago(n.created) : '—',
+                          g.lastActivity != null
+                              ? Fmt.ago(g.lastActivity)
+                              : '—',
                           maxLines: 1,
                           softWrap: false,
                           overflow: TextOverflow.clip,
