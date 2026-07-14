@@ -8,6 +8,7 @@ import '../../core/format.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/common.dart';
+import '../../models/me.dart';
 import '../../models/meta.dart';
 import '../../models/ticket.dart';
 import '../../providers.dart';
@@ -22,6 +23,86 @@ import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
 import 'widgets/dynamic_fields_section.dart';
 import 'widgets/thread_entry_tile.dart';
+
+/// Per-agent action gates for a ticket, ported from osTicket's
+/// `Ticket::checkStaffPerm()` (`include/class.ticket.php`). The backend enforces
+/// these on every mutating `/tickets/*` endpoint (403 otherwise); mirroring them
+/// here hides the affordances an agent can't use — matching the SCP rule that a
+/// ticket "cannot be edited by others". Visibility is already granted (the
+/// detail loaded), so only the per-department role permission matters.
+class _TicketCaps {
+  const _TicketCaps({
+    this.canEdit = false,
+    this.canAssign = false,
+    this.canRelease = false,
+    this.canTransfer = false,
+    this.canRefer = false,
+    this.canLink = false,
+    this.canMerge = false,
+    this.canMarkAnswered = false,
+    this.canClose = false,
+    this.canReply = false,
+    this.canDelete = false,
+    this.canBan = false,
+  });
+
+  final bool canEdit; // ticket.edit — priority, owner, topic, due, fields, tags
+  final bool canAssign; // ticket.assign — assign, assign-team, claim
+  final bool canRelease; // ticket.release
+  final bool canTransfer; // ticket.transfer
+  final bool canRefer; // ticket.refer
+  final bool canLink; // ticket.link
+  final bool canMerge; // ticket.merge
+  final bool canMarkAnswered; // ticket.markanswered
+  final bool canClose; // ticket.close
+  final bool canReply; // ticket.reply
+  final bool canDelete; // ticket.delete
+  final bool canBan; // emails.banlist (global perm, not dept-scoped)
+
+  /// `/tickets/{id}/status` accepts PERM_CLOSE **or** PERM_EDIT.
+  bool get canChangeStatus => canClose || canEdit;
+
+  /// `/tickets/{id}/note` accepts PERM_REPLY **or** PERM_EDIT.
+  bool get canNote => canReply || canEdit;
+
+  /// `/tickets/{id}/mark` accepts PERM_MARKANSWERED (answered) — the overdue
+  /// variant and dept managers fall through to edit-level access.
+  bool get canMark => canMarkAnswered || canEdit;
+
+  factory _TicketCaps.from(Me? me, Ticket? ticket) {
+    if (me == null || ticket == null) return const _TicketCaps();
+    final d = ticket.departmentId;
+    return _TicketCaps(
+      canEdit: me.canOn('ticket.edit', d),
+      canAssign: me.canOn('ticket.assign', d),
+      canRelease: me.canOn('ticket.release', d),
+      canTransfer: me.canOn('ticket.transfer', d),
+      canRefer: me.canOn('ticket.refer', d),
+      canLink: me.canOn('ticket.link', d),
+      canMerge: me.canOn('ticket.merge', d),
+      canMarkAnswered: me.canOn('ticket.markanswered', d),
+      canClose: me.canOn('ticket.close', d),
+      canReply: me.canOn('ticket.reply', d),
+      canDelete: me.canOn('ticket.delete', d),
+      canBan: me.can('emails.banlist'),
+    );
+  }
+}
+
+/// Flattens menu [groups] into a single entry list, inserting a
+/// [PopupMenuDivider] only *between* non-empty groups — so gating items out
+/// never leaves a dangling or doubled divider.
+List<PopupMenuEntry<String>> _joinMenuGroups(
+  List<List<PopupMenuEntry<String>>> groups,
+) {
+  final out = <PopupMenuEntry<String>>[];
+  for (final g in groups) {
+    if (g.isEmpty) continue;
+    if (out.isNotEmpty) out.add(const PopupMenuDivider());
+    out.addAll(g);
+  }
+  return out;
+}
 
 class TicketDetailScreen extends ConsumerStatefulWidget {
   const TicketDetailScreen({super.key, required this.ticketId});
@@ -155,43 +236,72 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     }
   }
 
-  PopupMenuButton<String> _menu() => PopupMenuButton<String>(
+  PopupMenuButton<String> _menu(_TicketCaps caps) => PopupMenuButton<String>(
     onSelected: _onMenu,
     shape: AppActionMenu.shape,
     color: Theme.of(context).colorScheme.surface,
     elevation: AppActionMenu.elevation,
     menuPadding: AppActionMenu.menuPadding,
-    itemBuilder: (context) => [
+    // Only surface actions the agent may perform — each gated by the same
+    // permission the matching /tickets endpoint enforces (checkStaffPerm).
+    // Collaborators stays available to everyone: the sheet also *views*
+    // collaborators, and its add/remove are enforced server-side.
+    itemBuilder: (context) => _joinMenuGroups([
       // Workflow / status.
-      appMenuItem(value: 'status', asset: Assets.actStatus, label: 'Change status'),
-      appMenuItem(value: 'mark', asset: Assets.actMark, label: 'Mark answered/overdue'),
-      const PopupMenuDivider(),
+      [
+        if (caps.canChangeStatus)
+          appMenuItem(value: 'status', asset: Assets.actStatus, label: 'Change status'),
+        if (caps.canMark)
+          appMenuItem(value: 'mark', asset: Assets.actMark, label: 'Mark answered/overdue'),
+      ],
       // Assignment.
-      appMenuItem(value: 'assign', asset: Assets.actAssign, label: 'Assign'),
-      appMenuItem(value: 'assign_team', asset: Assets.actCollaborators, label: 'Assign to team'),
-      appMenuItem(value: 'claim', asset: Assets.actClaim, label: 'Claim'),
-      appMenuItem(value: 'release', asset: Assets.actRelease, label: 'Release'),
-      appMenuItem(value: 'owner', asset: Assets.actOwner, label: 'Change owner'),
-      appMenuItem(value: 'refer', asset: Assets.actRefer, label: 'Refer'),
-      const PopupMenuDivider(),
+      [
+        if (caps.canAssign)
+          appMenuItem(value: 'assign', asset: Assets.actAssign, label: 'Assign'),
+        if (caps.canAssign)
+          appMenuItem(value: 'assign_team', asset: Assets.actCollaborators, label: 'Assign to team'),
+        if (caps.canAssign)
+          appMenuItem(value: 'claim', asset: Assets.actClaim, label: 'Claim'),
+        if (caps.canRelease)
+          appMenuItem(value: 'release', asset: Assets.actRelease, label: 'Release'),
+        if (caps.canEdit)
+          appMenuItem(value: 'owner', asset: Assets.actOwner, label: 'Change owner'),
+        if (caps.canRefer)
+          appMenuItem(value: 'refer', asset: Assets.actRefer, label: 'Refer'),
+      ],
       // Attributes.
-      appMenuItem(value: 'transfer', asset: Assets.actTransfer, label: 'Transfer dept'),
-      appMenuItem(value: 'priority', asset: Assets.actPriority, label: 'Set priority'),
-      appMenuItem(value: 'topic', asset: Assets.actTopic, label: 'Change topic'),
-      appMenuItem(value: 'duedate', asset: Assets.actDuedate, label: 'Set due date'),
-      appMenuItem(value: 'fields', asset: Assets.actEdit, label: 'Edit fields'),
-      appMenuItem(value: 'tags', asset: Assets.actTag, label: 'Tags'),
-      const PopupMenuDivider(),
+      [
+        if (caps.canTransfer)
+          appMenuItem(value: 'transfer', asset: Assets.actTransfer, label: 'Transfer dept'),
+        if (caps.canEdit)
+          appMenuItem(value: 'priority', asset: Assets.actPriority, label: 'Set priority'),
+        if (caps.canEdit)
+          appMenuItem(value: 'topic', asset: Assets.actTopic, label: 'Change topic'),
+        if (caps.canEdit)
+          appMenuItem(value: 'duedate', asset: Assets.actDuedate, label: 'Set due date'),
+        if (caps.canEdit)
+          appMenuItem(value: 'fields', asset: Assets.actEdit, label: 'Edit fields'),
+        if (caps.canEdit)
+          appMenuItem(value: 'tags', asset: Assets.actTag, label: 'Tags'),
+      ],
       // Relations.
-      appMenuItem(value: 'link', asset: Assets.actLink, label: 'Link tickets'),
-      appMenuItem(value: 'merge', asset: Assets.actMerge, label: 'Merge tickets'),
-      const PopupMenuDivider(),
+      [
+        if (caps.canLink)
+          appMenuItem(value: 'link', asset: Assets.actLink, label: 'Link tickets'),
+        if (caps.canMerge)
+          appMenuItem(value: 'merge', asset: Assets.actMerge, label: 'Merge tickets'),
+      ],
       // Metadata.
-      appMenuItem(value: 'collaborators', asset: Assets.actCollaborators, label: 'Collaborators'),
-      appMenuItem(value: 'ban', asset: Assets.actBan, label: 'Ban / unban email'),
-      const PopupMenuDivider(),
-      appMenuItem(value: 'delete', asset: Assets.actDelete, label: 'Delete', destructive: true),
-    ],
+      [
+        appMenuItem(value: 'collaborators', asset: Assets.actCollaborators, label: 'Collaborators'),
+        if (caps.canBan)
+          appMenuItem(value: 'ban', asset: Assets.actBan, label: 'Ban / unban email'),
+      ],
+      [
+        if (caps.canDelete)
+          appMenuItem(value: 'delete', asset: Assets.actDelete, label: 'Delete', destructive: true),
+      ],
+    ]),
   );
 
   @override
@@ -210,6 +320,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       );
     }
 
+    // Per-agent action gates (ported from Ticket::checkStaffPerm). `me` is
+    // loaded app-wide at startup, so asData is populated by the time this opens;
+    // until then caps default to none (safe — the backend would 403 anyway).
+    final me = ref.watch(meProvider).asData?.value;
+    final caps = _TicketCaps.from(me, t);
     return Scaffold(
       body: Stack(
         children: [
@@ -237,7 +352,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                         ),
                     ],
                   ),
-                  actions: [_menu()],
+                  actions: [_menu(caps)],
                 ),
                 SliverToBoxAdapter(child: _CollapsingHeader(ticket: t)),
                 SliverPersistentHeader(
@@ -271,7 +386,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                           thread: _thread,
                           onReply: (e) => setState(() => _replyTo = e),
                         ),
-                        _DetailsTab(ticket: t, onEdit: _onMenu),
+                        _DetailsTab(ticket: t, caps: caps, onEdit: _onMenu),
                         _ActivityTab(events: _events),
                       ],
                     ),
@@ -290,7 +405,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
             bottom: 0,
             child: ListenableBuilder(
               listenable: _tabs.animation!,
-              builder: (context, _) => _onConversationTab
+              // The composer's primary action is a public reply (ticket.reply);
+              // its note toggle also needs reply access on this build. Gate the
+              // whole composer on canReply so an agent who can't reply doesn't
+              // land on a reply box that 403s.
+              builder: (context, _) => _onConversationTab && caps.canReply
                   ? MessageComposer(
                       hintReply: 'Reply to this ticket...',
                       replyTo: _replyTo,
@@ -714,8 +833,16 @@ class _ConversationTab extends StatelessWidget {
 }
 
 class _DetailsTab extends StatelessWidget {
-  const _DetailsTab({required this.ticket, required this.onEdit});
+  const _DetailsTab({
+    required this.ticket,
+    required this.caps,
+    required this.onEdit,
+  });
   final Ticket ticket;
+
+  /// Per-agent action gates — a null onTap below renders the row read-only when
+  /// the agent lacks the matching permission.
+  final _TicketCaps caps;
 
   /// Routes an edit intent (matching the â‹®-menu action keys) back to the host.
   final ValueChanged<String> onEdit;
@@ -733,35 +860,35 @@ class _DetailsTab extends StatelessWidget {
               icon: Icons.published_with_changes,
               label: 'Status',
               value: ticket.statusName,
-              onTap: () => onEdit('status'),
+              onTap: caps.canChangeStatus ? () => onEdit('status') : null,
             ),
             _DetailRow(
               icon: Icons.flag_outlined,
               label: 'Priority',
               value: ticket.priority,
               placeholder: 'Set priority',
-              onTap: () => onEdit('priority'),
+              onTap: caps.canEdit ? () => onEdit('priority') : null,
             ),
             _DetailRow(
               icon: Icons.apartment_outlined,
               label: 'Department',
               value: ticket.departmentName,
               placeholder: 'Transfer',
-              onTap: () => onEdit('transfer'),
+              onTap: caps.canTransfer ? () => onEdit('transfer') : null,
             ),
             _DetailRow(
               icon: Icons.assignment_ind_outlined,
               label: 'Assignee',
               value: ticket.assignee,
               placeholder: 'Assign',
-              onTap: () => onEdit('assign'),
+              onTap: caps.canAssign ? () => onEdit('assign') : null,
             ),
             _DetailRow(
               icon: Icons.event_outlined,
               label: 'Due date',
               value: ticket.due == null ? null : Fmt.dateTime(ticket.due),
               placeholder: 'Set due date',
-              onTap: () => onEdit('duedate'),
+              onTap: caps.canEdit ? () => onEdit('duedate') : null,
             ),
           ],
         ),

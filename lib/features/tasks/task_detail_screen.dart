@@ -9,6 +9,7 @@ import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
 import '../../models/common.dart';
+import '../../models/me.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
@@ -22,6 +23,46 @@ import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
 import '../tickets/widgets/thread_entry_tile.dart';
 import 'widgets/task_card.dart';
+
+/// Per-agent action gates for a task, ported from osTicket's
+/// `Task::checkStaffPerm()` (`include/class.task.php`). The backend enforces
+/// these on every mutating `/tasks/*` endpoint (403 otherwise); mirroring them
+/// here hides the affordances an agent can't use — matching the SCP rule that a
+/// task "cannot be edited by others". Visibility is already granted (the detail
+/// loaded), so only the per-department role permission matters.
+class _TaskCaps {
+  const _TaskCaps({
+    this.canEdit = false,
+    this.canCreate = false,
+    this.canAssign = false,
+    this.canTransfer = false,
+    this.canClose = false,
+    this.canReply = false,
+  });
+
+  final bool canEdit; // task.edit — priority, dependencies
+  final bool canCreate; // task.create — add subtask
+  final bool canAssign; // task.assign
+  final bool canTransfer; // task.transfer — department change
+  final bool canClose; // task.close — close / reopen / status
+  final bool canReply; // task.reply — reply + internal note
+
+  /// At least one item in the overflow (⋮) menu is available.
+  bool get hasMenuAction => canClose || canAssign || canTransfer || canEdit;
+
+  factory _TaskCaps.from(Me? me, Task? task) {
+    if (me == null || task == null) return const _TaskCaps();
+    final d = task.departmentId;
+    return _TaskCaps(
+      canEdit: me.canOn('task.edit', d),
+      canCreate: me.canOn('task.create', d),
+      canAssign: me.canOn('task.assign', d),
+      canTransfer: me.canOn('task.transfer', d),
+      canClose: me.canOn('task.close', d),
+      canReply: me.canOn('task.reply', d),
+    );
+  }
+}
 
 class TaskDetailScreen extends ConsumerStatefulWidget {
   const TaskDetailScreen({super.key, required this.taskId});
@@ -159,28 +200,54 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     }
   }
 
-  PopupMenuButton<String> _menu(Task t) => PopupMenuButton<String>(
-    onSelected: _onMenu,
-    shape: AppActionMenu.shape,
-    color: Theme.of(context).colorScheme.surface,
-    elevation: AppActionMenu.elevation,
-    menuPadding: AppActionMenu.menuPadding,
-    itemBuilder: (_) => [
-      // Workflow.
-      if (t.isOpen)
-        appMenuItem(value: 'close', asset: Assets.actClose, label: 'Close')
-      else
-        appMenuItem(value: 'reopen', asset: Assets.actReopen, label: 'Reopen'),
-      const PopupMenuDivider(),
-      // Assignment & attributes.
-      appMenuItem(value: 'assign', asset: Assets.actAssign, label: 'Assign'),
-      appMenuItem(value: 'transfer', asset: Assets.actTransfer, label: 'Transfer dept'),
-      appMenuItem(value: 'priority', asset: Assets.actPriority, label: 'Set priority'),
-      const PopupMenuDivider(),
-      // Metadata.
-      appMenuItem(value: 'collaborators', asset: Assets.actCollaborators, label: 'Collaborators'),
-    ],
-  );
+  PopupMenuButton<String> _menu(Task t, _TaskCaps caps) =>
+      PopupMenuButton<String>(
+        onSelected: _onMenu,
+        shape: AppActionMenu.shape,
+        color: Theme.of(context).colorScheme.surface,
+        elevation: AppActionMenu.elevation,
+        menuPadding: AppActionMenu.menuPadding,
+        // Only surface actions the agent may perform — each gated by the same
+        // permission the matching /tasks endpoint enforces (checkStaffPerm).
+        // Collaborators stays available to everyone: the sheet also *views*
+        // collaborators, and its add/remove are enforced server-side.
+        itemBuilder: (_) => [
+          // Workflow.
+          if (caps.canClose) ...[
+            if (t.isOpen)
+              appMenuItem(value: 'close', asset: Assets.actClose, label: 'Close')
+            else
+              appMenuItem(
+                value: 'reopen',
+                asset: Assets.actReopen,
+                label: 'Reopen',
+              ),
+          ],
+          if (caps.hasMenuAction) const PopupMenuDivider(),
+          // Assignment & attributes.
+          if (caps.canAssign)
+            appMenuItem(value: 'assign', asset: Assets.actAssign, label: 'Assign'),
+          if (caps.canTransfer)
+            appMenuItem(
+              value: 'transfer',
+              asset: Assets.actTransfer,
+              label: 'Transfer dept',
+            ),
+          if (caps.canEdit)
+            appMenuItem(
+              value: 'priority',
+              asset: Assets.actPriority,
+              label: 'Set priority',
+            ),
+          if (caps.hasMenuAction) const PopupMenuDivider(),
+          // Metadata.
+          appMenuItem(
+            value: 'collaborators',
+            asset: Assets.actCollaborators,
+            label: 'Collaborators',
+          ),
+        ],
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -198,6 +265,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       );
     }
 
+    // Per-agent action gates (ported from Task::checkStaffPerm). `me` is loaded
+    // app-wide at startup, so asData is populated by the time this opens; until
+    // then caps default to none (safe — the backend would 403 anyway).
+    final me = ref.watch(meProvider).asData?.value;
+    final caps = _TaskCaps.from(me, t);
     return Scaffold(
       body: Stack(
         children: [
@@ -225,7 +297,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                         ),
                     ],
                   ),
-                  actions: [_menu(t)],
+                  actions: [_menu(t, caps)],
                 ),
                 SliverToBoxAdapter(child: _CollapsingHeader(task: t)),
                 SliverPersistentHeader(
@@ -258,6 +330,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                         ),
                         _DetailsTab(
                           task: t,
+                          caps: caps,
                           onEdit: _onMenu,
                           subtasks: _subtasks,
                           onSubtaskTap: (st) =>
@@ -284,7 +357,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
             bottom: 0,
             child: ListenableBuilder(
               listenable: _tabs.animation!,
-              builder: (context, _) => _onConversationTab
+              // Reply and internal note both require task.reply on the backend,
+              // so a single canReply gate covers the whole composer.
+              builder: (context, _) => _onConversationTab && caps.canReply
                   ? MessageComposer(
                       hintReply: 'Reply to this task...',
                       replyTo: _replyTo,
@@ -597,6 +672,7 @@ class _ConversationTab extends StatelessWidget {
 class _DetailsTab extends StatelessWidget {
   const _DetailsTab({
     required this.task,
+    required this.caps,
     required this.onEdit,
     required this.subtasks,
     required this.onSubtaskTap,
@@ -606,6 +682,10 @@ class _DetailsTab extends StatelessWidget {
     required this.onRemoveDependency,
   });
   final Task task;
+
+  /// Per-agent action gates — a null onTap/actionLabel below renders the row or
+  /// button read-only when the agent lacks the matching permission.
+  final _TaskCaps caps;
 
   /// Routes an edit intent (matching the â‹®-menu action keys) back to the host.
   final ValueChanged<String> onEdit;
@@ -637,28 +717,28 @@ class _DetailsTab extends StatelessWidget {
                 icon: Icons.published_with_changes,
                 label: 'Status',
                 value: task.statusName,
-                onTap: () => onEdit('status'),
+                onTap: caps.canClose ? () => onEdit('status') : null,
               ),
               _DetailRow(
                 icon: Icons.flag_outlined,
                 label: 'Priority',
                 value: task.priority?.name,
                 placeholder: 'Set priority',
-                onTap: () => onEdit('priority'),
+                onTap: caps.canEdit ? () => onEdit('priority') : null,
               ),
               _DetailRow(
                 icon: Icons.apartment_outlined,
                 label: 'Department',
                 value: task.departmentName,
                 placeholder: 'Transfer',
-                onTap: () => onEdit('transfer'),
+                onTap: caps.canTransfer ? () => onEdit('transfer') : null,
               ),
               _DetailRow(
                 icon: Icons.assignment_ind_outlined,
                 label: 'Assignee',
                 value: task.assignee,
                 placeholder: 'Assign',
-                onTap: () => onEdit('assign'),
+                onTap: caps.canAssign ? () => onEdit('assign') : null,
               ),
             ],
           ),
@@ -715,8 +795,9 @@ class _DetailsTab extends StatelessWidget {
           padding: hPad,
           child: _SectionHeader(
             title: 'Subtasks',
-            actionLabel: 'Add subtask',
-            onAction: onAddSubtask,
+            // Adding a subtask hits POST /tasks/{id}/subtask → PERM_CREATE.
+            actionLabel: caps.canCreate ? 'Add subtask' : null,
+            onAction: caps.canCreate ? onAddSubtask : null,
           ),
         ),
         const SizedBox(height: 4),
@@ -730,8 +811,9 @@ class _DetailsTab extends StatelessWidget {
           padding: hPad,
           child: _SectionHeader(
             title: 'Dependencies',
-            actionLabel: 'Add dependency',
-            onAction: onAddDependency,
+            // Managing dependencies hits /tasks/{id}/dependencies → PERM_EDIT.
+            actionLabel: caps.canEdit ? 'Add dependency' : null,
+            onAction: caps.canEdit ? onAddDependency : null,
           ),
         ),
         const SizedBox(height: 4),
@@ -739,7 +821,11 @@ class _DetailsTab extends StatelessWidget {
           const _EmptySection(message: 'No dependencies')
         else
           for (final dep in dependencies)
-            _DependencyCard(dep: dep, onRemove: () => onRemoveDependency(dep.id)),
+            _DependencyCard(
+              dep: dep,
+              onRemove:
+                  caps.canEdit ? () => onRemoveDependency(dep.id) : null,
+            ),
       ],
     );
   }
@@ -811,9 +897,11 @@ class _EmptySection extends StatelessWidget {
 /// A single dependency row rendered as a card (extracted from the former
 /// Dependencies tab so it can live inside the Details list).
 class _DependencyCard extends StatelessWidget {
-  const _DependencyCard({required this.dep, required this.onRemove});
+  const _DependencyCard({required this.dep, this.onRemove});
   final TaskDependency dep;
-  final VoidCallback onRemove;
+
+  /// Null when the agent lacks task.edit — the remove control is then hidden.
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -843,11 +931,13 @@ class _DependencyCard extends StatelessWidget {
           context,
           dep.required ? 'Required' : 'Optional',
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.close),
-          tooltip: 'Remove',
-          onPressed: onRemove,
-        ),
+        trailing: onRemove == null
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Remove',
+                onPressed: onRemove,
+              ),
       ),
     );
   }
