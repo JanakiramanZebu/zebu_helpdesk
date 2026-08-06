@@ -3,25 +3,30 @@ import 'package:flutter/material.dart';
 import '../../features/dashboard/web/_tokens.dart';
 
 /// A single tab entry consumed by [SegmentedTabBar]. The [count], when
-/// non-null, renders as a small tinted pill beside the label — brand-tinted
-/// on the active tab, neutral on inactive tabs.
+/// non-null, renders inline after the label — brand-tinted on the active
+/// tab, muted on inactive tabs. The optional [dot] colors the 6×6 status
+/// dot before the label (mobile `FilterChipTabs` language); falls back to
+/// the accent when omitted.
 class SegmentedTabItem<T> {
   const SegmentedTabItem({
     required this.value,
     required this.label,
     this.count,
+    this.dot,
   });
   final T value;
   final String label;
   final int? count;
+  final Color? dot;
 }
 
-/// Text-tab row with a 2 px brand accent underline on the selected tab.
-/// ClickUp-inspired: airy, minimal, no card frame, count pill inline.
+/// Pill-chip tab row matching the mobile app's `FilterChipTabs`: each tab is
+/// a rounded chip with a colored status dot, label, and inline count.
+/// Selected = brand-tinted fill (`accent @ 0.08`) + brand border; unselected
+/// = flat surface chip with a hairline border.
 ///
-/// The bar itself only draws a subtle bottom hairline underneath all tabs
-/// (the "baseline") so unselected tabs don't look like they're floating.
-/// Callers can suppress that baseline by passing [showBaseline] = false.
+/// [showBaseline] is retained for API compatibility but no longer paints —
+/// the chips carry their own frames, so no baseline is needed.
 ///
 /// When the tab row overflows its slot, chevron buttons appear at the
 /// leading/trailing edges — click either to page the strip ~half a
@@ -95,15 +100,7 @@ class _SegmentedTabBarState<T> extends State<SegmentedTabBar<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Container(
-      decoration: widget.showBaseline
-          ? BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: t.borderSubtle, width: 1),
-              ),
-            )
-          : null,
+    return Padding(
       padding: widget.padding,
       child: LayoutBuilder(
         builder: (context, c) {
@@ -139,7 +136,7 @@ class _SegmentedTabBarState<T> extends State<SegmentedTabBar<T>> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           for (final item in widget.items)
                             _Tab<T>(
@@ -248,9 +245,17 @@ class _TabState<T> extends State<_Tab<T>> {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final fg = widget.active
-        ? t.accent
-        : (_hover ? t.textPrimary : t.textSecondary);
+    final dot = widget.item.dot ?? t.accent;
+    // Mobile FilterChipTabs states: selected = brand-tinted fill + brand
+    // border + brand label; unselected = flat surface chip with hairline.
+    // Desktop adds a quiet hover fill on unselected chips.
+    final bg = widget.active
+        ? t.accent.withValues(alpha: 0.08)
+        : (_hover ? t.bgHover : t.bgElevated);
+    final border = widget.active
+        ? t.accent.withValues(alpha: 0.5)
+        : (_hover ? t.borderDefault : t.borderDefault);
+    final fg = widget.active ? t.accent : t.textPrimary;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -259,88 +264,57 @@ class _TabState<T> extends State<_Tab<T>> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: Padding(
-          padding: const EdgeInsets.only(right: WebTokens.s6),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+          padding:
+              const EdgeInsets.only(right: WebTokens.s2, top: 2, bottom: WebTokens.s2),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOut,
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
             decoration: BoxDecoration(
-              border: Border(
-                bottom: BorderSide(
-                  color: widget.active ? t.accent : Colors.transparent,
-                  width: 2,
-                ),
-              ),
+              color: bg,
+              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              border: Border.all(color: border, width: 1),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // 6×6 status dot in the view's semantic color.
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: dot,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
                 Text(
                   widget.item.label,
-                  style: TextStyle(
-                    fontSize: 13.5,
+                  style: t.tabLabel.copyWith(
+                    fontSize: 13,
                     fontWeight:
-                        widget.active ? FontWeight.w600 : FontWeight.w500,
+                        widget.active ? FontWeight.w700 : FontWeight.w600,
                     color: fg,
-                    letterSpacing: 0.1,
                   ),
                 ),
                 if (widget.item.count != null) ...[
                   const SizedBox(width: 6),
-                  _CountPill(
-                    count: widget.item.count!,
-                    active: widget.active,
+                  Text(
+                    '${widget.item.count}',
+                    style: t.tabLabel
+                        .copyWith(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: widget.active ? t.accent : t.textSecondary,
+                        )
+                        .withTabularNums(),
                   ),
                 ],
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Premium count pill.
-///
-/// * Active tab — **filled brand-blue chip** with white bold text and a
-///   soft accent glow, so the current view is unmistakable at a glance.
-/// * Inactive — hairline outlined chip on the page background, secondary
-///   text. Reads as a quiet counter rather than a competing badge.
-///
-/// Both variants are fully-rounded and animate their bg / border / shadow
-/// on a shared 140 ms `easeOut` curve, so switching tabs feels smooth
-/// rather than a hard "state flip".
-class _CountPill extends StatelessWidget {
-  const _CountPill({required this.count, required this.active});
-  final int count;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 140),
-      curve: Curves.easeOut,
-      constraints: const BoxConstraints(minWidth: 22, minHeight: 18),
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-      decoration: BoxDecoration(
-        color: active ? t.accent : Colors.transparent,
-        borderRadius: BorderRadius.circular(WebTokens.rFull),
-        border: Border.all(
-          color: active ? t.accent : t.borderSubtle,
-          width: 1,
-        ),
-        boxShadow: active ? WebTokens.accentGlow : null,
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        '$count',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: active ? Colors.white : t.textSecondary,
-          height: 1.2,
-          letterSpacing: 0.2,
-        ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
       ),
     );
   }

@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 // handler here needs, so the direct import stays.
 import 'package:flutter/services.dart';
 
+import '../core/assets.dart';
 import '../features/dashboard/web/_tokens.dart';
+import 'svg_icon.dart';
 
 /// Reusable dropdown menu styled to match the Zebu Premium spec — an
 /// Asana-style rounded card of items with icons, optional keyboard
@@ -38,6 +40,7 @@ class AppDropdownItem<T> extends AppDropdownEntry<T> {
     required this.value,
     required this.label,
     this.icon,
+    this.svgAsset,
     this.shortcut,
     this.tone,
     this.disabled = false,
@@ -47,6 +50,11 @@ class AppDropdownItem<T> extends AppDropdownEntry<T> {
   final T value;
   final String label;
   final IconData? icon;
+
+  /// Mobile action-glyph asset (`Assets.act*`). Rendered as a tinted
+  /// icon chip on the row's leading edge (mobile ⋮-menu style); takes
+  /// precedence over [icon].
+  final String? svgAsset;
 
   /// Rendered as a small monospace chip on the right (e.g. `'Tab P'`).
   final String? shortcut;
@@ -454,11 +462,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.search_rounded,
-                    size: 17,
-                    color: t.textSecondary,
-                  ),
+                  SvgIcon(Assets.search, size: 16, color: t.textSecondary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -568,6 +572,12 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
     final effective = item.disabled
         ? t.textSecondary.withValues(alpha: 0.5)
         : (item.tone ?? t.textPrimary);
+    // Tint for the mobile-style leading icon chip: brand accent by default,
+    // the row's tone (e.g. danger) when set — mirrors the mobile ⋮-menu's
+    // `appMenuItem` treatment.
+    final chipTone = item.disabled
+        ? t.textSecondary.withValues(alpha: 0.5)
+        : (item.tone ?? t.accent);
     return InkWell(
       onTap: item.disabled ? null : onTap,
       hoverColor: t.bgHover,
@@ -578,8 +588,8 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Leading slot — check (selected) / icon / blank. Fixed width
-            // in single-select mode so labels line up across rows.
+            // Leading slot — check (selected) / icon chip / blank. Fixed
+            // width in single-select mode so labels line up across rows.
             if (hasSelectionColumn) ...[
               SizedBox(
                 width: 16,
@@ -588,8 +598,19 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
                     : const SizedBox.shrink(),
               ),
               const SizedBox(width: WebTokens.s3),
-            ] else if (item.icon != null) ...[
-              // Icon(item.icon, size: 16, color: effective),
+            ] else if (item.svgAsset != null || item.icon != null) ...[
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: chipTone.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(WebTokens.rSm),
+                ),
+                child: item.svgAsset != null
+                    ? SvgIcon(item.svgAsset!, size: 15, color: chipTone)
+                    : Icon(item.icon, size: 15, color: chipTone),
+              ),
               const SizedBox(width: WebTokens.s3),
             ],
             Expanded(

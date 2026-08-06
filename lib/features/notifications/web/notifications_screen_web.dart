@@ -15,6 +15,7 @@ import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
+import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../widgets/web_filter_button.dart';
 import '../../dashboard/web/_tokens.dart';
@@ -34,6 +35,11 @@ const double _kColRefWidth = 100;
 const double _kColStatusWidth = 100;
 const double _kColReceivedWidth = 110;
 const double _kColActionWidth = 44;
+
+/// Fixed table row height — uniform, Asana-style rows matching the tickets &
+/// tasks lists. Replaces `IntrinsicHeight` so every row is the same height and
+/// the layout skips an extra measure pass.
+const double _kRowHeight = 48;
 
 /// Minimum table width — accounts for the fixed-width columns
 /// (44 + 90 + 100 + 100 + 110 + 44 = 488), the 3 px leading accent-stripe
@@ -129,6 +135,13 @@ class _NotificationsScreenWebState
   /// loaded page (not per page), so an object whose events straddle a page
   /// boundary still collapses into one row once both pages are loaded.
   final List<AppNotification> _all = [];
+
+  // Memoized output of [_computeVisibleGroups]. Grouping + HTML-strip + filter
+  // over every loaded page is expensive, so it's recomputed only when its
+  // inputs actually change — not on every setState (checkbox ticks, select-all,
+  // panel open/close all rebuild but leave the visible group list untouched).
+  List<NotificationGroup>? _cachedGroups;
+  Object? _cachedGroupsSig;
   int _page = 1;
   bool _loadingPage = false;
   bool _hasMore = true;
@@ -471,12 +484,31 @@ class _NotificationsScreenWebState
   /// build(), before the header and list body are constructed.
   List<NotificationGroup> _computeVisibleGroups() {
     final q = _search.trim();
-    bool matchesSearch(AppNotification n) => q.isEmpty
+    // Normalize the needle once, not 4× per notification.
+    final needle = q.isEmpty ? null : _norm(q);
+
+    // Content signature of every input this computation reads. When it's
+    // unchanged (e.g. the rebuild came from a selection toggle), return the
+    // cached groups and skip the regrouping / stripHtml pass entirely.
+    final sig = Object.hash(
+      Object.hashAll(_all.map((n) => n.id)),
+      Object.hashAllUnordered(_locallyDeleted),
+      Object.hashAllUnordered(_locallyRead),
+      Object.hashAllUnordered(_locallyUnread),
+      Object.hashAllUnordered(_typeFlags),
+      needle,
+      _view,
+    );
+    if (_cachedGroups != null && _cachedGroupsSig == sig) {
+      return _cachedGroups!;
+    }
+
+    bool matchesSearch(AppNotification n) => needle == null
         ? true
-        : (_norm(n.displayLabel).contains(_norm(q)) ||
-            _norm(Fmt.stripHtml(n.body)).contains(_norm(q)) ||
-            _norm(n.actor ?? '').contains(_norm(q)) ||
-            _norm('${n.type}${n.objectId}').contains(_norm(q)));
+        : (_norm(n.displayLabel).contains(needle) ||
+            _norm(Fmt.stripHtml(n.body)).contains(needle) ||
+            _norm(n.actor ?? '').contains(needle) ||
+            _norm('${n.type}${n.objectId}').contains(needle));
 
     // Notification-level filter: drop optimistic-delete tombstones, apply the
     // read overrides, then type + search. The view (unread/read) is applied
@@ -509,6 +541,8 @@ class _NotificationsScreenWebState
       ..clear()
       ..addEntries(groups.map((g) => MapEntry(g.key, !g.hasUnread)));
 
+    _cachedGroups = groups;
+    _cachedGroupsSig = sig;
     return groups;
   }
 
@@ -526,8 +560,8 @@ class _NotificationsScreenWebState
     ];
   }
 
-  static String _norm(String s) =>
-      s.toLowerCase().replaceAll(RegExp(r'[#,\s₹]'), '');
+  static final RegExp _normPattern = RegExp(r'[#,\s₹]');
+  static String _norm(String s) => s.toLowerCase().replaceAll(_normPattern, '');
 
   /// The scrolling list of grouped object rows (or skeleton / error / empty).
   Widget _buildGroupedBody(List<NotificationGroup> groups) {
@@ -588,7 +622,15 @@ class _NotificationsScreenWebState
 
     final tabItems = [
       for (final v in _views)
-        SegmentedTabItem<String>(value: v.key, label: v.label),
+        SegmentedTabItem<String>(
+          value: v.key,
+          label: v.label,
+          dot: switch (v.key) {
+            'unread' => t.danger,
+            'read' => const Color(0xFF737373),
+            _ => t.accent,
+          },
+        ),
     ];
 
     // Two nested slide-over hosts. Only one panel is open at a time — the
@@ -911,7 +953,7 @@ class _TableHeader extends StatelessWidget {
               width: _kColSelectWidth,
               // Header select-all — tri-state: none / some / all selected.
               child: Center(
-                child: _SelectCheckbox(
+                child: SelectCheckbox(
                   value: allChecked
                       ? true
                       : someChecked
@@ -935,7 +977,6 @@ class _TableHeader extends StatelessWidget {
             const _HeaderCell(
               width: _kColActionWidth,
               label: '',
-              last: true,
             ),
             if (scrollGutter) const SizedBox(width: 10),
           ],
@@ -958,7 +999,6 @@ class _HeaderCell extends StatelessWidget {
     this.child,
     this.flex,
     this.width,
-    this.last = false,
     this.alignRight = false,
   }) : assert(label != null || child != null,
             'Pass either label or child to _HeaderCell.');
@@ -966,7 +1006,6 @@ class _HeaderCell extends StatelessWidget {
   final Widget? child;
   final int? flex;
   final double? width;
-  final bool last;
   final bool alignRight;
 
   @override
@@ -982,11 +1021,6 @@ class _HeaderCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
         horizontal: WebTokens.s3,
         vertical: WebTokens.s3,
-      ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: inner,
@@ -1004,27 +1038,19 @@ class _BodyCell extends StatelessWidget {
     required this.child,
     this.flex,
     this.width,
-    this.last = false,
     this.alignRight = false,
   });
   final Widget child;
   final int? flex;
   final double? width;
-  final bool last;
   final bool alignRight;
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
         horizontal: WebTokens.s3,
         vertical: 8,
-      ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: child,
@@ -1032,65 +1058,6 @@ class _BodyCell extends StatelessWidget {
     if (flex != null) return Expanded(flex: flex!, child: content);
     if (width != null) return SizedBox(width: width!, child: content);
     return content;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Select checkbox — tri-state square used by both the header (select-all)
-// and each row. `value` semantics:
-//   • true  → filled with the accent, white check glyph
-//   • false → empty box with a hairline border
-//   • null  → filled with the accent, minus glyph (indeterminate)
-// ---------------------------------------------------------------------------
-
-class _SelectCheckbox extends StatelessWidget {
-  const _SelectCheckbox({
-    required this.value,
-    required this.onChanged,
-    this.tooltip,
-  });
-
-  final bool? value;
-  final ValueChanged<bool?> onChanged;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    final checked = value == true;
-    final indeterminate = value == null;
-    final filled = checked || indeterminate;
-    final box = AnimatedContainer(
-      duration: const Duration(milliseconds: 100),
-      width: 16,
-      height: 16,
-      decoration: BoxDecoration(
-        color: filled ? t.accent : Colors.transparent,
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(
-          color: filled ? t.accent : t.borderStrong,
-          width: 1.4,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: filled
-          ? Icon(
-              indeterminate ? Icons.remove : Icons.check,
-              size: 12,
-              color: Colors.white,
-            )
-          : null,
-    );
-    final target = MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => onChanged(!checked),
-        child: box,
-      ),
-    );
-    if (tooltip == null) return target;
-    return Tooltip(message: tooltip!, child: target);
   }
 }
 
@@ -1183,14 +1150,10 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          child: IntrinsicHeight(
+          child: SizedBox(
+            height: _kRowHeight,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
                       _BodyCell(
                         width: _kColSelectWidth,
                         // Nested GestureDetector swallows the tap so it doesn't
@@ -1199,7 +1162,7 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
                           child: GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: widget.onToggleSelected,
-                            child: _SelectCheckbox(
+                            child: SelectCheckbox(
                               value: widget.selected,
                               onChanged: (_) => widget.onToggleSelected(),
                             ),
@@ -1273,15 +1236,11 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
                       ),
                       _BodyCell(
                         width: _kColActionWidth,
-                        last: true,
                         child: _DeleteButton(
                           visible: _hover,
                           onTap: widget.onDelete,
                         ),
                       ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -1478,7 +1437,6 @@ class _SkeletonRow extends StatelessWidget {
             ),
             _BodyCell(
               width: _kColActionWidth,
-              last: true,
               child: const SizedBox.shrink(),
             ),
           ],

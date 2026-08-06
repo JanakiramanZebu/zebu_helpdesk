@@ -8,13 +8,17 @@ import '../../../data/tasks_repository.dart';
 import '../../../models/meta.dart';
 import '../../../models/task.dart';
 import '../../../providers.dart';
+import '../../../widgets/app_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/list_controls.dart' show DateRange;
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
+import '../../../widgets/web/bulk_action_bar.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
+import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../widgets/web_filter_button.dart';
 import '../../dashboard/web/_tokens.dart';
@@ -27,6 +31,8 @@ import 'task_detail_panel.dart';
 /// Task ID column — fixed 90 px, matches the tickets table so both grids
 /// share the same # column width. Split out of the "Task" column so the
 /// number reads as its own sortable value.
+/// Leading select-checkbox column, shared by header + rows + skeleton.
+const double _kColSelectWidth = 44;
 const double _kColNumberWidth = 90;
 const int _kColTaskFlex = 6;
 const int _kColAssigneeFlex = 2;
@@ -36,11 +42,16 @@ const double _kColStatusWidth = 130;
 // Wide enough to fit `29 Jun 2026` on one line at the current bodySm size.
 const double _kColDueWidth = 120;
 
+/// Fixed table row height — uniform, Asana-style rows. Replaces the previous
+/// `IntrinsicHeight` sizing so every row is the same height and the layout
+/// skips an extra measure pass.
+const double _kRowHeight = 44;
+
 /// Minimum table width — accounts for the fixed-width columns
 /// (90 + 110 + 130 + 120 = 450), the 3 px leading accent-stripe rail, and
 /// a readable minimum for each flex column. Below this the table
 /// horizontally scrolls instead of squeezing columns.
-const double _kTableMinWidth = 1160;
+const double _kTableMinWidth = 1204;
 
 /// Web-only tasks list.
 ///
@@ -104,6 +115,139 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     for (final f in _taskFacets) f.key: 'all',
   };
   Map<String, List<MetaItem>> _facetOptions = const {};
+
+  // --- Bulk selection ------------------------------------------------------
+  /// Ids of tasks ticked via the row checkboxes. Cleared on view/tab switch
+  /// since the visible set changes underneath it.
+  final Set<int> _selectedIds = {};
+
+  /// Currently visible (filtered + sorted) tasks, from [PagedListView.onItems]
+  /// — backs the header select-all + its tri-state.
+  List<Task> _visibleTasks = const [];
+
+  /// Bumped after a bulk action so the [PagedListView] refetches and rows
+  /// reflect the change (the tasks list has no panel-change counter otherwise).
+  int _refreshSeq = 0;
+
+  bool get _allChecked =>
+      _visibleTasks.isNotEmpty &&
+      _visibleTasks.every((t) => _selectedIds.contains(t.id));
+  bool get _someChecked => _selectedIds.isNotEmpty && !_allChecked;
+
+  void _onVisibleTasks(List<Task> items) {
+    final next = items.map((t) => t.id).toSet();
+    final cur = _visibleTasks.map((t) => t.id).toSet();
+    if (next.length == cur.length && next.containsAll(cur)) return;
+    setState(() => _visibleTasks = items);
+  }
+
+  void _toggleChecked(int id) => setState(() {
+        if (!_selectedIds.remove(id)) _selectedIds.add(id);
+      });
+
+  void _toggleCheckAll() => setState(() {
+        if (_allChecked) {
+          for (final t in _visibleTasks) {
+            _selectedIds.remove(t.id);
+          }
+        } else {
+          for (final t in _visibleTasks) {
+            _selectedIds.add(t.id);
+          }
+        }
+      });
+
+  void _clearSelection() => setState(_selectedIds.clear);
+
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
+
+  /// Runs [op] against every selected task, tolerating per-item failures, then
+  /// clears the selection and bumps the refresh sequence so rows re-fetch.
+  Future<void> _bulkRun(
+    Future<void> Function(int id) op, {
+    required String verb,
+  }) async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty) return;
+    var failed = 0;
+    for (final id in ids) {
+      try {
+        await op(id);
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectedIds.clear();
+      _refreshSeq++;
+    });
+    final noun = ids.length == 1 ? 'task' : 'tasks';
+    if (failed == 0) {
+      _toast('$verb ${ids.length} $noun', type: ToastType.success);
+    } else {
+      _toast('$verb ${ids.length - failed}/${ids.length} — $failed failed',
+          type: ToastType.error);
+    }
+  }
+
+  /// Fetches a meta list and opens a picker under [anchor]; returns the id.
+  Future<int?> _pickMetaId(BuildContext anchor, String kind) async {
+    final List<MetaItem> items;
+    try {
+      items = await ref.read(metaRepositoryProvider).get(kind);
+    } catch (e) {
+      _toast('$e', type: ToastType.error);
+      return null;
+    }
+    if (!mounted || !anchor.mounted) return null;
+    return showAppDropdown<int>(
+      anchor,
+      entries: [
+        for (final m in items) AppDropdownItem<int>(value: m.id, label: m.name),
+      ],
+    );
+  }
+
+  Future<void> _bulkComplete() => _bulkRun(
+        (id) async => ref.read(tasksRepositoryProvider).close(id),
+        verb: 'Completed',
+      );
+
+  Future<void> _bulkReopen() => _bulkRun(
+        (id) async => ref.read(tasksRepositoryProvider).reopen(id),
+        verb: 'Reopened',
+      );
+
+  Future<void> _bulkAssign(BuildContext anchor) async {
+    final agentId = await _pickMetaId(anchor, MetaKind.agents);
+    if (agentId == null) return;
+    await _bulkRun(
+      (id) async =>
+          ref.read(tasksRepositoryProvider).assign(id, staffId: agentId),
+      verb: 'Assigned',
+    );
+  }
+
+  Future<void> _bulkPriority(BuildContext anchor) async {
+    final priorityId = await _pickMetaId(anchor, MetaKind.taskPriorities);
+    if (priorityId == null) return;
+    await _bulkRun(
+      (id) async =>
+          ref.read(tasksRepositoryProvider).edit(id, priorityId: priorityId),
+      verb: 'Updated',
+    );
+  }
+
+  Future<void> _bulkTransfer(BuildContext anchor) async {
+    final deptId = await _pickMetaId(anchor, MetaKind.departments);
+    if (deptId == null) return;
+    await _bulkRun(
+      (id) async => ref.read(tasksRepositoryProvider).transfer(id, deptId),
+      verb: 'Transferred',
+    );
+  }
 
   void _openTask(int id) => setState(() => _openTaskId = id);
   // Closing the panel is a pure state change — no refetch on close.
@@ -180,15 +324,25 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     });
   }
 
-  bool _matches(Task t, String? meName) {
+  /// Per-item predicate. All values that are constant across a filter pass
+  /// ([meNameLower], date [bounds], the search [needle], and the active
+  /// [facetNeedles]) are computed once by the caller and passed in, so the
+  /// hot path here does no allocation, `DateTime.now()`, or RegExp compile.
+  bool _matches(
+    Task t, {
+    required String? meNameLower,
+    required (DateTime, DateTime)? bounds,
+    required String? needle,
+    required Map<String, String> facetNeedles,
+  }) {
     final viewOk = switch (_view) {
       'open' => t.isOpen,
       'closed' => !t.isOpen,
       'overdue' => t.overdue,
       'mine' =>
-        meName == null || meName.isEmpty
+        meNameLower == null || meNameLower.isEmpty
             ? true
-            : (t.assignee ?? '').toLowerCase().contains(meName.toLowerCase()),
+            : (t.assignee ?? '').toLowerCase().contains(meNameLower),
       _ => true,
     };
     if (!viewOk) return false;
@@ -201,7 +355,6 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     }
 
     // Date range filter — matches against the task's created date.
-    final bounds = _dateRange.bounds(DateTime.now());
     if (bounds != null) {
       final c = t.created;
       if (c == null) return false;
@@ -210,6 +363,28 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     }
 
     // Facet dropdowns — match by option name (case-insensitive).
+    for (final entry in facetNeedles.entries) {
+      final haystack = switch (entry.key) {
+        'dept' => (t.departmentName ?? '').toLowerCase(),
+        'priority' => (t.priority?.name ?? '').toLowerCase(),
+        'agent' => (t.assignee ?? '').toLowerCase(),
+        _ => '',
+      };
+      if (haystack.isNotEmpty && !haystack.contains(entry.value)) return false;
+    }
+
+    if (needle == null) return true;
+    return _norm(t.number).contains(needle) ||
+        _norm(t.title).contains(needle) ||
+        _norm(t.assignee ?? '').contains(needle) ||
+        _norm(t.departmentName ?? '').contains(needle);
+  }
+
+  /// Resolves the currently-selected facet dropdowns to a
+  /// `{facetKey: lowercased option name}` map — computed once per filter pass
+  /// instead of re-looked-up per task.
+  Map<String, String> _activeFacetNeedles() {
+    final out = <String, String>{};
     for (final f in _taskFacets) {
       final sel = _facetSelected[f.key];
       if (sel == null || sel == 'all') continue;
@@ -217,23 +392,9 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
           ?.where((o) => o.id.toString() == sel)
           .firstOrNull;
       if (option == null) continue;
-      final needle = option.name.toLowerCase();
-      final haystack = switch (f.key) {
-        'dept' => (t.departmentName ?? '').toLowerCase(),
-        'priority' => (t.priority?.name ?? '').toLowerCase(),
-        'agent' => (t.assignee ?? '').toLowerCase(),
-        _ => '',
-      };
-      if (haystack.isNotEmpty && !haystack.contains(needle)) return false;
+      out[f.key] = option.name.toLowerCase();
     }
-
-    final q = _search.trim();
-    if (q.isEmpty) return true;
-    final needle = _norm(q);
-    return _norm(t.number).contains(needle) ||
-        _norm(t.title).contains(needle) ||
-        _norm(t.assignee ?? '').contains(needle) ||
-        _norm(t.departmentName ?? '').contains(needle);
+    return out;
   }
 
   List<WebQuickFilter> _quickFilters() {
@@ -279,8 +440,10 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     });
   }
 
-  static String _norm(String s) =>
-      s.toLowerCase().replaceAll(RegExp(r'[#,\s₹]'), '');
+  // Compiled once — building a fresh RegExp per call was the single heaviest
+  // per-item cost, since `_matches` normalizes ~4 fields for every task.
+  static final RegExp _normPattern = RegExp(r'[#,\s₹]');
+  static String _norm(String s) => s.toLowerCase().replaceAll(_normPattern, '');
 
   int _compare(Task a, Task b) {
     return switch (_sort) {
@@ -301,6 +464,17 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     return a.compareTo(b);
   }
 
+  /// Tab-dot color per view — mirrors mobile `_viewColor` in
+  /// `tasks_list_screen.dart`.
+  static Color _viewDot(String key, WebTokens t) => switch (key) {
+    'open' => WebTokens.success,
+    'mine' => WebTokens.indigo,
+    'overdue' => t.danger,
+    'collaborator' => WebTokens.warning,
+    'closed' => const Color(0xFF737373),
+    _ => t.accent,
+  };
+
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(tasksViewRequestProvider, (_, next) {
@@ -314,14 +488,37 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     final repo = ref.watch(tasksRepositoryProvider);
     final query = TaskQuery(view: _view, sort: _sort, order: 'desc');
 
+    // Precompute everything the per-item filter needs exactly once per build,
+    // rather than per task. `filterKey` captures every input `_matches` /
+    // `_compare` read so PagedListView can memoize the filtered+sorted list
+    // and skip the work entirely when nothing relevant changed.
+    final meNameLower = meName?.toLowerCase();
+    final dateBounds = _dateRange.bounds(DateTime.now());
+    final searchQuery = _search.trim();
+    final searchNeedle = searchQuery.isEmpty ? null : _norm(searchQuery);
+    final facetNeedles = _activeFacetNeedles();
+    final filterKey = Object.hash(
+      _view,
+      _sort,
+      searchQuery,
+      meNameLower,
+      _dateRange,
+      Object.hashAllUnordered(_quickFlags),
+      Object.hashAllUnordered([
+        for (final e in facetNeedles.entries) '${e.key}=${e.value}',
+      ]),
+    );
+
     // Build the tab items from the fixed view list, folding in live counts
     // as they arrive. If a count hasn't loaded yet the pill is omitted.
+    // Dot colors mirror the mobile tasks `_viewColor` mapping.
     final tabItems = [
       for (final v in _views)
         SegmentedTabItem<String>(
           value: v.key,
           label: v.label,
           count: _counts[v.key],
+          dot: _viewDot(v.key, t),
         ),
     ];
 
@@ -392,8 +589,48 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
             SegmentedTabBar<String>(
               items: tabItems,
               selected: _view,
-              onSelect: (k) => setState(() => _view = k),
+              // Switching tabs refetches a different view, so the ticked rows
+              // would no longer be visible — clear the selection with it.
+              onSelect: (k) => setState(() {
+                _view = k;
+                _selectedIds.clear();
+              }),
             ),
+            if (_selectedIds.isNotEmpty)
+              WebBulkBar(
+                count: _selectedIds.length,
+                onClear: _clearSelection,
+                actions: [
+                  WebBulkButton(
+                    icon: Icons.check_circle_outline,
+                    label: 'Complete',
+                    onTap: (_) => _bulkComplete(),
+                  ),
+                  WebBulkButton(
+                    icon: Icons.replay,
+                    label: 'Reopen',
+                    onTap: (_) => _bulkReopen(),
+                  ),
+                  WebBulkButton(
+                    icon: Icons.assignment_ind_outlined,
+                    label: 'Assign',
+                    hasMenu: true,
+                    onTap: _bulkAssign,
+                  ),
+                  WebBulkButton(
+                    icon: Icons.flag_outlined,
+                    label: 'Priority',
+                    hasMenu: true,
+                    onTap: _bulkPriority,
+                  ),
+                  WebBulkButton(
+                    icon: Icons.business_outlined,
+                    label: 'Transfer',
+                    hasMenu: true,
+                    onTap: _bulkTransfer,
+                  ),
+                ],
+              ),
             Expanded(
               child: ListTableShell(
                 child: LayoutBuilder(
@@ -414,14 +651,26 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _TableHeader(scrollGutter: horizontalScroll),
+                            _TableHeader(
+                              scrollGutter: horizontalScroll,
+                              allChecked: _allChecked,
+                              someChecked: _someChecked,
+                              onToggleAll: _toggleCheckAll,
+                            ),
                             Expanded(
                               child: ColoredBox(
                                 color: t.bgElevated,
                                 child: PagedListView<Task>(
                                   padding: EdgeInsets.zero,
-                                  refreshKey: '$_view|$_search',
-                                  itemFilter: (t) => _matches(t, meName),
+                                  refreshKey: '$_view|$_search|$_refreshSeq',
+                                  filterKey: filterKey,
+                                  itemFilter: (task) => _matches(
+                                    task,
+                                    meNameLower: meNameLower,
+                                    bounds: dateBounds,
+                                    needle: searchNeedle,
+                                    facetNeedles: facetNeedles,
+                                  ),
                                   itemSort: _compare,
                                   emptyMessage: 'No tasks',
                                   emptyHint:
@@ -430,9 +679,13 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                                       repo.list(query.copyWith(page: page)),
                                   loadingBuilder: (_) =>
                                       const _TaskTableSkeleton(),
+                                  onItems: _onVisibleTasks,
                                   itemBuilder: (context, task) => _TaskRow(
                                     task: task,
                                     selected: _openTaskId == task.id,
+                                    checked: _selectedIds.contains(task.id),
+                                    onToggleChecked: () =>
+                                        _toggleChecked(task.id),
                                     onTap: () => _openTask(task.id),
                                   ),
                                 ),
@@ -462,13 +715,23 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
 // ---------------------------------------------------------------------------
 
 class _TableHeader extends StatelessWidget {
-  const _TableHeader({this.scrollGutter = false});
+  const _TableHeader({
+    this.scrollGutter = false,
+    required this.allChecked,
+    required this.someChecked,
+    required this.onToggleAll,
+  });
 
   /// When true, reserves 10 px of trailing space at the right edge of
   /// the header to line up with the horizontal scrollbar sitting under
   /// the body. Off when the table isn't horizontally scrolling — the
   /// gutter would otherwise create a dead strip past "Due".
   final bool scrollGutter;
+
+  /// Header select-all tri-state (`allChecked`/`someChecked`) + its toggle.
+  final bool allChecked;
+  final bool someChecked;
+  final VoidCallback onToggleAll;
 
   @override
   Widget build(BuildContext context) {
@@ -487,6 +750,16 @@ class _TableHeader extends StatelessWidget {
             // Leading 3 px offset matches the row's accent-stripe rail so
             // column starts line up with row content pixel-for-pixel.
             const SizedBox(width: 3),
+            SizedBox(
+              width: _kColSelectWidth,
+              child: Center(
+                child: SelectCheckbox(
+                  value: allChecked ? true : (someChecked ? null : false),
+                  onChanged: (_) => onToggleAll(),
+                  tooltip: allChecked ? 'Deselect all' : 'Select all',
+                ),
+              ),
+            ),
             const _HeaderCell(width: _kColNumberWidth, label: '#'),
             const _HeaderCell(flex: _kColTaskFlex, label: 'Task'),
             const _HeaderCell(flex: _kColAssigneeFlex, label: 'Assignee'),
@@ -497,7 +770,6 @@ class _TableHeader extends StatelessWidget {
               width: _kColDueWidth,
               label: 'Due',
               alignRight: true,
-              last: true,
             ),
             if (scrollGutter) const SizedBox(width: 10),
           ],
@@ -515,13 +787,11 @@ class _HeaderCell extends StatelessWidget {
     required this.label,
     this.flex,
     this.width,
-    this.last = false,
     this.alignRight = false,
   });
   final String label;
   final int? flex;
   final double? width;
-  final bool last;
   final bool alignRight;
 
   @override
@@ -531,11 +801,6 @@ class _HeaderCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
         horizontal: WebTokens.s3,
         vertical: WebTokens.s3,
-      ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: Text(
@@ -557,27 +822,19 @@ class _BodyCell extends StatelessWidget {
     required this.child,
     this.flex,
     this.width,
-    this.last = false,
     this.alignRight = false,
   });
   final Widget child;
   final int? flex;
   final double? width;
-  final bool last;
   final bool alignRight;
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
         horizontal: WebTokens.s3,
         vertical: 8,
-      ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: child,
@@ -598,10 +855,16 @@ class _TaskRow extends StatefulWidget {
   const _TaskRow({
     required this.task,
     required this.onTap,
+    required this.checked,
+    required this.onToggleChecked,
     this.selected = false,
   });
   final Task task;
   final VoidCallback onTap;
+  /// Row selection (bulk-action checkbox) — distinct from [selected], which
+  /// flags the row whose detail panel is open.
+  final bool checked;
+  final VoidCallback onToggleChecked;
   final bool selected;
 
   @override
@@ -640,19 +903,6 @@ class _TaskRowState extends State<_TaskRow> {
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     final task = widget.task;
-    // Left accent stripe — red on overdue rows (permanent), brand-blue on
-    // hover/selected, transparent otherwise. Kept in the layout on every
-    // row so content never shifts.
-    final Color stripeColor;
-    if (task.overdue) {
-      stripeColor = t.danger;
-    } else if (widget.selected) {
-      stripeColor = t.accent;
-    } else if (_hover) {
-      stripeColor = t.accent;
-    } else {
-      stripeColor = Colors.transparent;
-    }
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -670,20 +920,23 @@ class _TaskRowState extends State<_TaskRow> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          child: IntrinsicHeight(
+          child: SizedBox(
+            height: _kRowHeight,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // AnimatedContainer(
-                //   duration: const Duration(milliseconds: 120),
-                //   curve: Curves.easeOut,
-                //   width: 3,
-                //   color: stripeColor,
-                // ),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
+                      SizedBox(
+                        width: _kColSelectWidth,
+                        child: Center(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: widget.onToggleChecked,
+                            child: SelectCheckbox(
+                              value: widget.checked,
+                              onChanged: (_) => widget.onToggleChecked(),
+                            ),
+                          ),
+                        ),
+                      ),
                       _BodyCell(
                         width: _kColNumberWidth,
                         child: Text(
@@ -752,7 +1005,6 @@ class _TaskRowState extends State<_TaskRow> {
                       ),
                       _BodyCell(
                         width: _kColDueWidth,
-                        last: true,
                         alignRight: true,
                         child: Text(
                           Fmt.date(task.duedate ?? task.created),
@@ -768,9 +1020,6 @@ class _TaskRowState extends State<_TaskRow> {
                               .withTabularNums(),
                         ),
                       ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -902,6 +1151,7 @@ class _SkeletonRow extends StatelessWidget {
             // width — keeps content columns pixel-aligned with the live
             // table so nothing shifts when data arrives.
             const SizedBox(width: 3),
+            const SizedBox(width: _kColSelectWidth),
             _BodyCell(
               width: _kColNumberWidth,
               child: _block(56),
@@ -928,7 +1178,6 @@ class _SkeletonRow extends StatelessWidget {
             ),
             _BodyCell(
               width: _kColDueWidth,
-              last: true,
               alignRight: true,
               child: _block(66),
             ),

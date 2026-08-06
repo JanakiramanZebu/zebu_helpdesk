@@ -6,9 +6,9 @@ import '../../dashboard/web/_tokens.dart';
 /// out of the general [WebTokens] because these tones only ever appear inside
 /// `HomeShellWeb` — no other screen consumes them.
 ///
-/// Values track light/dark mode: light theme renders a **white sidebar** with
-/// a hairline right border and brand-tinted selected pills (ClickUp-lite);
-/// dark theme keeps the near-black rail from the previous iteration.
+/// Values track light/dark mode: light theme renders a **brand-tinted
+/// gradient rail** and a defined, tinted top bar with accent-chip nav items;
+/// dark theme keeps the near-black rail with the same subtle depth cues.
 class ShellTokens {
   ShellTokens._(this.brightness);
   final Brightness brightness;
@@ -30,27 +30,67 @@ class ShellTokens {
   /// Viewport width under which the sidebar auto-collapses.
   static const collapseBreakpoint = 1100.0;
 
-  // --- Sidebar surfaces ----------------------------------------------------
-  /// Rail body colour. Light theme uses a **whisper-warm off-white**
-  /// (`#FBFAF7`). Dark theme uses GitHub Dark's `canvas-inset` / `sidebar-bg`
-  /// (`#010409`) — the deepest tone in the palette, so the rail reads as
-  /// grounding for the layered surfaces to its right.
-  Color get sidebarBg =>
-      isLight ? const Color(0xFFFBFAF7) : const Color(0xFF010409);
+  /// Corner radius of the inset content workspace card.
+  static const workspaceRadius = 16.0;
 
-  /// Right-edge hairline separating the sidebar from the content area. Warm
-  /// hairline on light; GitHub `border-muted` (`#21262D`) on dark.
+  /// Gutter between the chrome (sidebar/topbar/window edges) and the
+  /// workspace card — the canvas shows through here.
+  static const workspaceGutter = 10.0;
+
+  // --- Inset workspace -----------------------------------------------------
+  /// Chrome canvas behind the sidebar, topbar, and workspace gutter. Light
+  /// is a soft cool tint (not pure white) so the tinted chrome reads as a
+  /// distinct plate that the white cards + workspace pop against; dark keeps
+  /// GitHub's deepest `canvas-inset` (`#010409`) so the card reads as lifted.
+  Color get canvas =>
+      isLight ? const Color(0xFFF4F8FD) : const Color(0xFF010409);
+
+  /// Hairline around the rounded workspace card — this line is what sells
+  /// the inset, especially in dark mode where canvas and card are close.
+  Color get workspaceBorder =>
+      isLight ? const Color(0xFFDDE2E7) : const Color(0xFF21262D);
+
+  // --- Sidebar surfaces ----------------------------------------------------
+  /// Rich nav-rail wash — a soft brand-tinted vertical gradient so the sidebar
+  /// reads as its own premium surface instead of flat white chrome. The
+  /// bottom stop matches [canvas] so the rail melts into the gutter, while the
+  /// top carries a gentle Mynt-blue tint. Dark mode lifts the top a step above
+  /// the near-black inset for the same depth cue.
+  Gradient get sidebarGradient => LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: isLight
+        ? const [Color(0xFFE9EFFA), Color(0xFFF4F8FD)]
+        : const [Color(0xFF0F141C), Color(0xFF010409)],
+  );
+
+  /// Idle nav-row fill — transparent so the rail gradient shows through; hover
+  /// and selected states paint their own fills over it.
+  Color get sidebarBg => Colors.transparent;
+
+  /// Top-bar surface — a subtle tint a hair brighter than the rail so the app
+  /// bar reads as its own band of chrome, closed off by [topbarBorder].
+  Color get topbarBg =>
+      isLight ? const Color(0xFFEDF2FB) : const Color(0xFF0D1117);
+
+  /// Hairline under the top bar, defining it against the workspace below.
+  Color get topbarBorder =>
+      isLight ? const Color(0xFFDFE6F1) : const Color(0xFF21262D);
+
+  /// Right-edge hairline separating the sidebar from the content area. Mobile
+  /// cool `outlineVariant` (`#DDE2E7`) on light; GitHub `border-muted`
+  /// (`#21262D`) on dark.
   Color get sidebarBorder =>
-      isLight ? const Color(0xFFE8E4DA) : const Color(0xFF21262D);
+      isLight ? const Color(0xFFDDE2E7) : const Color(0xFF21262D);
 
   /// Inner divider (between the nav column and the profile footer).
   Color get sidebarDivider =>
-      isLight ? const Color(0xFFE8E4DA) : const Color(0xFF21262D);
+      isLight ? const Color(0xFFDDE2E7) : const Color(0xFF21262D);
 
   // --- Sidebar text / icon tones ------------------------------------------
-  /// Idle nav item text — muted secondary tone.
+  /// Idle nav item text — mobile muted secondary tone (`#737373`).
   Color get sidebarTextIdle =>
-      isLight ? const Color(0xFF6B6D7A) : const Color(0xFF8B949E);
+      isLight ? const Color(0xFF737373) : const Color(0xFF8B949E);
 
   /// Selected nav item text. Light → brand blue; dark → GitHub `text-primary`
   /// (`#F0F6FC`) so the selected pill reads with maximum contrast against
@@ -59,7 +99,7 @@ class ShellTokens {
       isLight ? WebTokens.accentLight : const Color(0xFFF0F6FC);
 
   Color get sidebarIconIdle =>
-      isLight ? const Color(0xFF6B6D7A) : const Color(0xFF8B949E);
+      isLight ? const Color(0xFF737373) : const Color(0xFF8B949E);
   Color get sidebarIconActive =>
       isLight ? WebTokens.accentLight : const Color(0xFFF0F6FC);
 
@@ -91,16 +131,16 @@ class ShellTokens {
       : const Color(0xFF21262D);
 
   /// Initial letter foreground.
-  Color get profileAvatarFg =>
-      isLight ? WebTokens.accentLight : Colors.white;
+  Color get profileAvatarFg => isLight ? WebTokens.accentLight : Colors.white;
 
-  /// Profile name text — always the primary text tone in either mode.
+  /// Profile name text — mobile `textPrimary` (`#141414`) in light, GH
+  /// `text-primary` in dark.
   Color get profileNameFg =>
-      isLight ? const Color(0xFF1F2028) : const Color(0xFFF0F6FC);
+      isLight ? const Color(0xFF141414) : const Color(0xFFF0F6FC);
 
-  /// Profile email text — muted secondary in either mode.
+  /// Profile email text — mobile muted secondary (`#737373`) in light.
   Color get profileEmailFg =>
-      isLight ? const Color(0xFF6B6D7A) : const Color(0xFF8B949E);
+      isLight ? const Color(0xFF737373) : const Color(0xFF8B949E);
 
   // --- New Ticket CTA ------------------------------------------------------
   /// Flat-fill primary CTA above the nav destinations. Kept simple — no
@@ -108,8 +148,7 @@ class ShellTokens {
   /// the same family. Both modes now render a coloured pill (Mynt brand
   /// blue in light, GitHub accent blue in dark) so the CTA reads as the
   /// primary action against either rail.
-  Color get ctaBg =>
-      isLight ? WebTokens.accentLight : WebTokens.accentDark;
+  Color get ctaBg => isLight ? WebTokens.accentLight : WebTokens.accentDark;
   Color get ctaBgHover =>
       isLight ? WebTokens.accentHoverLight : WebTokens.accentHoverDark;
 
@@ -117,8 +156,7 @@ class ShellTokens {
   /// separation from the whisper-warm sidebar). Dark wears a 1 px white
   /// rim at ~10 % alpha so the top edge catches the tiniest bit of light
   /// against the deeper `canvas-inset` rail — no other chrome.
-  Color? get ctaBorder =>
-      isLight ? null : Colors.white.withValues(alpha: 0.10);
+  Color? get ctaBorder => isLight ? null : Colors.white.withValues(alpha: 0.10);
   Color? get ctaBorderHover =>
       isLight ? null : Colors.white.withValues(alpha: 0.16);
 
@@ -128,14 +166,4 @@ class ShellTokens {
   /// Plus-glyph tint. White in both modes now that the surface itself
   /// carries the colour signal.
   Color get ctaIconFg => Colors.white;
-
-
-  // --- Top bar surfaces ----------------------------------------------------
-  /// Top bar mirrors the sidebar's deepest surface in dark mode — GitHub
-  /// `navbar-bg` (`#010409`) — so the app chrome reads as one continuous
-  /// grounding plate around the workspace.
-  Color get topbarBg =>
-      isLight ? const Color(0xFFFFFFFF) : const Color(0xFF010409);
-  Color get topbarBorder =>
-      isLight ? const Color(0xFFE8E4DA) : const Color(0xFF21262D);
 }

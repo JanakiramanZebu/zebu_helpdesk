@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/assets.dart';
 import '../../features/dashboard/web/_tokens.dart';
+import '../svg_icon.dart';
 
 /// Unified search input used at the top of every list screen.
 ///
@@ -58,7 +60,7 @@ class _ListSearchInputState extends State<ListSearchInput> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.search_rounded, size: 17, color: t.textSecondary),
+            SvgIcon(Assets.search, size: 16, color: t.textSecondary),
             const SizedBox(width: 8),
             Expanded(
               child: TextField(

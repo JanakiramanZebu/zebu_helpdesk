@@ -40,7 +40,9 @@ class PremiumCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
-        borderRadius: BorderRadius.circular(WebTokens.rSm),
+        // 16px — the unified "card surface" radius shared with [KpiTile] and
+        // the loading skeletons, per the design system's r2xl stat-tile token.
+        borderRadius: BorderRadius.circular(WebTokens.r2xl),
         border: Border.all(color: t.borderSubtle, width: 1),
         boxShadow: WebTokens.shadowXs,
       ),
@@ -85,8 +87,7 @@ class PremiumCard extends StatelessWidget {
                 ],
               ),
             ),
-            if (dividerAfterHeader)
-              Container(height: 1, color: t.borderSubtle),
+            if (dividerAfterHeader) Container(height: 1, color: t.borderSubtle),
           ],
           child,
         ],

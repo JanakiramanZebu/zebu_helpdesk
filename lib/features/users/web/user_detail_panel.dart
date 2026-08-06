@@ -1091,7 +1091,7 @@ class _TicketRowState extends State<_TicketRow> {
                   ),
                   decoration: BoxDecoration(
                     color: t.bgTertiary,
-                    borderRadius: BorderRadius.circular(WebTokens.s1),
+                    borderRadius: BorderRadius.circular(WebTokens.rXs),
                   ),
                   child: Text(
                     '#${ticket.number}',

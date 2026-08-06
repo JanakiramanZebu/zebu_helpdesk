@@ -198,10 +198,24 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
             ),
           ),
           SegmentedTabBar<String>(
+            // Dot colors mirror the mobile queue-type mapping: tickets →
+            // indigo, tasks → green, all → neutral grey.
             items: const [
-              SegmentedTabItem(value: 'all', label: 'All'),
-              SegmentedTabItem(value: 'ticket', label: 'Tickets'),
-              SegmentedTabItem(value: 'task', label: 'Tasks'),
+              SegmentedTabItem(
+                value: 'all',
+                label: 'All',
+                dot: Color(0xFF737373),
+              ),
+              SegmentedTabItem(
+                value: 'ticket',
+                label: 'Tickets',
+                dot: WebTokens.indigo,
+              ),
+              SegmentedTabItem(
+                value: 'task',
+                label: 'Tasks',
+                dot: WebTokens.success,
+              ),
             ],
             selected: selectedTab,
             onSelect: (k) => _setType(k == 'all' ? null : k),

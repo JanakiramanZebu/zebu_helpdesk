@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -8,9 +7,12 @@ import '../../../core/assets.dart';
 import '../../../core/router/routes.dart';
 import '../../../providers.dart';
 import '../../../core/theme/theme_controller.dart';
+import '../../../widgets/app_dropdown.dart';
+import '../../../widgets/svg_icon.dart';
 import '../../../widgets/user_avatar.dart';
 import '../../dashboard/web/_tokens.dart';
 import '../../profile/web/profile_screen_web.dart';
+import '../../tasks/web/create_task_screen_web.dart';
 import '../../tickets/web/create_ticket_screen_web.dart';
 import '_shell_tokens.dart';
 import 'profile_menu_popover.dart';
@@ -39,8 +41,9 @@ class HomeShellWeb extends StatelessWidget {
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
     final collapsed = width < ShellTokens.collapseBreakpoint;
-    final sidebarWidth =
-        collapsed ? ShellTokens.sidebarCollapsed : ShellTokens.sidebarExpanded;
+    final sidebarWidth = collapsed
+        ? ShellTokens.sidebarCollapsed
+        : ShellTokens.sidebarExpanded;
 
     // Apply the Zebu Premium typeface (Inter) to the entire web tree — the
     // family called out globally in DESIGN_SYSTEM.md. Mobile never reaches
@@ -48,6 +51,7 @@ class HomeShellWeb extends StatelessWidget {
     // already use Inter via AppTheme.
     final base = Theme.of(context);
     final t = WebTokens.of(context);
+    final s = ShellTokens.of(context);
     return Theme(
       data: base.copyWith(
         textTheme: GoogleFonts.interTextTheme(base.textTheme),
@@ -55,6 +59,8 @@ class HomeShellWeb extends StatelessWidget {
           thumbVisibility: const WidgetStatePropertyAll(true),
           thickness: const WidgetStatePropertyAll(8),
           radius: const Radius.circular(4),
+          // Keep thumb ends clear of the workspace card's rounded corners.
+          mainAxisMargin: 4,
           thumbColor: WidgetStatePropertyAll(
             base.colorScheme.outlineVariant.withValues(alpha: 0.9),
           ),
@@ -67,7 +73,7 @@ class HomeShellWeb extends StatelessWidget {
       child: ScrollConfiguration(
         behavior: const _WebScrollBehavior(),
         child: Scaffold(
-          backgroundColor: t.bgPrimary,
+          backgroundColor: s.canvas,
           body: Column(
             children: [
               _TopBar(logoSlotWidth: sidebarWidth),
@@ -79,7 +85,39 @@ class HomeShellWeb extends StatelessWidget {
                       onTap: _go,
                       collapsed: collapsed,
                     ),
-                    Expanded(child: shell),
+                    // Inset workspace: the routed content lives in a rounded
+                    // card floating on the chrome canvas. The hairline is
+                    // painted as a *foreground* decoration because every
+                    // routed screen fills an opaque bgPrimary that would
+                    // otherwise bury a background border; the ClipRRect keeps
+                    // full-bleed screen content and slide-over panels inside
+                    // the rounded corners. The base ColoredBox guarantees the
+                    // canvas never flashes through during branch swaps.
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(
+                          ShellTokens.workspaceGutter,
+                        ),
+                        child: DecoratedBox(
+                          position: DecorationPosition.foreground,
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: s.workspaceBorder,
+                              width: 1,
+                            ),
+                            borderRadius: BorderRadius.circular(
+                              ShellTokens.workspaceRadius,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(
+                              ShellTokens.workspaceRadius,
+                            ),
+                            child: ColoredBox(color: t.bgPrimary, child: shell),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -94,33 +132,14 @@ class HomeShellWeb extends StatelessWidget {
 // Branch indices must match the order declared in `app_router.dart`. On web
 // the router adds a dedicated Inbox branch between Tasks and More, so the web
 // destination list is 5 entries wide (mobile still uses 4). Each destination
-// gets a distinctive icon so the sidebar reads at a glance when collapsed.
+// uses the mobile app's custom nav glyph (one SVG per destination — the
+// selected state is a color tint, matching the mobile FloatingNavBar).
 const _destinations = <_NavDest>[
-  _NavDest(
-    label: 'Dashboard',
-    icon: Icons.space_dashboard_outlined,
-    selectedIcon: Icons.space_dashboard,
-  ),
-  _NavDest(
-    label: 'Tickets',
-    icon: Icons.local_activity_outlined,
-    selectedIcon: Icons.local_activity,
-  ),
-  _NavDest(
-    label: 'Tasks',
-    icon: Icons.checklist_rtl_outlined,
-    selectedIcon: Icons.checklist_rtl,
-  ),
-  _NavDest(
-    label: 'Inbox',
-    icon: Icons.mark_email_unread_outlined,
-    selectedIcon: Icons.mark_email_unread,
-  ),
-  _NavDest(
-    label: 'More',
-    icon: Icons.grid_view_outlined,
-    selectedIcon: Icons.grid_view,
-  ),
+  _NavDest(label: 'Dashboard', svg: Assets.navDashboard),
+  _NavDest(label: 'Tickets', svg: Assets.navTickets),
+  _NavDest(label: 'Tasks', svg: Assets.navTasks),
+  _NavDest(label: 'Inbox', svg: Assets.navInbox),
+  _NavDest(label: 'More', svg: Assets.navMore),
 ];
 
 // Named indices so intent is obvious at the call sites below.
@@ -131,14 +150,11 @@ const _idxInbox = 3;
 const _idxMore = 4;
 
 class _NavDest {
-  const _NavDest({
-    required this.label,
-    required this.icon,
-    required this.selectedIcon,
-  });
+  const _NavDest({required this.label, required this.svg});
   final String label;
-  final IconData icon;
-  final IconData selectedIcon;
+
+  /// Mobile nav glyph asset (`Assets.nav*`) — tinted per selection state.
+  final String svg;
 }
 
 // --- Sidebar ----------------------------------------------------------------
@@ -157,45 +173,44 @@ class _Sidebar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = ShellTokens.of(context);
-    final width =
-        collapsed ? ShellTokens.sidebarCollapsed : ShellTokens.sidebarExpanded;
+    final t = WebTokens.of(context);
+    final width = collapsed
+        ? ShellTokens.sidebarCollapsed
+        : ShellTokens.sidebarExpanded;
     return Container(
       width: width,
-      decoration: BoxDecoration(
-        // Was mistakenly wired to `s.ctaFg` (always white) — meant the rail
-        // stayed white in dark mode. Now tracks the theme via `sidebarBg`.
-        color: s.topbarBg,
-        border: Border(
-          right: BorderSide(color: s.sidebarBorder, width: 1),
-        ),
-      ),
+      // Rich brand-tinted rail — a soft vertical gradient (see
+      // [ShellTokens.sidebarGradient]) gives the sidebar depth and ties it to
+      // the Mynt-blue brand instead of reading as flat white chrome. The
+      // inset workspace card's hairline still provides the right-edge break.
+      decoration: BoxDecoration(gradient: s.sidebarGradient),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 14),
-          _NewTicketButton(collapsed: collapsed),
+          _CreateButton(collapsed: collapsed),
           const SizedBox(height: 18),
           _SectionLabel(text: 'Menu', collapsed: collapsed),
           _SideNavItem(
-            icon: _destinations[_idxDashboard].icon,
-            selectedIcon: _destinations[_idxDashboard].selectedIcon,
+            svg: _destinations[_idxDashboard].svg,
             label: _destinations[_idxDashboard].label,
+            tone: t.accent,
             selected: currentIndex == _idxDashboard,
             collapsed: collapsed,
             onTap: () => onTap(_idxDashboard),
           ),
           _SideNavItem(
-            icon: _destinations[_idxTickets].icon,
-            selectedIcon: _destinations[_idxTickets].selectedIcon,
+            svg: _destinations[_idxTickets].svg,
             label: _destinations[_idxTickets].label,
+            tone: WebTokens.indigo,
             selected: currentIndex == _idxTickets,
             collapsed: collapsed,
             onTap: () => onTap(_idxTickets),
           ),
           _SideNavItem(
-            icon: _destinations[_idxTasks].icon,
-            selectedIcon: _destinations[_idxTasks].selectedIcon,
+            svg: _destinations[_idxTasks].svg,
             label: _destinations[_idxTasks].label,
+            tone: WebTokens.success,
             selected: currentIndex == _idxTasks,
             collapsed: collapsed,
             onTap: () => onTap(_idxTasks),
@@ -211,9 +226,9 @@ class _Sidebar extends ConsumerWidget {
           const SizedBox(height: 10),
           _SectionLabel(text: 'Workspace', collapsed: collapsed),
           _SideNavItem(
-            icon: _destinations[_idxMore].icon,
-            selectedIcon: _destinations[_idxMore].selectedIcon,
+            svg: _destinations[_idxMore].svg,
             label: _destinations[_idxMore].label,
+            tone: const Color(0xFF8B5CF6),
             selected: currentIndex == _idxMore,
             collapsed: collapsed,
             onTap: () => onTap(_idxMore),
@@ -262,21 +277,53 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-/// Sidebar primary action — flat solid CTA. Hover is a single colour swap
-/// in the same family, nothing else. Dark mode uses a monochrome sidebar-
-/// family surface so the CTA reads as an integrated chip rather than a
-/// bright blue plate against the near-black rail; the accent blue is
-/// reserved for the plus glyph.
-class _NewTicketButton extends StatefulWidget {
-  const _NewTicketButton({required this.collapsed});
+/// Sidebar primary action — brand-gradient CTA, ported from the mobile
+/// FloatingNavBar create button (`[brandLight, brand]` topLeft→bottomRight).
+/// Hover deepens both gradient stops in the same family so the
+/// AnimatedContainer lerps smoothly; no lift, no glow.
+/// Sidebar primary CTA. A gradient "Create ▾" split that opens a small menu
+/// offering New ticket / New task (Asana's "+ Create" pattern), so task
+/// creation has a first-class entry point alongside tickets.
+class _CreateButton extends StatefulWidget {
+  const _CreateButton({required this.collapsed});
   final bool collapsed;
 
   @override
-  State<_NewTicketButton> createState() => _NewTicketButtonState();
+  State<_CreateButton> createState() => _CreateButtonState();
 }
 
-class _NewTicketButtonState extends State<_NewTicketButton> {
+class _CreateButtonState extends State<_CreateButton> {
   bool _hover = false;
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  Future<void> _openMenu(BuildContext anchorContext) async {
+    final choice = await showAppDropdown<String>(
+      anchorContext,
+      minWidth: 200,
+      entries: const [
+        AppDropdownItem(
+          value: 'ticket',
+          label: 'New ticket',
+          icon: Icons.confirmation_number_outlined,
+        ),
+        AppDropdownItem(
+          value: 'task',
+          label: 'New task',
+          icon: Icons.check_circle_outline,
+        ),
+      ],
+    );
+    if (!mounted || choice == null) return;
+    if (choice == 'ticket') {
+      showCreateTicketDialog(context);
+    } else {
+      showCreateTaskDialog(context);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -288,50 +335,65 @@ class _NewTicketButtonState extends State<_NewTicketButton> {
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          onTap: () => showCreateTicketDialog(context),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOut,
-            height: 40,
-            decoration: BoxDecoration(
-              color: _hover ? s.ctaBgHover : s.ctaBg,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
-              border: borderColor == null
-                  ? null
-                  : Border.all(color: borderColor, width: 1),
-            ),
-            child: widget.collapsed
-                ? Tooltip(
-                    message: 'New ticket',
-                    child: Center(
-                      child: Icon(
-                        Icons.library_add_outlined,
-                        color: s.ctaIconFg,
-                        size: 20,
-                      ),
-                    ),
-                  )
-                : Row(
-                    children: [
-                      const SizedBox(width: 12),
-                      Icon(
-                        Icons.library_add_outlined,
-                        color: s.ctaIconFg,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 10),
-                      Text(
-                        'New Ticket',
-                        style: TextStyle(
-                          color: s.ctaFg,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.2,
+        child: Builder(
+          builder: (anchorContext) => GestureDetector(
+            onTap: () => _openMenu(anchorContext),
+            onTapDown: (_) => _setPressed(true),
+            onTapUp: (_) => _setPressed(false),
+            onTapCancel: () => _setPressed(false),
+            child: AnimatedScale(
+              scale: _pressed ? 0.97 : 1,
+              duration: const Duration(milliseconds: 110),
+              curve: Curves.easeOut,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 140),
+                curve: Curves.easeOut,
+                height: 40,
+                decoration: BoxDecoration(
+                  // Flat solid brand-blue fill (no dark-navy gradient bottom).
+                  // Hover deepens one step in the same family.
+                  color: _hover ? s.ctaBgHover : s.ctaBg,
+                  borderRadius: BorderRadius.circular(WebTokens.rSm),
+                  border: borderColor == null
+                      ? null
+                      : Border.all(color: borderColor, width: 1),
+                ),
+                child: widget.collapsed
+                    ? Tooltip(
+                        message: 'Create',
+                        child: Center(
+                          child: Icon(
+                            Icons.add_rounded,
+                            color: s.ctaIconFg,
+                            size: 22,
+                          ),
                         ),
+                      )
+                    : Row(
+                        children: [
+                          const SizedBox(width: 12),
+                          Icon(Icons.add_rounded, color: s.ctaIconFg, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Create',
+                            style: TextStyle(
+                              color: s.ctaFg,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
+                          const Spacer(),
+                          Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: s.ctaFg,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                        ],
                       ),
-                    ],
-                  ),
+              ),
+            ),
           ),
         ),
       ),
@@ -341,18 +403,23 @@ class _NewTicketButtonState extends State<_NewTicketButton> {
 
 class _SideNavItem extends StatefulWidget {
   const _SideNavItem({
-    required this.icon,
-    required this.selectedIcon,
+    required this.svg,
     required this.label,
+    required this.tone,
     required this.selected,
     required this.collapsed,
     required this.onTap,
     this.trailing,
   });
 
-  final IconData icon;
-  final IconData selectedIcon;
+  /// Mobile nav glyph asset (`Assets.nav*`) — rendered inside a per-destination
+  /// coloured tile that fills solid + glows when the row is selected.
+  final String svg;
   final String label;
+
+  /// Destination accent — each nav item owns a distinct hue (ClickUp / Height
+  /// style) so the rail reads as a colourful, modern task tool.
+  final Color tone;
   final bool selected;
   final bool collapsed;
   final VoidCallback onTap;
@@ -368,51 +435,67 @@ class _SideNavItemState extends State<_SideNavItem> {
   @override
   Widget build(BuildContext context) {
     final s = ShellTokens.of(context);
-    // ClickUp-inspired active state: a subtle neutral surface (not brand
-    // blue) plus a thin brand accent bar down the left edge, and the icon /
-    // label go pure white. Hover uses the same surface at a lower alpha so
-    // the row previews before commit.
-    //
-    // Idle bg is set to `sidebarBg` explicitly (rather than transparent) so
-    // the [AnimatedContainer] tweens color-to-color like the tickets table
-    // row — smoother than transparent-to-color, which can flicker at low
-    // alphas during the transition.
+    final tone = widget.tone;
+    // Modern task-tool rail (ClickUp / Height): each destination owns a hue.
+    // The selected row washes its tone at low alpha across the whole pill and
+    // the label goes strong-neutral for readability; hover shows a neutral
+    // preview fill. Idle is transparent so the brand-tinted rail shows through.
     final bg = widget.selected
-        ? s.sidebarSelected
-        : (_hover ? s.sidebarHover : s.sidebarBg);
-    final iconColor =
-        widget.selected ? s.sidebarIconActive : s.sidebarIconIdle;
-    final textColor =
-        widget.selected ? s.sidebarTextActive : s.sidebarTextIdle;
+        ? tone.withValues(alpha: 0.14)
+        : (_hover ? tone.withValues(alpha: 0.07) : Colors.transparent);
+    final textColor = widget.selected ? s.profileNameFg : s.sidebarTextIdle;
+
+    // Coloured icon tile — the signature of the modern look. Idle rows carry a
+    // soft tone-tinted tile with a tone-coloured glyph; the selected row fills
+    // the tile solid with a white glyph and a soft tone-coloured glow. Every
+    // value tweens so switching branches glides rather than snapping.
+    final iconChip = AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      width: 30,
+      height: 30,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: widget.selected
+            ? tone
+            : tone.withValues(alpha: _hover ? 0.20 : 0.12),
+        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        boxShadow: widget.selected
+            ? [
+                BoxShadow(
+                  color: tone.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: SvgIcon(
+        widget.svg,
+        size: 18,
+        color: widget.selected ? Colors.white : tone,
+      ),
+    );
 
     final child = widget.collapsed
         ? Tooltip(
             message: widget.label,
-            child: Center(
-              child: Icon(
-                widget.selected ? widget.selectedIcon : widget.icon,
-                color: iconColor,
-                size: 20,
-              ),
-            ),
+            child: Center(child: iconChip),
           )
         : Row(
             children: [
-              const SizedBox(width: 14),
-              Icon(
-                widget.selected ? widget.selectedIcon : widget.icon,
-                color: iconColor,
-                size: 19,
-              ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
+              iconChip,
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   widget.label,
                   style: TextStyle(
                     color: textColor,
                     fontSize: 13.5,
-                    fontWeight:
-                        widget.selected ? FontWeight.w600 : FontWeight.w500,
+                    fontWeight: widget.selected
+                        ? FontWeight.w600
+                        : FontWeight.w500,
                     letterSpacing: 0.15,
                   ),
                 ),
@@ -425,10 +508,7 @@ class _SideNavItemState extends State<_SideNavItem> {
           );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 2,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
@@ -436,39 +516,24 @@ class _SideNavItemState extends State<_SideNavItem> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: widget.onTap,
-          child: Stack(
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 160),
-                curve: Curves.easeOut,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(WebTokens.rSm),
-                  // Soft accent glow on the selected pill so the current
-                  // section reads as elevated against sibling rows — matches
-                  // the accent-shadow language used on KPI tiles / CTAs.
-                  boxShadow: widget.selected ? WebTokens.accentGlow : null,
-                ),
-                child: child,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOut,
+            height: 44,
+            decoration: BoxDecoration(
+              color: bg,
+              // Big soft radius → a "floating pill" nav row, the modern
+              // task-tool look. A hairline in the row's tone appears only when
+              // selected so the active pill reads as a crisp coloured chip.
+              borderRadius: BorderRadius.circular(WebTokens.r2xl),
+              border: Border.all(
+                color: widget.selected
+                    ? tone.withValues(alpha: 0.28)
+                    : Colors.transparent,
+                width: 1,
               ),
-              // Rounded left accent bar on the selected row. Fully-rounded so
-              // the marker feels like a pill sitting inside the pill rather
-              // than a hard rectangular tick.
-              if (widget.selected)
-                Positioned(
-                  left: 0,
-                  top: 10,
-                  bottom: 10,
-                  child: Container(
-                    width: 3,
-                    decoration: BoxDecoration(
-                      color: s.sidebarAccentBar,
-                      borderRadius: BorderRadius.circular(WebTokens.rFull),
-                    ),
-                  ),
-                ),
-            ],
+            ),
+            child: child,
           ),
         ),
       ),
@@ -491,15 +556,14 @@ class _InboxNavItem extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref.watch(unreadCountProvider).maybeWhen(
-          data: (c) => c,
-          orElse: () => 0,
-        );
+    final unread = ref
+        .watch(unreadCountProvider)
+        .maybeWhen(data: (c) => c, orElse: () => 0);
     final s = ShellTokens.of(context);
     return _SideNavItem(
-      icon: Icons.inbox_outlined,
-      selectedIcon: Icons.inbox,
+      svg: Assets.navInbox,
       label: 'Inbox',
+      tone: s.sidebarBadgePink,
       selected: selected,
       collapsed: collapsed,
       onTap: onTap,
@@ -549,23 +613,51 @@ class _ProfileFooterState extends ConsumerState<_ProfileFooter> {
     final me = ref.watch(meProvider);
     return me.maybeWhen(
       data: (m) {
-        final initial =
-            m.name.trim().isNotEmpty ? m.name.trim()[0].toUpperCase() : '?';
-        final avatar = Container(
+        final initial = m.name.trim().isNotEmpty
+            ? m.name.trim()[0].toUpperCase()
+            : '?';
+        // Availability dot on the avatar's corner — mobile _AvatarWithStatus
+        // parity: 10px dot ringed by the rail color so it reads as sitting
+        // on top of the avatar. Green = available, grey = away.
+        final avatar = SizedBox(
           width: 32,
           height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: s.profileAvatarBg,
-            shape: BoxShape.circle,
-          ),
-          child: Text(
-            initial,
-            style: TextStyle(
-              color: s.profileAvatarFg,
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-            ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: s.profileAvatarBg,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  initial,
+                  style: TextStyle(
+                    color: s.profileAvatarFg,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: -1,
+                bottom: -1,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: m.available
+                        ? WebTokens.success
+                        : const Color(0xFF737373),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: s.canvas, width: 2),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
 
@@ -597,9 +689,7 @@ class _ProfileFooterState extends ConsumerState<_ProfileFooter> {
                 // flush at rest but promotes into a card the moment it's
                 // interactive — mirrors the KPI tile hover treatment.
                 border: Border.all(
-                  color: _hover
-                      ? s.sidebarBorder
-                      : Colors.transparent,
+                  color: _hover ? s.sidebarBorder : Colors.transparent,
                   width: 1,
                 ),
               ),
@@ -640,9 +730,7 @@ class _ProfileFooterState extends ConsumerState<_ProfileFooter> {
                   Icon(
                     Icons.more_horiz_rounded,
                     size: 18,
-                    color: _hover
-                        ? s.profileNameFg
-                        : s.profileEmailFg,
+                    color: _hover ? s.profileNameFg : s.profileEmailFg,
                   ),
                 ],
               ),
@@ -656,6 +744,73 @@ class _ProfileFooterState extends ConsumerState<_ProfileFooter> {
 }
 
 // --- Top bar ----------------------------------------------------------------
+
+/// Custom Zebu wording lockup shown in the app-bar brand slot — a rounded
+/// product-icon tile beside the "Zebu Helpdesk" name + "Support workspace"
+/// subtitle. Replaces the standalone SVG wordmark. Collapses to the icon mark
+/// alone when the rail is narrow.
+class _BrandLockup extends StatelessWidget {
+  const _BrandLockup({required this.collapsed});
+  final bool collapsed;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = ShellTokens.of(context);
+    final mark = Container(
+      width: 32,
+      height: 32,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        boxShadow: WebTokens.shadowSm,
+        border: Border.all(color: s.workspaceBorder, width: 1),
+      ),
+      child: Image.asset(Assets.appIcon, fit: BoxFit.cover),
+    );
+
+    if (collapsed) return mark;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        mark,
+        const SizedBox(width: 10),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Zebu Helpdesk',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: s.profileNameFg,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  height: 1.1,
+                ),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                'Support workspace',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: s.sidebarTextIdle,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  height: 1.1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
 
 class _TopBar extends ConsumerWidget {
   const _TopBar({required this.logoSlotWidth});
@@ -673,36 +828,29 @@ class _TopBar extends ConsumerWidget {
 
     return Container(
       height: ShellTokens.topbarHeight,
+      // Defined app-bar band — a subtle tinted surface closed off by a bottom
+      // hairline so the top bar reads as its own chrome, not empty white space.
       decoration: BoxDecoration(
         color: s.topbarBg,
         border: Border(bottom: BorderSide(color: s.topbarBorder, width: 1)),
-        // Whisper shadow so the top bar reads as slightly lifted off the
-        // warm-paper content below — mirrors the shell rhythm used in
-        // Asana / Linear.
-        boxShadow: WebTokens.shadowXs,
       ),
       child: Row(
         children: [
-          // Brand logo slot — same width as the sidebar so the logo sits
-          // directly above it. When collapsed the slot is too narrow for the
-          // full wordmark at height 36, so we scale via FittedBox and shrink
-          // the horizontal padding to keep the mark visible.
+          // Brand slot — the custom Zebu wording lockup (icon tile + name +
+          // subtitle) sits here, same width as the sidebar so it aligns above
+          // it. Collapses to just the icon mark on the narrow rail.
           Builder(
             builder: (context) {
               final collapsed = logoSlotWidth < 100;
               return SizedBox(
                 width: logoSlotWidth,
                 child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: collapsed ? 8 : 18,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: collapsed ? 8 : 16),
                   child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: SvgPicture.asset(Assets.zebuLogo, height: 34),
-                    ),
+                    alignment: collapsed
+                        ? Alignment.center
+                        : Alignment.centerLeft,
+                    child: _BrandLockup(collapsed: collapsed),
                   ),
                 ),
               );
@@ -718,9 +866,9 @@ class _TopBar extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   const _TopBarIconButton.themeToggle(),
-                  const SizedBox(width: 4),
-                  _TopBarNotifButton(unread: unreadCount, tokens: t),
                   const SizedBox(width: 8),
+                  // _TopBarNotifButton(unread: unreadCount, tokens: t),
+                  // const SizedBox(width: 8),
                   const _AvatarMenuButton(),
                 ],
               ),
@@ -823,11 +971,7 @@ class _TopBarNotifButtonState extends State<_TopBarNotifButton> {
         largeSize: 16,
         padding: const EdgeInsets.symmetric(horizontal: 4),
         offset: const Offset(2, -4),
-        child: Icon(
-          Icons.notifications_none_rounded,
-          size: 20,
-          color: t.textPrimary,
-        ),
+        child: SvgIcon(Assets.bell, size: 20, color: t.textPrimary),
       ),
     );
   }
@@ -864,15 +1008,19 @@ class _TopBarGhost extends StatelessWidget {
           onTap: onTap,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 100),
-            width: 36,
-            height: 36,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-              color: hover ? t.bgHover : Colors.transparent,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              // Elevated white pill so each action reads as a real button that
+              // pops against the tinted top-bar band — not a bare glyph. Hover
+              // warms the fill + border for a tactile step-up.
+              color: hover ? t.bgHover : t.bgElevated,
+              borderRadius: BorderRadius.circular(WebTokens.rMd),
               border: Border.all(
-                color: hover ? t.borderSubtle : Colors.transparent,
+                color: hover ? t.borderStrong : t.borderDefault,
                 width: 1,
               ),
+              boxShadow: WebTokens.shadowXs,
             ),
             child: Center(child: child),
           ),

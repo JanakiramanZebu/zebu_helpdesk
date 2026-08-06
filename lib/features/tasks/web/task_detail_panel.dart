@@ -5,8 +5,10 @@ import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/assets.dart';
 import '../../../core/format.dart';
 import '../../../models/common.dart';
+import '../../../models/me.dart';
 import '../../../models/meta.dart';
 import '../../../models/task.dart';
 import '../../../providers.dart';
@@ -43,6 +45,43 @@ const double _kTwoColumnBreakpoint = 780;
 /// on the longer field values, tight enough that the activity column keeps
 /// the majority of the panel.
 const double _kFieldsSidebarWidth = 320;
+
+/// Per-agent action gates for a task, ported from osTicket's
+/// `Task::checkStaffPerm()` (`include/class.task.php`). The backend enforces
+/// these on every mutating `/tasks/*` endpoint (403 otherwise); mirroring them
+/// here hides/disables the affordances an agent can't use — matching the SCP
+/// rule that a task "cannot be edited by others". Visibility is already granted
+/// (the detail loaded), so only the per-department role permission matters.
+class _TaskCaps {
+  const _TaskCaps({
+    this.canEdit = false,
+    this.canAssign = false,
+    this.canTransfer = false,
+    this.canClose = false,
+    this.canReply = false,
+  });
+
+  final bool canEdit; // task.edit — priority + field edits
+  final bool canAssign; // task.assign
+  final bool canTransfer; // task.transfer — department change
+  final bool canClose; // task.close — close / reopen / status
+  final bool canReply; // task.reply — reply + internal note
+
+  /// True when at least one header (Actions dropdown) action is available.
+  bool get hasHeaderAction => canClose || canEdit || canAssign || canTransfer;
+
+  factory _TaskCaps.from(Me? me, Task? task) {
+    if (me == null || task == null) return const _TaskCaps();
+    final d = task.departmentId;
+    return _TaskCaps(
+      canEdit: me.canOn('task.edit', d),
+      canAssign: me.canOn('task.assign', d),
+      canTransfer: me.canOn('task.transfer', d),
+      canClose: me.canOn('task.close', d),
+      canReply: me.canOn('task.reply', d),
+    );
+  }
+}
 
 class TaskDetailPanel extends ConsumerStatefulWidget {
   const TaskDetailPanel({
@@ -387,10 +426,16 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
       );
     }
     final task = _task!;
+    // Per-agent action gates (ported from Task::checkStaffPerm). `me` is loaded
+    // app-wide at startup, so valueOrNull is populated by the time this opens;
+    // until then caps default to none (safe — the backend would 403 anyway).
+    final me = ref.watch(meProvider).asData?.value;
+    final caps = _TaskCaps.from(me, task);
     return Column(
       children: [
         _Header(
           task: task,
+          caps: caps,
           onClose: widget.onClose,
           onMenu: _onMenu,
           isFullscreen: widget.isFullscreen,
@@ -401,12 +446,14 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= _kTwoColumnBreakpoint;
-              if (wide) return _buildWide(t, task);
-              return _buildNarrow(t, task);
+              if (wide) return _buildWide(t, task, caps);
+              return _buildNarrow(t, task, caps);
             },
           ),
         ),
-        CommentComposer(onSend: _sendReply, disabled: _acting),
+        // Reply and internal note both require task.reply on the backend, so a
+        // single canReply gate covers the whole composer.
+        CommentComposer(onSend: _sendReply, disabled: _acting || !caps.canReply),
       ],
     );
   }
@@ -415,7 +462,7 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   /// composer at the bottom. Same layout the panel shipped with before the
   /// two-column split, kept for the sub-780 px slot the panel gets when the
   /// list underneath is still visible on smaller viewports.
-  Widget _buildNarrow(WebTokens t, Task task) {
+  Widget _buildNarrow(WebTokens t, Task task, _TaskCaps caps) {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -427,10 +474,10 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
           priorityRowKey: _priorityRowKey,
           assigneeRowKey: _assigneeRowKey,
           departmentRowKey: _departmentRowKey,
-          onStatusTap: _pickTaskStatus,
-          onPriorityTap: _pickTaskPriority,
-          onAssigneeTap: _pickTaskAssignee,
-          onDepartmentTap: _pickTaskDepartment,
+          onStatusTap: caps.canClose ? _pickTaskStatus : null,
+          onPriorityTap: caps.canEdit ? _pickTaskPriority : null,
+          onAssigneeTap: caps.canAssign ? _pickTaskAssignee : null,
+          onDepartmentTap: caps.canTransfer ? _pickTaskDepartment : null,
         ),
         const SizedBox(height: WebTokens.s2),
         const _ActivityHeader(),
@@ -442,7 +489,8 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
             ),
           )
         else ...[
-          for (final e in _thread) _ThreadRow(entry: e),
+          for (final (i, e) in _thread.indexed)
+            _ThreadRow(entry: e, isLast: i == _thread.length - 1),
           const SizedBox(height: WebTokens.s3),
         ],
       ],
@@ -454,7 +502,7 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   /// [_kFieldsSidebarWidth]. A hairline seam separates the two columns —
   /// matches the reference layout where the details block sits as a fixed
   /// rail alongside the message thread.
-  Widget _buildWide(WebTokens t, Task task) {
+  Widget _buildWide(WebTokens t, Task task, _TaskCaps caps) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -471,7 +519,8 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
                 )
               else ...[
                 const SizedBox(height: WebTokens.s3),
-                for (final e in _thread) _ThreadRow(entry: e),
+                for (final (i, e) in _thread.indexed)
+                  _ThreadRow(entry: e, isLast: i == _thread.length - 1),
                 const SizedBox(height: WebTokens.s3),
               ],
             ],
@@ -495,10 +544,10 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
                   priorityRowKey: _priorityRowKey,
                   assigneeRowKey: _assigneeRowKey,
                   departmentRowKey: _departmentRowKey,
-                  onStatusTap: _pickTaskStatus,
-                  onPriorityTap: _pickTaskPriority,
-                  onAssigneeTap: _pickTaskAssignee,
-                  onDepartmentTap: _pickTaskDepartment,
+                  onStatusTap: caps.canClose ? _pickTaskStatus : null,
+                  onPriorityTap: caps.canEdit ? _pickTaskPriority : null,
+                  onAssigneeTap: caps.canAssign ? _pickTaskAssignee : null,
+                  onDepartmentTap: caps.canTransfer ? _pickTaskDepartment : null,
                 ),
               ],
             ),
@@ -516,12 +565,14 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
 class _Header extends StatelessWidget {
   const _Header({
     required this.task,
+    this.caps = const _TaskCaps(),
     required this.onClose,
     required this.onMenu,
     required this.isFullscreen,
     required this.onToggleFullscreen,
   });
   final Task? task;
+  final _TaskCaps caps;
   final VoidCallback onClose;
   final Future<void> Function(String value)? onMenu;
   final bool isFullscreen;
@@ -561,8 +612,8 @@ class _Header extends StatelessWidget {
             ),
           ],
           const SizedBox(width: WebTokens.s3),
-          if (task != null && onMenu != null) ...[
-            _ActionsBtn(task: task!, onSelected: onMenu!),
+          if (task != null && onMenu != null && caps.hasHeaderAction) ...[
+            _ActionsBtn(task: task!, caps: caps, onSelected: onMenu!),
             const SizedBox(width: WebTokens.s2),
           ],
           if (onToggleFullscreen != null) ...[
@@ -598,7 +649,7 @@ class _NumberChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: t.bgTertiary,
-        borderRadius: BorderRadius.circular(WebTokens.s1),
+        borderRadius: BorderRadius.circular(WebTokens.rXs),
       ),
       child: Text(
         '#$number',
@@ -614,8 +665,13 @@ class _NumberChip extends StatelessWidget {
 }
 
 class _ActionsBtn extends StatefulWidget {
-  const _ActionsBtn({required this.task, required this.onSelected});
+  const _ActionsBtn({
+    required this.task,
+    required this.caps,
+    required this.onSelected,
+  });
   final Task task;
+  final _TaskCaps caps;
   final Future<void> Function(String value) onSelected;
 
   @override
@@ -627,37 +683,44 @@ class _ActionsBtnState extends State<_ActionsBtn> {
 
   Future<void> _open() async {
     final task = widget.task;
+    final caps = widget.caps;
+    // Only surface actions the agent may actually perform — each gated by the
+    // same permission the matching /tasks endpoint enforces (checkStaffPerm).
     final chosen = await showAppDropdown<String>(
       context,
       entries: [
         const AppDropdownHeader<String>('Task actions'),
-        if (task.isOpen)
+        if (caps.canClose)
+          if (task.isOpen)
+            const AppDropdownItem(
+              value: 'close',
+              label: 'Close task',
+              svgAsset: Assets.actClose,
+            )
+          else
+            const AppDropdownItem(
+              value: 'reopen',
+              label: 'Reopen task',
+              svgAsset: Assets.actReopen,
+            ),
+        if (caps.canEdit)
           const AppDropdownItem(
-            value: 'close',
-            label: 'Close task',
-            icon: Icons.check_circle_outline,
-          )
-        else
-          const AppDropdownItem(
-            value: 'reopen',
-            label: 'Reopen task',
-            icon: Icons.replay,
+            value: 'priority',
+            label: 'Set priority',
+            svgAsset: Assets.actPriority,
           ),
-        const AppDropdownItem(
-          value: 'priority',
-          label: 'Set priority',
-          icon: Icons.priority_high,
-        ),
-        const AppDropdownItem(
-          value: 'assign',
-          label: 'Assign',
-          icon: Icons.person_add_alt_outlined,
-        ),
-        const AppDropdownItem(
-          value: 'transfer',
-          label: 'Transfer dept',
-          icon: Icons.swap_horiz,
-        ),
+        if (caps.canAssign)
+          const AppDropdownItem(
+            value: 'assign',
+            label: 'Assign',
+            svgAsset: Assets.actAssign,
+          ),
+        if (caps.canTransfer)
+          const AppDropdownItem(
+            value: 'transfer',
+            label: 'Transfer dept',
+            svgAsset: Assets.actTransfer,
+          ),
       ],
     );
     if (chosen != null) await widget.onSelected(chosen);
@@ -788,10 +851,13 @@ class _FieldsTable extends StatelessWidget {
   final GlobalKey priorityRowKey;
   final GlobalKey assigneeRowKey;
   final GlobalKey departmentRowKey;
-  final ValueChanged<BuildContext> onStatusTap;
-  final ValueChanged<BuildContext> onPriorityTap;
-  final ValueChanged<BuildContext> onAssigneeTap;
-  final ValueChanged<BuildContext> onDepartmentTap;
+  /// Null when the current agent lacks the permission for that field — the
+  /// row then renders as static text (no chevron, no tap), mirroring the
+  /// backend's per-action checkStaffPerm gate.
+  final ValueChanged<BuildContext>? onStatusTap;
+  final ValueChanged<BuildContext>? onPriorityTap;
+  final ValueChanged<BuildContext>? onAssigneeTap;
+  final ValueChanged<BuildContext>? onDepartmentTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1210,125 +1276,130 @@ class _ActivityHeader extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Thread row — card per entry with actor avatar + floated timestamp.
+// Thread row — Asana-style comment stream entry: actor avatar + name + muted
+// timestamp on one line, body below, a hairline between entries. Internal
+// notes keep a subtle warning tint + "Internal note" label so staff-only
+// entries stay distinct from public replies (no boxed cards, no MESSAGE/REPLY
+// tags).
 // ---------------------------------------------------------------------------
 
-class _ThreadRow extends StatefulWidget {
-  const _ThreadRow({required this.entry});
+class _ThreadRow extends StatelessWidget {
+  const _ThreadRow({required this.entry, this.isLast = false});
   final ThreadEntry entry;
 
-  @override
-  State<_ThreadRow> createState() => _ThreadRowState();
-}
-
-class _ThreadRowState extends State<_ThreadRow> {
-  bool _hover = false;
+  /// Suppresses the bottom hairline on the final message so the stream
+  /// doesn't end on a dangling divider.
+  final bool isLast;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final entry = widget.entry;
     final isNote = entry.isNote;
-    final isResponse = entry.isResponse;
-    final tone = isNote
-        ? WebTokens.warning
-        : (isResponse ? t.accent : t.textSecondary);
-    final typeLabel = isNote
-        ? 'NOTE'
-        : (isResponse ? 'REPLY' : 'MESSAGE');
     final html = entry.bodyHtml ?? entry.body ?? '';
     final plain = Fmt.stripHtml(html);
 
-    return Padding(
+    // Per-poster name color (matches the avatar) so each participant's
+    // messages are distinguishable at a glance. Nudge the raw swatch toward
+    // the surface's contrast so light swatches (amber/teal) stay legible on
+    // white and don't glow on the near-black dark canvas.
+    final posterColor = _posterColor(entry.poster);
+    final nameColor = t.isLight
+        ? Color.lerp(posterColor, Colors.black, 0.30)!
+        : Color.lerp(posterColor, Colors.white, 0.12)!;
+
+    final content = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ActorAvatar(name: entry.poster),
+        const SizedBox(width: WebTokens.s3),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      entry.poster,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.cardName.copyWith(color: nameColor),
+                    ),
+                  ),
+                  if (entry.created != null) ...[
+                    const SizedBox(width: WebTokens.s2),
+                    Text(Fmt.ago(entry.created), style: t.tinyLabel),
+                  ],
+                  if (isNote) ...[
+                    const SizedBox(width: WebTokens.s2),
+                    Text(
+                      'Internal note',
+                      style: t.tinyLabel.copyWith(
+                        color: WebTokens.warning,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 6),
+              if (plain.trim().isEmpty)
+                Text('(no content)', style: t.bodySm)
+              else if (html.contains('<'))
+                _HtmlBody(html: html)
+              else
+                Text(plain, style: t.bodyBase.copyWith(height: 1.5)),
+              if (entry.attachments.isNotEmpty) ...[
+                const SizedBox(height: WebTokens.s3),
+                Wrap(
+                  spacing: WebTokens.s2,
+                  runSpacing: WebTokens.s2,
+                  children: [
+                    for (final a in entry.attachments)
+                      _AttachmentChip(attachment: a),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (isNote) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(
+          WebTokens.s4,
+          WebTokens.s2,
+          WebTokens.s4,
+          WebTokens.s2,
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(WebTokens.s3),
+          decoration: BoxDecoration(
+            color: t.warningLight,
+            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            border: Border.all(color: t.borderSubtle, width: 1),
+          ),
+          child: content,
+        ),
+      );
+    }
+    return Container(
       padding: const EdgeInsets.fromLTRB(
         WebTokens.s4,
         WebTokens.s3,
         WebTokens.s4,
-        0,
+        WebTokens.s3,
       ),
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: t.bgElevated,
-            borderRadius: BorderRadius.circular(WebTokens.rMd),
-            border: Border.all(
-              color: _hover ? t.borderDefault : t.borderSubtle,
-              width: 1,
-            ),
-            boxShadow: _hover ? WebTokens.shadowSm : WebTokens.shadowXs,
-          ),
-          padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
-            vertical: WebTokens.s3,
-          ),
-          child: Stack(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ActorAvatar(name: entry.poster),
-                  const SizedBox(width: WebTokens.s3),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                entry.poster,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: t.cardName
-                                    .copyWith(color: t.textPrimary),
-                              ),
-                            ),
-                            const SizedBox(width: WebTokens.s2),
-                            _TypeTag(label: typeLabel, tone: tone),
-                            const SizedBox(width: 96),
-                          ],
-                        ),
-                        const SizedBox(height: WebTokens.s2),
-                        if (plain.trim().isEmpty)
-                          Text('(no content)', style: t.bodySm)
-                        else if (html.contains('<'))
-                          _HtmlBody(html: html)
-                        else
-                          Text(
-                            plain,
-                            style: t.bodyBase.copyWith(height: 1.5),
-                          ),
-                        if (entry.attachments.isNotEmpty) ...[
-                          const SizedBox(height: WebTokens.s3),
-                          Wrap(
-                            spacing: WebTokens.s2,
-                            runSpacing: WebTokens.s2,
-                            children: [
-                              for (final a in entry.attachments)
-                                _AttachmentChip(attachment: a),
-                            ],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              if (entry.created != null)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: Text(Fmt.ago(entry.created), style: t.tinyLabel),
-                ),
-            ],
-          ),
-        ),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
+      child: content,
     );
   }
 }
@@ -1344,6 +1415,19 @@ const _kAvatarPalette = <Color>[
   Color(0xFF5D6D7E),
 ];
 
+/// Stable per-poster color, hashed off the name so the same author always maps
+/// to the same swatch. Shared by the avatar fill and the author-name text so a
+/// message stream is colour-coded by participant (each user's messages read as
+/// visually distinct at a glance).
+Color _posterColor(String s) {
+  if (s.isEmpty) return _kAvatarPalette[0];
+  var hash = 0;
+  for (final c in s.codeUnits) {
+    hash = (hash * 31 + c) & 0x7fffffff;
+  }
+  return _kAvatarPalette[hash % _kAvatarPalette.length];
+}
+
 class _ActorAvatar extends StatelessWidget {
   const _ActorAvatar({required this.name});
   final String name;
@@ -1356,18 +1440,9 @@ class _ActorAvatar extends StatelessWidget {
         .toUpperCase();
   }
 
-  static Color _color(String s) {
-    if (s.isEmpty) return _kAvatarPalette[0];
-    var hash = 0;
-    for (final c in s.codeUnits) {
-      hash = (hash * 31 + c) & 0x7fffffff;
-    }
-    return _kAvatarPalette[hash % _kAvatarPalette.length];
-  }
-
   @override
   Widget build(BuildContext context) {
-    final bg = _color(name);
+    final bg = _posterColor(name);
     return Container(
       width: _kAvatarSize,
       height: _kAvatarSize,
@@ -1384,18 +1459,6 @@ class _ActorAvatar extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _TypeTag extends StatelessWidget {
-  const _TypeTag({required this.label, required this.tone});
-  final String label;
-  final Color tone;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Text(label, style: t.tinyLabel.copyWith(color: tone));
   }
 }
 

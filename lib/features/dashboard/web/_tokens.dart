@@ -21,8 +21,16 @@ class WebTokens {
   final Brightness brightness;
   bool get isLight => brightness == Brightness.light;
 
+  // There are only two possible token sets (light / dark), and every value is
+  // immutable, so cache one instance per brightness. This turns `of(context)`
+  // into an O(1) lookup returning a shared object, which is what lets the
+  // `late final` TextStyle fields below resolve GoogleFonts exactly once per
+  // brightness instead of on every getter access in every list row.
+  static final WebTokens _light = WebTokens._(Brightness.light);
+  static final WebTokens _dark = WebTokens._(Brightness.dark);
+
   static WebTokens of(BuildContext context) =>
-      WebTokens._(Theme.of(context).brightness);
+      Theme.of(context).brightness == Brightness.light ? _light : _dark;
 
   // --- Accent --------------------------------------------------------------
   // Light mode keeps the deep Mynt brand blue. Dark mode adopts the GitHub
@@ -44,33 +52,62 @@ class WebTokens {
       // reads as loud on unread rows / hover fills — this is subtler.
       : const Color(0x1F2F81F7);
 
+  /// Mobile indigo accent (`Glass.indigo` on main) — used for the "mine"
+  /// view dot and other secondary-identity tints, matching mobile's
+  /// view-color mapping.
+  static const indigo = Color(0xFF6366F1);
+
+  // Brand CTA gradient — ported from mobile's FloatingNavBar create button
+  // (`[brandLight, brand]` topLeft→bottomRight). Dark mode swaps the head to
+  // the GitHub accent so the gradient doesn't glow violet on the near-black
+  // canvas. Hover deepens both stops in the same family so an
+  // AnimatedContainer lerps smoothly (always tween gradient→gradient,
+  // never null→gradient).
+  LinearGradient get brandGradient => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: isLight
+        ? const [Color(0xFF4A6CF7), Color(0xFF0037B7)]
+        : const [Color(0xFF2F81F7), Color(0xFF0037B7)],
+  );
+  LinearGradient get brandGradientHover => LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: isLight
+        ? const [Color(0xFF3F5FE8), Color(0xFF002E9B)]
+        : const [Color(0xFF1F6FEB), Color(0xFF002E9B)],
+  );
+
   // --- Backgrounds ---------------------------------------------------------
-  // Light: warm-paper palette (Asana / Notion inspired) with `#FAFAF6` page
-  // bg reading as paper against pure-white cards. Dark: GitHub Dark canvas
-  // stack — `canvas-default` (#0D1117), `canvas-overlay` (#161B22),
-  // `surface-3` (#21262D), and `surface-hover` (#262C36).
+  // Light: mobile "Mynt Plus" cool-grey palette — `#F8F9FA` page bg
+  // (mobile `_bgLight`) reading against pure-white cards, with `#F1F3F8`
+  // (mobile tab-indicator tone) as the tertiary/hover fill. Dark: GitHub
+  // Dark canvas stack — `canvas-default` (#0D1117), `canvas-overlay`
+  // (#161B22), `surface-3` (#21262D), and `surface-hover` (#262C36).
   Color get bgPrimary =>
-      isLight ? const Color(0xFFFAFAF6) : const Color(0xFF0D1117);
+      isLight ? const Color(0xFFF8F9FA) : const Color(0xFF0D1117);
   Color get bgSecondary =>
       isLight ? const Color(0xFFFFFFFF) : const Color(0xFF161B22);
   Color get bgTertiary =>
-      isLight ? const Color(0xFFF1EFE8) : const Color(0xFF21262D);
+      isLight ? const Color(0xFFF1F3F8) : const Color(0xFF21262D);
   Color get bgElevated =>
       isLight ? const Color(0xFFFFFFFF) : const Color(0xFF161B22);
   Color get bgHover =>
-      isLight ? const Color(0xFFF0EEE7) : const Color(0xFF262C36);
+      isLight ? const Color(0xFFF1F3F8) : const Color(0xFF262C36);
 
   // --- Borders -------------------------------------------------------------
-  // Light: warm hairline (`#E8E4DA`). Dark: GitHub Dark border stack —
+  // Light: mobile cool hairline stack — `outlineVariant` (#DDE2E7) as the
+  // default divider and `outline` (#C7CDD4) as the "strong" tone for
+  // controls that need to stand off the surface; a lighter `#E4E9EE` for
+  // the subtle rest-state card hairline. Dark: GitHub Dark border stack —
   // `border-muted` (#21262D), `border-default` (#30363D), `border-subtle`
-  // (#3D444D) used as the "strong" tone for controls that need to stand off
-  // the surface.
+  // (#3D444D).
   Color get borderSubtle =>
-      isLight ? const Color(0x84E8E4DA) : const Color(0xFF21262D);
+      isLight ? const Color(0xFFE4E9EE) : const Color(0xFF21262D);
   Color get borderDefault =>
-      isLight ? const Color(0xFFE8E4DA) : const Color(0xFF30363D);
+      isLight ? const Color(0xFFDDE2E7) : const Color(0xFF30363D);
   Color get borderStrong =>
-      isLight ? const Color(0xFFD4CFC2) : const Color(0xFF3D444D);
+      isLight ? const Color(0xFFC7CDD4) : const Color(0xFF3D444D);
 
   // --- Text ----------------------------------------------------------------
   // Light: two-color rule from skill.md. Dark: GitHub Dark text stack —
@@ -147,15 +184,6 @@ class WebTokens {
     BoxShadow(color: Color(0x1A000000), blurRadius: 24, offset: Offset(0, 8)),
   ];
 
-  /// Soft accent glow used on selected/active cards.
-  static const accentGlow = <BoxShadow>[
-    BoxShadow(
-      color: Color(0x14002677), // rgba(0, 55, 183, ~8%)
-      blurRadius: 20,
-      offset: Offset(0, 4),
-    ),
-  ];
-
   /// Two-layer soft drop shadow for floating menus / popovers. Kept softer
   /// than a Material `elevation: 8` so it reads as a premium overlay rather
   /// than a plate.
@@ -202,10 +230,11 @@ class WebTokens {
   // text color ∈ {textPrimary, textSecondary, accent, semantic}. Numeric
   // values still get tabular-nums + tight tracking to stay visually prominent
   // without going heavier than 600.
-  TextStyle get hero =>
+  late final TextStyle hero =
       _sans(24, FontWeight.w600, letterSpacing: -0.4, height: 1.2);
-  TextStyle get pageTitle => _sans(20, FontWeight.w600, letterSpacing: -0.2);
-  TextStyle get sectionTitle => _sans(
+  late final TextStyle pageTitle =
+      _sans(20, FontWeight.w600, letterSpacing: -0.2);
+  late final TextStyle sectionTitle = _sans(
     13,
     FontWeight.w600,
     color: textSecondary,
@@ -214,15 +243,15 @@ class WebTokens {
   // Small-caps header used to introduce a group inside popovers / cards,
   // ClickUp-style. Slightly wider tracking gives the label an "eyebrow"
   // feel without going into all-caps display sizes.
-  TextStyle get sectionCaps => _sans(
+  late final TextStyle sectionCaps = _sans(
     11,
     FontWeight.w600,
     color: textSecondary,
     letterSpacing: 0.8,
   );
-  TextStyle get cardName => _sans(13, FontWeight.w600);
-  TextStyle get cardNameLg => _sans(14, FontWeight.w600);
-  TextStyle get tinyLabel => _sans(
+  late final TextStyle cardName = _sans(13, FontWeight.w600);
+  late final TextStyle cardNameLg = _sans(14, FontWeight.w600);
+  late final TextStyle tinyLabel = _sans(
     13,
     FontWeight.w600,
     color: textSecondary,
@@ -231,15 +260,40 @@ class WebTokens {
   // Table column header — Title Case labels at medium weight so headers
   // read distinct from body rows without going semibold. Sits on the white
   // `bgElevated` header strip in every _TableHeader across the web target.
-  TextStyle get tableHeader => _sans(
+  late final TextStyle tableHeader = _sans(
     12.5,
     FontWeight.w500,
     color: textSecondary,
     letterSpacing: 0,
   );
-  TextStyle get bodySm => _sans(13, FontWeight.w400, color: textSecondary);
-  TextStyle get bodyBase => _sans(14, FontWeight.w400);
-  TextStyle get label => _sans(13, FontWeight.w600, color: textSecondary);
+  late final TextStyle bodySm = _sans(13, FontWeight.w400, color: textSecondary);
+  late final TextStyle bodyBase = _sans(14, FontWeight.w400);
+  late final TextStyle label = _sans(13, FontWeight.w600, color: textSecondary);
+
+  // Tab strip label — inactive weight/color by default; callers flip to
+  // `w600` + `accent` for the active tab via `.copyWith`. Centralizes the
+  // 13.5px size + soft tracking the segmented tab bar used to inline.
+  late final TextStyle tabLabel =
+      _sans(13.5, FontWeight.w500, color: textSecondary, letterSpacing: 0.1);
+
+  // Tiny numeric counter used inside tab count pills / badges. Tabular so
+  // multi-digit counts don't jitter; caller sets the color per active state.
+  late final TextStyle countPill = _sans(
+    11,
+    FontWeight.w700,
+    color: textSecondary,
+    letterSpacing: 0.2,
+    height: 1.2,
+  ).withTabularNums();
+
+  // 11px muted caption for metadata under a value (e.g. KPI ratio strip).
+  late final TextStyle caption = _sans(
+    11,
+    FontWeight.w500,
+    color: textSecondary,
+    letterSpacing: 0.1,
+    height: 1.2,
+  ).withTabularNums();
 
   TextStyle valueProminent(Color color) => _sans(
     15,
@@ -267,7 +321,6 @@ class WebTokens {
         color: accentMuted,
         borderRadius: BorderRadius.circular(rMd),
         border: Border.all(color: accent, width: 1),
-        boxShadow: accentGlow,
       );
     }
     // Rest-state whisper shadow + hairline border so cards feel lifted off

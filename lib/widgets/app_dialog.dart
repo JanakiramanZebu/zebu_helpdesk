@@ -121,15 +121,16 @@ class _AppDialogCard extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
+                      // Stadium pill — mobile `_DialogPrimaryButton` parity.
+                      // Solid fill (not gradient) so destructive dialogs keep
+                      // their error color.
                       style: FilledButton.styleFrom(
-                        minimumSize: const Size.fromHeight(44),
+                        minimumSize: const Size.fromHeight(48),
                         backgroundColor: actionColor,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                        shape: const StadiumBorder(),
                         textStyle: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

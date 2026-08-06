@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/assets.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../providers.dart';
 import '../../../widgets/app_dialog.dart';
+import '../../../widgets/svg_icon.dart';
 import '../../dashboard/web/_tokens.dart';
 import '../../profile/web/profile_screen_web.dart';
 
@@ -41,13 +43,13 @@ class MoreScreenWeb extends ConsumerWidget {
                 const SizedBox(height: WebTokens.s3),
                 _CardGrid(cards: [
                   _NavCardData(
-                    icon: Icons.people_outline,
+                    svg: Assets.menuUsers,
                     title: 'Users',
                     subtitle: 'Directory of end users',
                     onTap: () => context.push(Routes.users),
                   ),
                   _NavCardData(
-                    icon: Icons.business_outlined,
+                    svg: Assets.menuOrgs,
                     title: 'Organizations',
                     subtitle: 'Company accounts',
                     onTap: () => context.push(Routes.organizations),
@@ -59,25 +61,25 @@ class MoreScreenWeb extends ConsumerWidget {
                 const SizedBox(height: WebTokens.s3),
                 _CardGrid(cards: [
                   _NavCardData(
-                    icon: Icons.menu_book_outlined,
+                    svg: Assets.menuKnowledge,
                     title: 'Knowledgebase',
                     subtitle: 'FAQs and articles',
                     onTap: () => context.push(Routes.faq),
                   ),
                   _NavCardData(
-                    icon: Icons.quickreply_outlined,
+                    svg: Assets.menuCanned,
                     title: 'Canned responses',
                     subtitle: 'Reusable reply templates',
                     onTap: () => context.push(Routes.canned),
                   ),
                   _NavCardData(
-                    icon: Icons.bookmark_outline,
+                    svg: Assets.menuQueues,
                     title: 'Saved queues',
                     subtitle: 'Custom ticket views',
                     onTap: () => context.push(Routes.queues),
                   ),
                   _NavCardData(
-                    icon: Icons.bar_chart_outlined,
+                    svg: Assets.menuReports,
                     title: 'Reports',
                     subtitle: 'Volume and performance',
                     onTap: () => context.push(Routes.reports),
@@ -89,7 +91,7 @@ class MoreScreenWeb extends ConsumerWidget {
                 const SizedBox(height: WebTokens.s3),
                 _CardGrid(cards: [
                   _NavCardData(
-                    icon: Icons.person_outline,
+                    svg: Assets.profileEdit,
                     title: 'Profile & settings',
                     subtitle: 'Manage your account',
                     onTap: () => showProfileDialog(context),
@@ -297,13 +299,20 @@ class _CardGrid extends StatelessWidget {
 
 class _NavCardData {
   const _NavCardData({
-    required this.icon,
+    this.icon,
+    this.svg,
     required this.title,
     required this.subtitle,
     required this.onTap,
     this.tone,
-  });
-  final IconData icon;
+  }) : assert(icon != null || svg != null, 'Provide icon or svg');
+
+  /// Material fallback glyph — used where no mobile SVG equivalent exists
+  /// (theme toggle, sign out).
+  final IconData? icon;
+
+  /// Mobile `menu_*` / `profile_*` SVG asset; takes precedence over [icon].
+  final String? svg;
   final String title;
   final String subtitle;
   final VoidCallback onTap;
@@ -337,8 +346,6 @@ class _NavCardState extends State<_NavCard> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          transform: Matrix4.translationValues(0, _hover ? -1 : 0, 0),
-          transformAlignment: Alignment.center,
           decoration: t.card(hover: _hover),
           padding: const EdgeInsets.symmetric(
             horizontal: WebTokens.s4,
@@ -349,11 +356,14 @@ class _NavCardState extends State<_NavCard> {
               Container(
                 width: 40,
                 height: 40,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: tone.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(WebTokens.rSm),
                 ),
-                child: Icon(widget.data.icon, size: 20, color: tone),
+                child: widget.data.svg != null
+                    ? SvgIcon(widget.data.svg!, size: 20, color: tone)
+                    : Icon(widget.data.icon, size: 20, color: tone),
               ),
               const SizedBox(width: WebTokens.s3),
               Expanded(

@@ -20,6 +20,7 @@ class PagedListView<T> extends StatefulWidget {
     this.fabClearance = false,
     this.itemFilter,
     this.itemSort,
+    this.filterKey,
     this.onItems,
     this.loadingBuilder,
   });
@@ -35,6 +36,16 @@ class PagedListView<T> extends StatefulWidget {
   /// Optional client-side comparator applied to the (filtered) items before
   /// display, so changing the sort reorders instantly without a refetch.
   final int Function(T a, T b)? itemSort;
+
+  /// Optional cache key describing the current [itemFilter]/[itemSort]
+  /// behavior. [itemFilter] is typically a fresh closure on every parent
+  /// build (it captures live filter state), so it can't be compared by
+  /// identity. When the host passes a [filterKey] that changes whenever the
+  /// filter/sort *result* would change, the filtered+sorted list is memoized
+  /// and only recomputed when the key — or the loaded items — actually
+  /// change, instead of on every build. Omit it to keep the previous
+  /// recompute-every-build behavior.
+  final Object? filterKey;
 
   /// Notified (after frame) with the currently-visible, filtered items — lets
   /// the host implement select-all / selection over what's on screen.
@@ -68,6 +79,15 @@ class PagedListView<T> extends StatefulWidget {
 class _PagedListViewState<T> extends State<PagedListView<T>> {
   final _scroll = ScrollController();
   final List<T> _items = [];
+
+  /// Bumped whenever [_items] is mutated, so the memoized view below knows the
+  /// underlying data changed even though the list identity stays the same.
+  int _itemsRev = 0;
+
+  // Memoized filtered+sorted view — see [PagedListView.filterKey].
+  List<T>? _view;
+  Object? _viewKey;
+
   int _page = 1;
   bool _loading = false;
   bool _hasMore = true;
@@ -112,6 +132,7 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
         _page = 1;
         _hasMore = true;
         _items.clear();
+        _itemsRev++;
       }
     });
     try {
@@ -119,6 +140,7 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
       if (!mounted) return;
       setState(() {
         _items.addAll(result.items);
+        _itemsRev++;
         _hasMore = result.hasMore && result.items.isNotEmpty;
         _page += 1;
         _initial = false;
@@ -133,6 +155,16 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
   }
 
   Future<void> refresh() => _load(reset: true);
+
+  List<T> _applyFilterSort(bool Function(T)? filter) {
+    var items = filter == null
+        ? _items
+        : _items.where(filter).toList(growable: false);
+    if (widget.itemSort != null) {
+      items = List<T>.of(items)..sort(widget.itemSort);
+    }
+    return items;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,11 +183,19 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
     );
 
     final filter = widget.itemFilter;
-    var items = filter == null
-        ? _items
-        : _items.where(filter).toList(growable: false);
-    if (widget.itemSort != null) {
-      items = List<T>.of(items)..sort(widget.itemSort);
+    final List<T> items;
+    if (widget.filterKey != null) {
+      // Memoized path: only re-filter/re-sort when the host's filter key or
+      // the loaded data changed. Avoids an O(n log n) pass on every rebuild
+      // (search debounce, panel open/close, provider ticks, page appends).
+      final key = Object.hash(widget.filterKey, _itemsRev);
+      if (_view == null || _viewKey != key) {
+        _view = _applyFilterSort(filter);
+        _viewKey = key;
+      }
+      items = _view!;
+    } else {
+      items = _applyFilterSort(filter);
     }
 
     // If a client-side filter hides most of a page, the user may never scroll

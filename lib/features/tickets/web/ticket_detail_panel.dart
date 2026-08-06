@@ -5,8 +5,10 @@ import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/assets.dart';
 import '../../../core/format.dart';
 import '../../../models/common.dart';
+import '../../../models/me.dart';
 import '../../../models/meta.dart';
 import '../../../models/ticket.dart';
 import '../../../providers.dart';
@@ -70,6 +72,61 @@ const double _kFieldsSidebarWidth = 360;
 /// breathing room — 40 px lets labels + values use the larger 14 px body
 /// size without crowding the icon column.
 const double _kSidebarRowHeight = 40;
+
+/// Per-agent action gates for a ticket, ported from osTicket's
+/// `Ticket::checkStaffPerm()` (`include/class.ticket.php`). The backend enforces
+/// these on every mutating `/tickets/*` endpoint (403 otherwise); mirroring them
+/// here hides/disables the affordances an agent can't use — matching the SCP
+/// rule that a ticket "cannot be edited by others". Visibility is already
+/// granted (the detail loaded), so only the per-department role permission
+/// matters.
+class _TicketCaps {
+  const _TicketCaps({
+    this.canEdit = false,
+    this.canAssign = false,
+    this.canRelease = false,
+    this.canTransfer = false,
+    this.canClose = false,
+    this.canReply = false,
+  });
+
+  final bool canEdit; // ticket.edit — priority + field edits
+  final bool canAssign; // ticket.assign — assign + claim
+  final bool canRelease; // ticket.release — release assignment
+  final bool canTransfer; // ticket.transfer — department change
+  final bool canClose; // ticket.close
+  final bool canReply; // ticket.reply
+
+  /// `/tickets/{id}/status` accepts PERM_CLOSE **or** PERM_EDIT.
+  bool get canChangeStatus => canClose || canEdit;
+
+  /// `/tickets/{id}/note` accepts PERM_REPLY **or** PERM_EDIT.
+  bool get canNote => canReply || canEdit;
+
+  /// Header actions other than claim/release (which also depend on ticket
+  /// assignment state, resolved in [_Header]).
+  bool get hasTopAction =>
+      canChangeStatus || canEdit || canAssign || canTransfer;
+
+  /// Whether the Actions menu would surface at least one item for a ticket in
+  /// the given assignment state. Release only applies to an assigned ticket;
+  /// claim (assign perm) is already part of [hasTopAction].
+  bool actionsAvailable({required bool assigned}) =>
+      hasTopAction || (assigned && canRelease);
+
+  factory _TicketCaps.from(Me? me, Ticket? ticket) {
+    if (me == null || ticket == null) return const _TicketCaps();
+    final d = ticket.departmentId;
+    return _TicketCaps(
+      canEdit: me.canOn('ticket.edit', d),
+      canAssign: me.canOn('ticket.assign', d),
+      canRelease: me.canOn('ticket.release', d),
+      canTransfer: me.canOn('ticket.transfer', d),
+      canClose: me.canOn('ticket.close', d),
+      canReply: me.canOn('ticket.reply', d),
+    );
+  }
+}
 
 class TicketDetailPanel extends ConsumerStatefulWidget {
   const TicketDetailPanel({
@@ -436,11 +493,17 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
       );
     }
     final ticket = _ticket!;
+    // Per-agent action gates (ported from Ticket::checkStaffPerm). `me` is
+    // loaded app-wide at startup, so asData is populated by the time this
+    // opens; until then caps default to none (safe — the backend 403s anyway).
+    final me = ref.watch(meProvider).asData?.value;
+    final caps = _TicketCaps.from(me, ticket);
 
     return Column(
       children: [
         _Header(
           ticket: ticket,
+          caps: caps,
           onClose: widget.onClose,
           onMenu: _onMenu,
           isFullscreen: widget.isFullscreen,
@@ -451,12 +514,22 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final wide = constraints.maxWidth >= _kTwoColumnBreakpoint;
-              if (wide) return _buildWide(t, ticket);
-              return _buildNarrow(t, ticket);
+              if (wide) return _buildWide(t, ticket, caps);
+              return _buildNarrow(t, ticket, caps);
             },
           ),
         ),
-        CommentComposer(onSend: _sendReply, disabled: _acting),
+        // Reply needs ticket.reply; an internal note needs ticket.reply OR
+        // ticket.edit (mirrors the /note endpoint). So: full composer when the
+        // agent can reply, note-only when they can only edit, disabled when
+        // neither.
+        CommentComposer(
+          onSend: _sendReply,
+          scope: caps.canReply
+              ? ComposerScope.replyAndNote
+              : ComposerScope.noteOnly,
+          disabled: _acting || !caps.canNote,
+        ),
       ],
     );
   }
@@ -465,7 +538,7 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   /// composer at the bottom. Same layout the panel shipped with before the
   /// two-column split, kept for the sub-780 px slot the panel gets when the
   /// list underneath is still visible on smaller viewports.
-  Widget _buildNarrow(WebTokens t, Ticket ticket) {
+  Widget _buildNarrow(WebTokens t, Ticket ticket, _TicketCaps caps) {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
@@ -477,10 +550,10 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
           priorityRowKey: _priorityRowKey,
           assigneeRowKey: _assigneeRowKey,
           departmentRowKey: _departmentRowKey,
-          onStatusTap: _pickTicketStatus,
-          onPriorityTap: _pickTicketPriority,
-          onAssigneeTap: _pickTicketAssignee,
-          onDepartmentTap: _pickTicketDepartment,
+          onStatusTap: caps.canChangeStatus ? _pickTicketStatus : null,
+          onPriorityTap: caps.canEdit ? _pickTicketPriority : null,
+          onAssigneeTap: caps.canAssign ? _pickTicketAssignee : null,
+          onDepartmentTap: caps.canTransfer ? _pickTicketDepartment : null,
         ),
         const SizedBox(height: WebTokens.s2),
         const _ActivityHeader(),
@@ -504,7 +577,7 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   /// [_kFieldsSidebarWidth]. A hairline seam separates the two columns —
   /// matches the reference layout where the details block sits as a fixed
   /// rail alongside the message thread.
-  Widget _buildWide(WebTokens t, Ticket ticket) {
+  Widget _buildWide(WebTokens t, Ticket ticket, _TicketCaps caps) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -545,10 +618,10 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
                   priorityRowKey: _priorityRowKey,
                   assigneeRowKey: _assigneeRowKey,
                   departmentRowKey: _departmentRowKey,
-                  onStatusTap: _pickTicketStatus,
-                  onPriorityTap: _pickTicketPriority,
-                  onAssigneeTap: _pickTicketAssignee,
-                  onDepartmentTap: _pickTicketDepartment,
+                  onStatusTap: caps.canChangeStatus ? _pickTicketStatus : null,
+                  onPriorityTap: caps.canEdit ? _pickTicketPriority : null,
+                  onAssigneeTap: caps.canAssign ? _pickTicketAssignee : null,
+                  onDepartmentTap: caps.canTransfer ? _pickTicketDepartment : null,
                 ),
               ],
             ),
@@ -567,12 +640,14 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
 class _Header extends StatelessWidget {
   const _Header({
     required this.ticket,
+    this.caps = const _TicketCaps(),
     required this.onClose,
     required this.onMenu,
     required this.isFullscreen,
     required this.onToggleFullscreen,
   });
   final Ticket? ticket;
+  final _TicketCaps caps;
   final VoidCallback onClose;
   final Future<void> Function(String value)? onMenu;
   final bool isFullscreen;
@@ -616,8 +691,15 @@ class _Header extends StatelessWidget {
             ),
           ],
           const SizedBox(width: WebTokens.s3),
-          if (ticket != null && onMenu != null) ...[
-            _ActionsBtn(ticket: ticket!, onSelected: onMenu!),
+          // Claim needs assign perm (only when unassigned); Release needs
+          // release perm (only when assigned). Show the Actions button when the
+          // agent has at least one action available for this ticket's state.
+          if (ticket != null &&
+              onMenu != null &&
+              caps.actionsAvailable(
+                assigned: (ticket!.assignee ?? '').isNotEmpty,
+              )) ...[
+            _ActionsBtn(ticket: ticket!, caps: caps, onSelected: onMenu!),
             const SizedBox(width: WebTokens.s2),
           ],
           if (onToggleFullscreen != null) ...[
@@ -655,7 +737,7 @@ class _NumberChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: t.bgTertiary,
-        borderRadius: BorderRadius.circular(WebTokens.s1),
+        borderRadius: BorderRadius.circular(WebTokens.rXs),
       ),
       child: Text(
         '#$number',
@@ -675,8 +757,13 @@ class _NumberChip extends StatelessWidget {
 /// bgHover fill on hover) instead of the previous solid-accent default,
 /// so the header reads as one calm control group.
 class _ActionsBtn extends StatefulWidget {
-  const _ActionsBtn({required this.ticket, required this.onSelected});
+  const _ActionsBtn({
+    required this.ticket,
+    required this.caps,
+    required this.onSelected,
+  });
   final Ticket ticket;
+  final _TicketCaps caps;
   final Future<void> Function(String value) onSelected;
 
   @override
@@ -688,43 +775,57 @@ class _ActionsBtnState extends State<_ActionsBtn> {
 
   Future<void> _open() async {
     final ticket = widget.ticket;
+    final caps = widget.caps;
+    final assigned = (ticket.assignee ?? '').isNotEmpty;
+    // Claim (self-assign) needs assign perm and only shows when unassigned;
+    // Release needs release perm and only shows when assigned.
+    final showClaim = !assigned && caps.canAssign;
+    final showRelease = assigned && caps.canRelease;
+    // Only surface actions the agent may actually perform — each gated by the
+    // same permission the matching /tickets endpoint enforces (checkStaffPerm).
     final chosen = await showAppDropdown<String>(
       context,
       entries: [
         const AppDropdownHeader<String>('Ticket actions'),
-        const AppDropdownItem(
-          value: 'status',
-          label: 'Change status',
-          icon: Icons.flag_outlined,
-        ),
-        const AppDropdownItem(
-          value: 'priority',
-          label: 'Set priority',
-          icon: Icons.priority_high,
-        ),
-        const AppDropdownItem(
-          value: 'assign',
-          label: 'Assign',
-          icon: Icons.person_add_alt_outlined,
-        ),
-        const AppDropdownItem(
-          value: 'transfer',
-          label: 'Transfer dept',
-          icon: Icons.swap_horiz,
-        ),
-        const AppDropdownDivider(),
-        if ((ticket.assignee ?? '').isEmpty)
+        if (caps.canChangeStatus)
           const AppDropdownItem(
-            value: 'claim',
-            label: 'Claim',
-            icon: Icons.pan_tool_outlined,
-          )
-        else
-          const AppDropdownItem(
-            value: 'release',
-            label: 'Release',
-            icon: Icons.logout,
+            value: 'status',
+            label: 'Change status',
+            svgAsset: Assets.actStatus,
           ),
+        if (caps.canEdit)
+          const AppDropdownItem(
+            value: 'priority',
+            label: 'Set priority',
+            svgAsset: Assets.actPriority,
+          ),
+        if (caps.canAssign)
+          const AppDropdownItem(
+            value: 'assign',
+            label: 'Assign',
+            svgAsset: Assets.actAssign,
+          ),
+        if (caps.canTransfer)
+          const AppDropdownItem(
+            value: 'transfer',
+            label: 'Transfer dept',
+            svgAsset: Assets.actTransfer,
+          ),
+        if (showClaim || showRelease) ...[
+          if (caps.hasTopAction) const AppDropdownDivider<String>(),
+          if (showClaim)
+            const AppDropdownItem(
+              value: 'claim',
+              label: 'Claim',
+              svgAsset: Assets.actClaim,
+            )
+          else
+            const AppDropdownItem(
+              value: 'release',
+              label: 'Release',
+              svgAsset: Assets.actRelease,
+            ),
+        ],
       ],
     );
     if (chosen != null) await widget.onSelected(chosen);
@@ -862,10 +963,13 @@ class _FieldsTable extends StatelessWidget {
   final GlobalKey assigneeRowKey;
   final GlobalKey departmentRowKey;
 
-  final ValueChanged<BuildContext> onStatusTap;
-  final ValueChanged<BuildContext> onPriorityTap;
-  final ValueChanged<BuildContext> onAssigneeTap;
-  final ValueChanged<BuildContext> onDepartmentTap;
+  /// Null when the current agent lacks the permission for that field — the
+  /// row then renders as static text (no chevron, no tap), mirroring the
+  /// backend's per-action checkStaffPerm gate.
+  final ValueChanged<BuildContext>? onStatusTap;
+  final ValueChanged<BuildContext>? onPriorityTap;
+  final ValueChanged<BuildContext>? onAssigneeTap;
+  final ValueChanged<BuildContext>? onDepartmentTap;
 
   @override
   Widget build(BuildContext context) {

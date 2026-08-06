@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_exception.dart';
+import '../../../core/assets.dart';
 import '../../../core/router/routes.dart';
 import '../../../models/me.dart';
 import '../../../providers.dart';
@@ -178,7 +179,7 @@ class _ProfileMenuContentState extends ConsumerState<_ProfileMenuContent> {
             showDivider: false,
             children: [
               MenuRow(
-                icon: Icons.person_outline,
+                svg: Assets.profileEdit,
                 label: 'Profile',
                 onTap: _openProfile,
               ),

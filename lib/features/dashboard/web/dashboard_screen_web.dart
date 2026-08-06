@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/assets.dart';
 import '../../../core/format.dart';
 import '../../../core/router/routes.dart';
 import '../../../data/tickets_repository.dart';
@@ -15,7 +16,9 @@ import '../../../widgets/web/kpi_tile.dart';
 import '../../../widgets/web/premium_card.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../reports/widgets/activity_line_chart.dart';
+import '../../tasks/web/create_task_screen_web.dart';
 import '../../tasks/web/task_detail_panel.dart';
+import '../../tickets/web/create_ticket_screen_web.dart';
 import '../../tickets/web/ticket_detail_panel.dart';
 import '_tokens.dart';
 
@@ -23,19 +26,19 @@ import '_tokens.dart';
 ///
 /// Data sources mirror the mobile `DashboardScreen`
 /// ([reportsRepositoryProvider], [tasksRepositoryProvider]) — only the
-/// visual language differs. The layout composes three reusable web
+/// visual language differs. The layout is a max-width, single-column
+/// composition (Linear / ClickUp reference) built from reusable web
 /// primitives:
 ///
-///   * [KpiTile] — vertical stat cards for the top row;
-///   * [PremiumCard] — flat, hairline-bordered surface for every card;
-///   * an inline responsive KPI grid (4 / 2 / 1 columns) driven by
-///     [LayoutBuilder] so the top row breathes correctly on any width.
+///   * [KpiTile] — premium stat cards for the top row;
+///   * [PremiumCard] — hairline-bordered surface for every card;
+///   * responsive grids driven by [LayoutBuilder] so every band breathes
+///     correctly from 1280 px up to ultra-wide.
 class DashboardScreenWeb extends ConsumerStatefulWidget {
   const DashboardScreenWeb({super.key});
 
   @override
-  ConsumerState<DashboardScreenWeb> createState() =>
-      _DashboardScreenWebState();
+  ConsumerState<DashboardScreenWeb> createState() => _DashboardScreenWebState();
 }
 
 class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
@@ -63,9 +66,9 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
   int? _openTaskId;
 
   void _openTicket(int id) => setState(() {
-        _openTicketId = id;
-        _openTaskId = null;
-      });
+    _openTicketId = id;
+    _openTaskId = null;
+  });
   // Closing the panel is a pure state change — do NOT refetch the dashboard.
   // Pull-to-refresh (or opening the item again) will pick up any mutation.
   void _closeTicket() => setState(() => _openTicketId = null);
@@ -259,6 +262,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
     final kpis = <_KpiData>[
       _KpiData(
         svg: _kSvgOpenTickets,
+        svgAsset: Assets.navTickets,
         value: totals.open,
         label: 'Open Tickets',
         tone: WebTokens.success,
@@ -277,6 +281,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
       ),
       _KpiData(
         svg: _kSvgMyTasks,
+        svgAsset: Assets.navTasks,
         value: _tasksMine ?? 0,
         label: 'My Tasks',
         tone: t.accent,
@@ -301,31 +306,37 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
             (
               name: 'All',
               value: _tasksAll ?? 0,
+              tone: t.accent,
               onTap: () => _openTasks('all'),
             ),
             (
               name: 'Open',
               value: _tasksOpen ?? 0,
+              tone: WebTokens.success,
               onTap: () => _openTasks('open'),
             ),
             (
               name: 'Mine',
               value: _tasksMine ?? 0,
+              tone: WebTokens.indigo,
               onTap: () => _openTasks('mine'),
             ),
             (
               name: 'Overdue',
               value: _tasksOverdue ?? 0,
+              tone: t.danger,
               onTap: () => _openTasks('overdue'),
             ),
             (
               name: 'Collaborator',
               value: _tasksCollaborator ?? 0,
+              tone: WebTokens.warning,
               onTap: () => _openTasks('collaborator'),
             ),
             (
               name: 'Closed',
               value: _tasksClosed ?? 0,
+              tone: const Color(0xFF737373),
               onTap: () => _openTasks('closed'),
             ),
           ];
@@ -339,98 +350,105 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
           return SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(
-              horizontal: WebTokens.s10,
-              vertical: WebTokens.s6,
+              horizontal: WebTokens.s6,
+              vertical: WebTokens.s5,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _Hero(
-                  dateLabel: _dateLabel(),
-                  greeting: '${_greetingText()}, $firstName',
-                  mineOpen: summary.totals.mineOpen,
-                ),
-                const SizedBox(height: WebTokens.s6),
+            // Content fills the workspace on standard desktops (up to ~1900);
+            // the 1800 cap only engages on ultra-wide (2000 px+) monitors so
+            // the single-column page never sprawls to an unreadable width.
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1800),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Hero(
+                      dateLabel: _dateLabel(),
+                      greeting: '${_greetingText()}, $firstName',
+                      mineOpen: summary.totals.mineOpen,
+                      onNewTicket: () => showCreateTicketDialog(context),
+                      onNewTask: () => showCreateTaskDialog(context),
+                    ),
+                    const SizedBox(height: WebTokens.s4),
 
-                // --- KPI grid ---------------------------------------------
-                _KpiGrid(items: kpis),
-                const SizedBox(height: WebTokens.s6),
+                    // --- KPI grid -----------------------------------------
+                    _KpiGrid(items: kpis),
+                    const SizedBox(height: WebTokens.s4),
 
-                // --- Workload row (surfaces summary.byPriority /
-                //     .byDepartment — real data the app was already
-                //     fetching but not showing anywhere else). Hidden
-                //     entirely when both are empty so an empty account
-                //     doesn't render a placeholder shell.
-                if (summary.byPriority.isNotEmpty ||
-                    summary.byDepartment.isNotEmpty) ...[
-                  _WorkloadRow(
-                    priorities: summary.byPriority,
-                    departments: summary.byDepartment,
-                    onSeeAll: () => _openTickets('open'),
-                  ),
-                  const SizedBox(height: WebTokens.s6),
-                ],
+                    // --- Workload row (surfaces summary.byPriority /
+                    //     .byDepartment — real data the app was already
+                    //     fetching but not showing anywhere else). Hidden
+                    //     entirely when both are empty so an empty account
+                    //     doesn't render a placeholder shell.
+                    if (summary.byPriority.isNotEmpty ||
+                        summary.byDepartment.isNotEmpty) ...[
+                      _WorkloadRow(
+                        priorities: summary.byPriority,
+                        departments: summary.byDepartment,
+                        onSeeAll: () => _openTickets('open'),
+                      ),
+                      const SizedBox(height: WebTokens.s4),
+                    ],
 
-                // --- Middle row: Recent Tickets (left) + Tasks (right) ----
-                // IntrinsicHeight + stretch → both cards match the taller
-                // card's intrinsic height. Recent Tickets carries a column
-                // header, so it's usually the taller of the two; Tasks
-                // Overview stretches to fill, giving a balanced pair
-                // instead of a lopsided gap under one card.
-                if (wide)
-                  IntrinsicHeight(
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: _RecentTicketsCard(
-                            tickets: _recentTickets,
-                            onRowTap: _openTicket,
-                            onSeeAll: () => _openTickets('open'),
-                          ),
+                    // --- Middle row: Recent Tickets (left) + Tasks (right) -
+                    // IntrinsicHeight + stretch → both cards match the taller
+                    // card's intrinsic height for a balanced pair.
+                    if (wide)
+                      IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: _RecentTicketsCard(
+                                tickets: _recentTickets,
+                                onRowTap: _openTicket,
+                                onSeeAll: () => _openTickets('open'),
+                              ),
+                            ),
+                            const SizedBox(width: WebTokens.s4),
+                            Expanded(
+                              flex: 3,
+                              child: taskRows.isEmpty
+                                  ? const SizedBox.shrink()
+                                  : _TasksOverviewCard(
+                                      rows: taskRows,
+                                      onSeeAll: () => _openTasks('open'),
+                                    ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: WebTokens.s5),
-                        Expanded(
-                          flex: 1,
-                          child: taskRows.isEmpty
-                              ? const SizedBox.shrink()
-                              : _TasksListCard(
-                                  rows: taskRows,
-                                  onSeeAll: () => _openTasks('open'),
-                                ),
+                      )
+                    else ...[
+                      _RecentTicketsCard(
+                        tickets: _recentTickets,
+                        onRowTap: _openTicket,
+                        onSeeAll: () => _openTickets('open'),
+                      ),
+                      if (taskRows.isNotEmpty) ...[
+                        const SizedBox(height: WebTokens.s4),
+                        _TasksOverviewCard(
+                          rows: taskRows,
+                          onSeeAll: () => _openTasks('open'),
                         ),
                       ],
-                    ),
-                  )
-                else ...[
-                  _RecentTicketsCard(
-                    tickets: _recentTickets,
-                    onRowTap: _openTicket,
-                    onSeeAll: () => _openTickets('open'),
-                  ),
-                  if (taskRows.isNotEmpty) ...[
-                    const SizedBox(height: WebTokens.s5),
-                    _TasksListCard(
-                      rows: taskRows,
-                      onSeeAll: () => _openTasks('open'),
-                    ),
+                    ],
+
+                    // --- Activity chart -----------------------------------
+                    if (_volume != null) ...[
+                      const SizedBox(height: WebTokens.s4),
+                      _ActivityCard(
+                        report: _volume!,
+                        days: _days,
+                        onDaysSelected: _selectDays,
+                        loading: _volumeLoading,
+                      ),
+                    ],
+
+                    const SizedBox(height: WebTokens.s10),
                   ],
-                ],
-
-                // --- Activity chart --------------------------------------
-                if (_volume != null) ...[
-                  const SizedBox(height: WebTokens.s5),
-                  _ActivityCard(
-                    report: _volume!,
-                    days: _days,
-                    onDaysSelected: _selectDays,
-                    loading: _volumeLoading,
-                  ),
-                ],
-
-                const SizedBox(height: WebTokens.s10),
-              ],
+                ),
+              ),
             ),
           );
         },
@@ -440,7 +458,13 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
 }
 
 // ---------------------------------------------------------------------------
-// Hero — time-based greeting + full weekday date
+// Hero — time-based greeting, full weekday date, a live "what needs you"
+// subline, and real quick-action buttons (New task / New ticket). We do NOT
+// surface a global search box or workspace switcher here: the backend has no
+// search endpoint and the app has no workspace concept, so those would be
+// non-functional chrome. Notifications live in the shell top bar; the hero
+// instead pulls the two counts that matter (assigned to you / unread) into
+// one honest sentence.
 // ---------------------------------------------------------------------------
 
 class _Hero extends ConsumerWidget {
@@ -448,181 +472,300 @@ class _Hero extends ConsumerWidget {
     required this.dateLabel,
     required this.greeting,
     required this.mineOpen,
+    required this.onNewTicket,
+    required this.onNewTask,
   });
   final String dateLabel;
   final String greeting;
 
-  /// Tickets currently open + assigned to me. When > 0 the hero shows a
-  /// small "N assigned to me" chip alongside the greeting.
+  /// Tickets currently open + assigned to me. Feeds the hero subline.
   final int mineOpen;
+
+  final VoidCallback onNewTicket;
+  final VoidCallback onNewTask;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = WebTokens.of(context);
-    final unread = ref.watch(unreadCountProvider).maybeWhen(
-          data: (c) => c,
-          orElse: () => 0,
-        );
+    final unread = ref
+        .watch(unreadCountProvider)
+        .maybeWhen(data: (c) => c, orElse: () => 0);
+
+    final subline = _subline(mineOpen, unread);
+
     return LayoutBuilder(
       builder: (context, c) {
-        final wide = c.maxWidth >= 640;
+        final wide = c.maxWidth >= 720;
         final heroBlock = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(dateLabel, style: t.sectionCaps),
-            const SizedBox(height: 8),
-            // Bumped hero size: 30 px / w700 / tighter tracking so the
-            // greeting owns the top of the dashboard.
+            Row(
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: t.accent,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(dateLabel.toUpperCase(), style: t.sectionCaps),
+              ],
+            ),
+            const SizedBox(height: WebTokens.s3),
+            // Page title — 32 px, semibold (not bold) per the design system's
+            // "medium & semibold over bold" rule.
             Text(
               greeting,
               style: t.hero.copyWith(
-                fontSize: 30,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.6,
-                height: 1.15,
+                fontSize: 32,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.8,
+                height: 1.1,
               ),
             ),
+            const SizedBox(height: WebTokens.s3),
+            _Subline(spans: subline),
           ],
         );
-        final chips = <Widget>[
-          if (mineOpen > 0)
-            _HeroChip(
-              icon: Icons.person_outline_rounded,
-              count: mineOpen,
-              label: 'assigned to you',
-              tone: t.accent,
-            ),
-          if (unread > 0)
-            _HeroChip(
-              icon: Icons.notifications_none_rounded,
-              count: unread,
-              label: 'unread',
-              tone: WebTokens.info,
-            ),
-        ];
-        if (chips.isEmpty) return heroBlock;
+
+        // final actions = _HeroActions(
+        //   onNewTicket: onNewTicket,
+        //   onNewTask: onNewTask,
+        // );
+
         if (!wide) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               heroBlock,
-              const SizedBox(height: WebTokens.s3),
-              Wrap(
-                spacing: WebTokens.s2,
-                runSpacing: WebTokens.s2,
-                children: chips,
-              ),
+              // const SizedBox(height: WebTokens.s4),
+              // actions,
             ],
           );
         }
         return Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(child: heroBlock),
-            Wrap(
-              spacing: WebTokens.s2,
-              runSpacing: WebTokens.s2,
-              alignment: WrapAlignment.end,
-              children: chips,
-            ),
+            // const SizedBox(width: WebTokens.s4),
+            // actions,
           ],
         );
       },
     );
   }
+
+  /// Builds the "N assigned to you · M unread" segments as tone-tagged spans
+  /// so the counts can render bold/accented inside a muted sentence.
+  List<_SublineSpan> _subline(int mine, int unread) {
+    final out = <_SublineSpan>[];
+    if (mine > 0) {
+      out.add(_SublineSpan(count: mine, label: 'assigned to you'));
+    }
+    if (unread > 0) {
+      out.add(_SublineSpan(count: unread, label: 'unread updates'));
+    }
+    return out;
+  }
 }
 
-/// Premium hero pill — used in the top-right of the greeting to surface
-/// live "N assigned to you" / "N unread" counts.
-///
-/// Structure: white surface with a hairline border and a whisper shadow
-/// (matches [PremiumCard]'s lift), a **tone-tinted circular icon badge** on
-/// the left, a **bold count in the tone color**, and a **muted-secondary
-/// label** trailing. Reads as one composed unit rather than the earlier
-/// flat "colored word on a colored tint" chip.
-class _HeroChip extends StatelessWidget {
-  const _HeroChip({
-    required this.icon,
-    required this.count,
-    required this.label,
-    required this.tone,
-  });
-  final IconData icon;
+class _SublineSpan {
+  const _SublineSpan({required this.count, required this.label});
   final int count;
   final String label;
-  final Color tone;
+}
+
+class _Subline extends StatelessWidget {
+  const _Subline({required this.spans});
+  final List<_SublineSpan> spans;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(5, 5, 12, 5),
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        borderRadius: BorderRadius.circular(WebTokens.rFull),
-        border: Border.all(color: t.borderSubtle, width: 1),
-        boxShadow: WebTokens.shadowXs,
+    if (spans.isEmpty) {
+      return Text(
+        "You're all caught up. Nothing needs you right now.",
+        style: t.bodyBase.copyWith(color: t.textSecondary),
+      );
+    }
+    final children = <InlineSpan>[
+      TextSpan(
+        text: 'You have ',
+        style: t.bodyBase.copyWith(color: t.textSecondary),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            alignment: Alignment.center,
+    ];
+    for (var i = 0; i < spans.length; i++) {
+      final s = spans[i];
+      children.add(
+        TextSpan(
+          text: Fmt.count(s.count),
+          style: t.bodyBase.copyWith(
+            color: t.textPrimary,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+      children.add(
+        TextSpan(
+          text: ' ${s.label}',
+          style: t.bodyBase.copyWith(color: t.textSecondary),
+        ),
+      );
+      if (i < spans.length - 2) {
+        children.add(
+          TextSpan(
+            text: ', ',
+            style: t.bodyBase.copyWith(color: t.textSecondary),
+          ),
+        );
+      } else if (i == spans.length - 2) {
+        children.add(
+          TextSpan(
+            text: ' and ',
+            style: t.bodyBase.copyWith(color: t.textSecondary),
+          ),
+        );
+      }
+    }
+    children.add(
+      TextSpan(
+        text: '.',
+        style: t.bodyBase.copyWith(color: t.textSecondary),
+      ),
+    );
+    return Text.rich(TextSpan(children: children));
+  }
+}
+
+/// Hero quick actions — a secondary "New task" and a primary accent-filled
+/// "New ticket". Both reuse the existing create dialogs, so this adds no new
+/// behaviour, just a faster on-ramp than reaching for the sidebar.
+class _HeroActions extends StatelessWidget {
+  const _HeroActions({required this.onNewTicket, required this.onNewTask});
+  final VoidCallback onNewTicket;
+  final VoidCallback onNewTask;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _HeroActionButton(
+          label: 'New task',
+          icon: Icons.check_circle_outline_rounded,
+          onTap: onNewTask,
+          primary: false,
+        ),
+        const SizedBox(width: WebTokens.s2),
+        _HeroActionButton(
+          label: 'New ticket',
+          icon: Icons.add_rounded,
+          onTap: onNewTicket,
+          primary: true,
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroActionButton extends StatefulWidget {
+  const _HeroActionButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+    required this.primary,
+  });
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  State<_HeroActionButton> createState() => _HeroActionButtonState();
+}
+
+class _HeroActionButtonState extends State<_HeroActionButton> {
+  bool _hover = false;
+  bool _pressed = false;
+
+  void _setPressed(bool v) {
+    if (_pressed != v) setState(() => _pressed = v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final primary = widget.primary;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        // Pressed state — a subtle scale-in so the button acknowledges the
+        // click, in addition to the hover elevation.
+        onTapDown: (_) => _setPressed(true),
+        onTapUp: (_) => _setPressed(false),
+        onTapCancel: () => _setPressed(false),
+        child: AnimatedScale(
+          scale: _pressed ? 0.97 : 1,
+          duration: const Duration(milliseconds: 110),
+          curve: Curves.easeOut,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOut,
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: WebTokens.s5),
             decoration: BoxDecoration(
-              color: tone.withValues(alpha: 0.14),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: tone.withValues(alpha: 0.22),
-                width: 1,
-              ),
+              // Flat accent fill for the primary action — no gradient, matching
+              // the app's flat-CTA language (see `ShellTokens.ctaBg`) and the
+              // "avoid heavy gradients" design goal. Hover deepens the fill in
+              // the same family so the AnimatedContainer lerps color→color.
+              color: primary
+                  ? (_hover ? t.accentHover : t.accent)
+                  : (_hover ? t.bgHover : t.bgElevated),
+              borderRadius: BorderRadius.circular(WebTokens.rMd),
+              border: primary
+                  ? null
+                  : Border.all(color: t.borderDefault, width: 1),
+              boxShadow: primary
+                  ? (_hover ? WebTokens.shadowMd : WebTokens.shadowSm)
+                  : null,
             ),
-            child: Icon(icon, size: 13, color: tone),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$count',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: tone,
-              height: 1.2,
-              letterSpacing: -0.2,
-            ).copyWith(fontFeatures: const [FontFeature.tabularFigures()]),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
-              color: t.textSecondary,
-              height: 1.2,
-              letterSpacing: 0.1,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  widget.icon,
+                  size: 18,
+                  color: primary ? Colors.white : t.textSecondary,
+                ),
+                const SizedBox(width: WebTokens.s2),
+                Text(
+                  widget.label,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                    color: primary ? Colors.white : t.textPrimary,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// KPI grid — 4 / 2 / 1 columns depending on available width. Uses fixed
-// column-count math (LayoutBuilder + evenly split widths) so the tiles line
-// up in a proper grid instead of drifting on a `Wrap`.
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // KPI icon SVGs — inline strings rendered by [KpiTile] via [SvgPicture.string]
 // with a tone-tinted [ColorFilter.mode], so the source fill/stroke color is
 // ignored (any monochrome SVG paints correctly in the tile's tone).
-//
-// TODO(svg): swap these placeholders for the final Zebu KPI icons. Keep the
-// `viewBox="0 0 24 24"` frame and monochrome paths — the tile paints them at
-// 16×16 tinted to the tile's tone.
 // ---------------------------------------------------------------------------
 
 const String _kSvgOpenTickets = '''
@@ -665,6 +808,7 @@ const String _kSvgOverdueTasks = '''
 class _KpiData {
   const _KpiData({
     required this.svg,
+    this.svgAsset,
     required this.value,
     required this.label,
     required this.tone,
@@ -673,6 +817,9 @@ class _KpiData {
     this.denominatorLabel,
   });
   final String svg;
+
+  /// Mobile icon-set asset; takes precedence over the inline [svg] literal.
+  final String? svgAsset;
   final int value;
   final String label;
   final Color tone;
@@ -687,12 +834,51 @@ class _KpiData {
 }
 
 // ---------------------------------------------------------------------------
+// KPI grid — 4 / 2 / 1 columns depending on available width.
+// ---------------------------------------------------------------------------
+
+class _KpiGrid extends StatelessWidget {
+  const _KpiGrid({required this.items});
+  final List<_KpiData> items;
+
+  static const double _gap = WebTokens.s3;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final cols = w >= 1000 ? 4 : (w >= 640 ? 2 : 1);
+        final tileWidth = (w - _gap * (cols - 1)) / cols;
+        return Wrap(
+          spacing: _gap,
+          runSpacing: _gap,
+          children: [
+            for (final item in items)
+              SizedBox(
+                width: tileWidth,
+                child: KpiTile(
+                  svg: item.svg,
+                  svgAsset: item.svgAsset,
+                  value: Fmt.count(item.value),
+                  label: item.label,
+                  tone: item.tone,
+                  onTap: item.onTap,
+                  current: item.value,
+                  denominator: item.denominator,
+                  denominatorLabel: item.denominatorLabel,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Workload row — two side-by-side cards surfacing the `byPriority` and
-// `byDepartment` slices of `ReportSummary`. These come back on every
-// dashboard load and were previously ignored; showing them here gives the
-// user a real "where is the workload sitting?" view without a second API
-// call. Empty slices collapse gracefully so a low-volume account never
-// sees a stub card.
+// `byDepartment` slices of `ReportSummary`.
 // ---------------------------------------------------------------------------
 
 class _WorkloadRow extends StatelessWidget {
@@ -709,16 +895,10 @@ class _WorkloadRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final priorityCard = priorities.isEmpty
         ? const SizedBox.shrink()
-        : _PriorityWorkloadCard(
-            priorities: priorities,
-            onSeeAll: onSeeAll,
-          );
+        : _PriorityWorkloadCard(priorities: priorities, onSeeAll: onSeeAll);
     final deptCard = departments.isEmpty
         ? const SizedBox.shrink()
-        : _DepartmentLoadCard(
-            departments: departments,
-            onSeeAll: onSeeAll,
-          );
+        : _DepartmentLoadCard(departments: departments, onSeeAll: onSeeAll);
 
     // Only one card present → render full-width alone (no lopsided layout).
     if (priorities.isEmpty) return deptCard;
@@ -728,16 +908,12 @@ class _WorkloadRow extends StatelessWidget {
       builder: (context, c) {
         final wide = c.maxWidth >= 900;
         if (wide) {
-          // IntrinsicHeight + stretch → both cards match the taller card's
-          // intrinsic height so the workload row reads as a single balanced
-          // pair. Shorter card gets extra whitespace at the bottom instead
-          // of a lopsided gap in the layout.
           return IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(child: priorityCard),
-                const SizedBox(width: WebTokens.s5),
+                const SizedBox(width: WebTokens.s4),
                 Expanded(child: deptCard),
               ],
             ),
@@ -755,6 +931,15 @@ class _WorkloadRow extends StatelessWidget {
   }
 }
 
+Color _priorityTone(String name, WebTokens t) {
+  final n = name.toLowerCase();
+  if (n.contains('emergency') || n.contains('urgent')) return t.danger;
+  if (n.contains('high')) return WebTokens.warning;
+  if (n.contains('low')) return WebTokens.success;
+  if (n.contains('normal')) return t.accent;
+  return t.accent;
+}
+
 class _PriorityWorkloadCard extends StatelessWidget {
   const _PriorityWorkloadCard({
     required this.priorities,
@@ -763,41 +948,102 @@ class _PriorityWorkloadCard extends StatelessWidget {
   final List<PriorityBucket> priorities;
   final VoidCallback onSeeAll;
 
-  static Color _tone(String name, WebTokens t) {
-    final n = name.toLowerCase();
-    if (n.contains('emergency') || n.contains('high')) return t.danger;
-    if (n.contains('low')) return WebTokens.success;
-    return WebTokens.warning;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     // Sort by descending open count so the largest bucket sits at top.
-    final sorted = [...priorities]
-      ..sort((a, b) => b.open.compareTo(a.open));
+    final sorted = [...priorities]..sort((a, b) => b.open.compareTo(a.open));
     final total = sorted.fold<int>(0, (acc, p) => acc + p.open);
-    final peak = sorted.isEmpty ? 1 : sorted.first.open;
 
     return PremiumCard(
       title: 'Priority Workload',
       subtitle: '$total open tickets across ${sorted.length} priorities',
       trailing: _SeeAllLink(onTap: onSeeAll),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s5,
-          vertical: WebTokens.s3,
+        padding: const EdgeInsets.fromLTRB(
+          WebTokens.s5,
+          WebTokens.s4,
+          WebTokens.s5,
+          WebTokens.s5,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Composition bar — a single stacked track showing how the open
+            // workload splits by priority. The modern "horizontal viz" the
+            // brief asked for: one glance = the whole distribution.
+            _CompositionBar(
+              segments: [
+                for (final b in sorted)
+                  if (b.open > 0)
+                    _Segment(
+                      value: b.open,
+                      color: _priorityTone(b.priority, t),
+                    ),
+              ],
+              total: total,
+            ),
+            const SizedBox(height: WebTokens.s5),
             for (final bucket in sorted)
               _PriorityRow(
                 bucket: bucket,
-                tone: _tone(bucket.priority, t),
-                fraction: peak == 0 ? 0 : bucket.open / peak,
+                tone: _priorityTone(bucket.priority, t),
+                share: total == 0 ? 0 : bucket.open / total,
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Segment {
+  const _Segment({required this.value, required this.color});
+  final int value;
+  final Color color;
+}
+
+/// Stacked horizontal bar showing a set of tone-colored segments summing to
+/// [total]. Rounded outer corners, hairline gaps between segments.
+class _CompositionBar extends StatelessWidget {
+  const _CompositionBar({required this.segments, required this.total});
+  final List<_Segment> segments;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    if (segments.isEmpty || total == 0) {
+      return Container(
+        height: 10,
+        decoration: BoxDecoration(
+          color: t.bgTertiary,
+          borderRadius: BorderRadius.circular(WebTokens.rFull),
+        ),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(WebTokens.rFull),
+      child: SizedBox(
+        height: 10,
+        child: Row(
+          children: [
+            for (var i = 0; i < segments.length; i++) ...[
+              if (i > 0) const SizedBox(width: 2),
+              Expanded(
+                flex: segments[i].value,
+                child: TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 0, end: 1),
+                  duration: Duration(milliseconds: 400 + i * 90),
+                  curve: Curves.easeOutCubic,
+                  builder: (context, v, _) => Opacity(
+                    opacity: v,
+                    child: ColoredBox(color: segments[i].color),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -809,28 +1055,30 @@ class _PriorityRow extends StatelessWidget {
   const _PriorityRow({
     required this.bucket,
     required this.tone,
-    required this.fraction,
+    required this.share,
   });
   final PriorityBucket bucket;
   final Color tone;
-  final double fraction;
+  final double share;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: tone, shape: BoxShape.circle),
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(
+              color: tone,
+              borderRadius: BorderRadius.circular(3),
+            ),
           ),
           const SizedBox(width: 10),
-          SizedBox(
-            width: 90,
+          Expanded(
             child: Text(
               bucket.priority.isEmpty ? '—' : bucket.priority,
               maxLines: 1,
@@ -839,36 +1087,18 @@ class _PriorityRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: Container(
-              height: 6,
-              decoration: BoxDecoration(
-                color: t.bgTertiary,
-                borderRadius: BorderRadius.circular(WebTokens.rFull),
-              ),
-              child: FractionallySizedBox(
-                widthFactor: fraction.clamp(0.0, 1.0),
-                alignment: Alignment.centerLeft,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: tone,
-                    borderRadius: BorderRadius.circular(WebTokens.rFull),
-                  ),
-                ),
-              ),
-            ),
+          Text(
+            '${(share * 100).round()}%',
+            style: t.caption.copyWith(color: t.textSecondary),
           ),
           const SizedBox(width: 12),
           SizedBox(
-            width: 36,
+            width: 40,
             child: Text(
               Fmt.count(bucket.open),
               textAlign: TextAlign.right,
               style: t.bodyBase
-                  .copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: t.textPrimary,
-                  )
+                  .copyWith(fontWeight: FontWeight.w600, color: t.textPrimary)
                   .withTabularNums(),
             ),
           ),
@@ -893,88 +1123,124 @@ class _DepartmentLoadCard extends StatelessWidget {
     final t = WebTokens.of(context);
     // Sort by descending open count so the busiest team sits at top; cap at
     // 6 rows so a large helpdesk doesn't stretch the card to a wall of text.
-    final sorted = [...departments]
-      ..sort((a, b) => b.open.compareTo(a.open));
+    final sorted = [...departments]..sort((a, b) => b.open.compareTo(a.open));
     final visible = sorted.take(_maxRows).toList();
     final overflow = sorted.length - visible.length;
+    final peak = visible.isEmpty ? 1 : visible.first.open;
 
     return PremiumCard(
       title: 'Department Load',
-      subtitle: '${sorted.length} teams · open · overdue',
+      subtitle: '${sorted.length} teams · open & overdue',
       trailing: _SeeAllLink(onTap: onSeeAll),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (int i = 0; i < visible.length; i++) ...[
-            if (i > 0) Container(height: 1, color: t.borderSubtle),
-            _DepartmentRow(bucket: visible[i]),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          WebTokens.s5,
+          WebTokens.s2,
+          WebTokens.s5,
+          WebTokens.s3,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final bucket in visible)
+              _DepartmentRow(
+                bucket: bucket,
+                fraction: peak == 0 ? 0 : bucket.open / peak,
+              ),
+            if (overflow > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: WebTokens.s2),
+                child: Text(
+                  'and $overflow more teams…',
+                  style: t.bodySm.copyWith(fontStyle: FontStyle.italic),
+                ),
+              ),
           ],
-          if (overflow > 0)
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: WebTokens.s5,
-                vertical: WebTokens.s3,
-              ),
-              child: Text(
-                'and $overflow more…',
-                style: t.bodySm.copyWith(fontStyle: FontStyle.italic),
-              ),
-            ),
-        ],
+        ),
       ),
     );
   }
 }
 
 class _DepartmentRow extends StatelessWidget {
-  const _DepartmentRow({required this.bucket});
+  const _DepartmentRow({required this.bucket, required this.fraction});
   final DepartmentBucket bucket;
+  final double fraction;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
+    final name = bucket.dept.isEmpty ? '—' : bucket.dept;
     return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s5,
-        vertical: WebTokens.s4,
-      ),
+      padding: const EdgeInsets.symmetric(vertical: WebTokens.s2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(
-            child: Text(
-              bucket.dept.isEmpty ? '—' : bucket.dept,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: t.bodyBase.copyWith(
-                fontWeight: FontWeight.w500,
-                color: t.textPrimary,
-              ),
-            ),
-          ),
+          UserAvatar(name: name, radius: 15),
           const SizedBox(width: WebTokens.s3),
-          _CountPill(
-            label: '${Fmt.count(bucket.open)} open',
-            color: WebTokens.success,
-          ),
-          if (bucket.overdue > 0) ...[
-            const SizedBox(width: 6),
-            _CountPill(
-              label: '${Fmt.count(bucket.overdue)} overdue',
-              color: t.danger,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: t.bodyBase.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: t.textPrimary,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: WebTokens.s2),
+                    _CountPill(
+                      label: '${Fmt.count(bucket.open)} open',
+                      color: WebTokens.success,
+                    ),
+                    if (bucket.overdue > 0) ...[
+                      const SizedBox(width: 6),
+                      _CountPill(
+                        label: '${Fmt.count(bucket.overdue)} overdue',
+                        color: t.danger,
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 7),
+                // Relative-load bar — this team's open volume against the
+                // busiest team, so the row reads "how loaded" at a glance.
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(WebTokens.rFull),
+                  child: Container(
+                    height: 5,
+                    color: t.bgTertiary,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FractionallySizedBox(
+                        widthFactor: fraction.clamp(0.0, 1.0) == 0
+                            ? 0.0001
+                            : fraction.clamp(0.0, 1.0),
+                        child: Container(color: t.accent),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );
   }
 }
 
-/// Compact tinted count pill used in the Department Load rows.
-/// Compact metric pill used in the Department Load rows ("13 open",
+/// Compact tinted count pill used in the Department Load rows ("13 open",
 /// "2 overdue"). Same tint + hairline treatment as [StatusPill] for visual
-/// coherence, but no leading dot — the label already carries a count so a
-/// dot would over-mark it.
+/// coherence, but no leading dot — the label already carries a count.
 class _CountPill extends StatelessWidget {
   const _CountPill({required this.label, required this.color});
   final String label;
@@ -986,11 +1252,8 @@ class _CountPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(WebTokens.s1),
-        border: Border.all(
-          color: color.withValues(alpha: 0.18),
-          width: 1,
-        ),
+        borderRadius: BorderRadius.circular(WebTokens.rXs),
+        border: Border.all(color: color.withValues(alpha: 0.18), width: 1),
       ),
       child: Text(
         label,
@@ -1006,47 +1269,8 @@ class _CountPill extends StatelessWidget {
   }
 }
 
-class _KpiGrid extends StatelessWidget {
-  const _KpiGrid({required this.items});
-  final List<_KpiData> items;
-
-  static const double _gap = WebTokens.s4;
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final cols = w >= 1000 ? 4 : (w >= 640 ? 2 : 1);
-        final tileWidth = (w - _gap * (cols - 1)) / cols;
-        return Wrap(
-          spacing: _gap,
-          runSpacing: _gap,
-          children: [
-            for (final item in items)
-              SizedBox(
-                width: tileWidth,
-                child: KpiTile(
-                  svg: item.svg,
-                  value: Fmt.count(item.value),
-                  label: item.label,
-                  tone: item.tone,
-                  onTap: item.onTap,
-                  current: item.value,
-                  denominator: item.denominator,
-                  denominatorLabel: item.denominatorLabel,
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
-// "See all" link — small brand-blue text. Underlines on hover so the
-// affordance is legible without a persistent underline in the resting state.
+// "See all" link — small brand-blue text with a chevron. Underlines on hover.
 // ---------------------------------------------------------------------------
 
 class _SeeAllLink extends StatefulWidget {
@@ -1069,16 +1293,24 @@ class _SeeAllLinkState extends State<_SeeAllLink> {
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         onTap: widget.onTap,
-        child: Text(
-          'See all',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: t.accent,
-            decoration:
-                _hover ? TextDecoration.underline : TextDecoration.none,
-            decorationColor: t.accent,
-          ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'See all',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: t.accent,
+                decoration: _hover
+                    ? TextDecoration.underline
+                    : TextDecoration.none,
+                decorationColor: t.accent,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(Icons.chevron_right_rounded, size: 16, color: t.accent),
+          ],
         ),
       ),
     );
@@ -1086,7 +1318,9 @@ class _SeeAllLinkState extends State<_SeeAllLink> {
 }
 
 // ---------------------------------------------------------------------------
-// Recent Tickets card — a [PremiumCard] wrapping a compact 3-column table.
+// Recent Tickets card — a [PremiumCard] wrapping a clean, gridline-free table
+// with sticky-feeling header, hover rows, colored status + priority pills,
+// and a hover-revealed open affordance.
 // ---------------------------------------------------------------------------
 
 class _RecentTicketsCard extends StatelessWidget {
@@ -1105,40 +1339,33 @@ class _RecentTicketsCard extends StatelessWidget {
     final t = WebTokens.of(context);
     return PremiumCard(
       title: 'Recent Tickets',
+      subtitle: 'Latest open tickets across your desk',
       trailing: _SeeAllLink(onTap: onSeeAll),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Column-header strip with vertical dividers between each cell.
-          // Matches the ClickUp task-list header rhythm — thin hairlines
-          // that carry down through the body rows via matching per-cell
-          // borders on `_TicketRow`.
+          // Column-header strip — no vertical gridlines (Asana-clean), just a
+          // tinted background so it reads as a header band.
           Container(
-            color: t.bgElevated,
-            child: const IntrinsicHeight(
-              child: Row(
-                children: [
-                  _HeaderCell(flex: 3, label: 'Name'),
-                  _HeaderCell(flex: 1, label: 'Assignee'),
-                  _HeaderCell(width: 140, label: 'Status'),
-                  _HeaderCell(width: 130, label: 'Priority', last: true),
-                ],
-              ),
+            color: t.bgTertiary.withValues(alpha: 0.5),
+            padding: const EdgeInsets.symmetric(
+              horizontal: WebTokens.s5,
+              vertical: WebTokens.s3,
+            ),
+            child: const Row(
+              children: [
+                _HeaderCell(flex: 5, label: 'Ticket'),
+                _HeaderCell(flex: 2, label: 'Assignee'),
+                _HeaderCell(width: 118, label: 'Status'),
+                _HeaderCell(width: 110, label: 'Priority'),
+                SizedBox(width: 24),
+              ],
             ),
           ),
           Container(height: 1, color: t.borderSubtle),
 
-          // Body — intrinsic height so 6 tighter rows sit naturally under
-          // the header. The parent `IntrinsicHeight` on the middle row of
-          // `_buildBody` syncs the total card height to the sibling Tasks
-          // Overview card.
           if (tickets.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: WebTokens.s8),
-              child: Center(
-                child: Text('No recent tickets', style: t.bodySm),
-              ),
-            )
+            const _RecentTicketsEmpty()
           else
             for (int i = 0; i < tickets.length; i++) ...[
               if (i > 0) Container(height: 1, color: t.borderSubtle),
@@ -1153,36 +1380,63 @@ class _RecentTicketsCard extends StatelessWidget {
   }
 }
 
-/// Column-header cell — small caps label sat in the tinted header strip,
-/// with an optional right divider so all header cells match the vertical
-/// hairlines drawn by the body rows.
-class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({
-    required this.label,
-    this.flex,
-    this.width,
-    this.last = false,
-  });
-  final String label;
-  final int? flex;
-  final double? width;
-  final bool last;
+/// Beautiful empty state for the Recent Tickets table.
+class _RecentTicketsEmpty extends StatelessWidget {
+  const _RecentTicketsEmpty();
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final content = Container(
+    return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: WebTokens.s5,
+        vertical: WebTokens.s10,
       ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(
-                right: BorderSide(color: t.borderSubtle, width: 1),
-              ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: WebTokens.success.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(WebTokens.rLg),
+            ),
+            child: const Icon(
+              Icons.inbox_rounded,
+              size: 24,
+              color: WebTokens.success,
+            ),
+          ),
+          const SizedBox(height: WebTokens.s3),
+          Text(
+            'No open tickets',
+            style: t.cardName.copyWith(color: t.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'New tickets will show up here as they arrive.',
+            textAlign: TextAlign.center,
+            style: t.bodySm,
+          ),
+        ],
       ),
+    );
+  }
+}
+
+/// Column-header cell — small caps label; no dividers (clean table look).
+class _HeaderCell extends StatelessWidget {
+  const _HeaderCell({required this.label, this.flex, this.width});
+  final String label;
+  final int? flex;
+  final double? width;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    final content = Align(
       alignment: Alignment.centerLeft,
       child: Text(label, style: t.tableHeader),
     );
@@ -1204,15 +1458,14 @@ class _TicketRow extends StatefulWidget {
 class _TicketRowState extends State<_TicketRow> {
   bool _hover = false;
 
+  static const double _rowHeight = 46;
+
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     final overdue = widget.ticket.isOverdue;
-    // Since the Due column is gone, overdue tickets need a visual cue that
-    // reads at a glance across the whole card. A 3 px accent stripe on the
-    // left edge does the job without adding chrome: red on overdue rows,
-    // accent-blue on hover, transparent otherwise (kept in the layout so
-    // row content never shifts horizontally).
+    // Left edge accent: red on overdue, accent-blue on hover, transparent
+    // otherwise (kept in the layout so content never shifts horizontally).
     final Color stripeColor;
     if (overdue) {
       stripeColor = t.danger;
@@ -1229,62 +1482,91 @@ class _TicketRowState extends State<_TicketRow> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
+          duration: const Duration(milliseconds: 90),
           curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: _hover ? t.bgHover : t.bgElevated,
-          ),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                AnimatedContainer(
-                  duration: const Duration(milliseconds: 120),
-                  curve: Curves.easeOut,
-                  width: 3,
-                  color: stripeColor,
-                ),
-                _BodyCell(
-                  flex: 3,
+          height: _rowHeight,
+          decoration: BoxDecoration(color: _hover ? t.bgHover : t.bgElevated),
+          child: Row(
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOut,
+                width: 3,
+                height: _rowHeight,
+                color: stripeColor,
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: WebTokens.s5 - 3,
+                  ),
                   child: Row(
                     children: [
-                      Text(
-                        '#${widget.ticket.number}',
-                        style: t.bodySm
-                            .copyWith(
-                              fontWeight: FontWeight.w600,
-                              color: t.accent,
-                            )
-                            .withTabularNums(),
+                      Expanded(
+                        flex: 5,
+                        child: Row(
+                          children: [
+                            Text(
+                              '#${widget.ticket.number}',
+                              style: t.bodySm
+                                  .copyWith(
+                                    fontWeight: FontWeight.w600,
+                                    color: t.accent,
+                                  )
+                                  .withTabularNums(),
+                            ),
+                            const SizedBox(width: WebTokens.s2),
+                            Flexible(
+                              child: Text(
+                                widget.ticket.subject,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: t.bodyBase.copyWith(
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(width: WebTokens.s2),
-                      Flexible(
-                        child: Text(
-                          widget.ticket.subject,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: t.bodyBase
-                              .copyWith(fontWeight: FontWeight.w500),
+                      Expanded(
+                        flex: 2,
+                        child: _AssigneeCell(assignee: widget.ticket.assignee),
+                      ),
+                      SizedBox(
+                        width: 118,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _StatusTag(ticket: widget.ticket),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 110,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _PriorityCell(
+                            priority: widget.ticket.priority,
+                          ),
+                        ),
+                      ),
+                      // Hover-revealed open affordance.
+                      SizedBox(
+                        width: 24,
+                        child: AnimatedOpacity(
+                          duration: const Duration(milliseconds: 90),
+                          opacity: _hover ? 1 : 0,
+                          child: Icon(
+                            Icons.arrow_outward_rounded,
+                            size: 15,
+                            color: t.textSecondary,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                _BodyCell(
-                  flex: 1,
-                  child: _AssigneeCell(assignee: widget.ticket.assignee),
-                ),
-                _BodyCell(
-                  width: 140,
-                  child: _StatusTag(ticket: widget.ticket),
-                ),
-                _BodyCell(
-                  width: 130,
-                  last: true,
-                  child: _PriorityCell(priority: widget.ticket.priority),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1292,51 +1574,8 @@ class _TicketRowState extends State<_TicketRow> {
   }
 }
 
-/// Body cell — tighter vertical rhythm (10 px) than the previous 16 px
-/// padded row, with a right hairline that matches the header divider so
-/// the ticket table reads as a proper grid instead of a wall of flowing
-/// text. Set [last] true for the trailing cell so the row doesn't grow a
-/// stray edge divider.
-class _BodyCell extends StatelessWidget {
-  const _BodyCell({
-    required this.child,
-    this.flex,
-    this.width,
-    this.last = false,
-  });
-  final Widget child;
-  final int? flex;
-  final double? width;
-  final bool last;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    final content = Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: 10,
-      ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(
-                right: BorderSide(color: t.borderSubtle, width: 1),
-              ),
-      ),
-      alignment: Alignment.centerLeft,
-      child: child,
-    );
-    if (flex != null) return Expanded(flex: flex!, child: content);
-    if (width != null) return SizedBox(width: width!, child: content);
-    return content;
-  }
-}
-
-
 /// Priority cell — wears the same [StatusPill] treatment as the status
-/// column so priority + status read as one visual family. The flag glyph
-/// replaces the leading dot to keep the "priority ≠ status" affordance.
+/// column so priority + status read as one visual family.
 class _PriorityCell extends StatelessWidget {
   const _PriorityCell({required this.priority});
   final String? priority;
@@ -1352,6 +1591,7 @@ class _PriorityCell extends StatelessWidget {
       label: _titleCase(name),
       color: _tone(name, t),
       icon: Icons.flag_rounded,
+      dense: true,
     );
   }
 
@@ -1370,19 +1610,13 @@ class _PriorityCell extends StatelessWidget {
   }
 }
 
-/// Assignee cell in the Recent Tickets table — a [UserAvatar]-style
-/// initial circle (deterministic color per name, same palette as elsewhere
-/// in the app) followed by the assignee's name. Renders a compact
-/// "Unassigned" placeholder with a dashed neutral circle when no one owns
-/// the ticket yet.
-///
-/// Mirrors the "avatar + name" pattern the reference dashboards
-/// (Asana / ClickUp) use in their assignee columns.
+/// Assignee cell — a [UserAvatar] initial circle followed by the name, or a
+/// dashed placeholder when unassigned.
 class _AssigneeCell extends StatelessWidget {
   const _AssigneeCell({required this.assignee});
   final String? assignee;
 
-  static const double _avatarSize = 22.0;
+  static const double _avatarSize = 24.0;
 
   @override
   Widget build(BuildContext context) {
@@ -1403,7 +1637,7 @@ class _AssigneeCell extends StatelessWidget {
             alignment: Alignment.center,
             child: Icon(
               Icons.person_outline_rounded,
-              size: 12,
+              size: 13,
               color: t.textSecondary,
             ),
           ),
@@ -1443,9 +1677,8 @@ class _AssigneeCell extends StatelessWidget {
   }
 }
 
-/// Premium status pill — resolves the ticket's semantic tone (open /
-/// closed / unassigned / overdue) and renders via [StatusPill] so the tag
-/// gets the shared dot-indicator treatment.
+/// Premium status pill — resolves the ticket's semantic tone and renders via
+/// [StatusPill] so the tag gets the shared tinted-chip treatment.
 class _StatusTag extends StatelessWidget {
   const _StatusTag({required this.ticket});
   final Ticket ticket;
@@ -1453,9 +1686,8 @@ class _StatusTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
-    final label =
-        ticket.isOverdue ? 'Overdue' : _titleCase(ticket.statusName);
-    return StatusPill(label: label, color: _fg(t));
+    final label = ticket.isOverdue ? 'Overdue' : _titleCase(ticket.statusName);
+    return StatusPill(label: label, color: _fg(t), dense: true);
   }
 
   String _titleCase(String s) {
@@ -1467,9 +1699,6 @@ class _StatusTag extends StatelessWidget {
     if (ticket.isOverdue) return t.danger;
     final s = ticket.statusName.toLowerCase();
     if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
-    // "Unassigned" is a passive waiting state — read it as calm info-blue,
-    // not alarming amber. Amber is reserved for genuinely warning states
-    // (overdue-soon, at-risk) so it retains its "attention needed" meaning.
     if (s.contains('unassigned')) return WebTokens.info;
     if (s.contains('open')) return WebTokens.success;
     return WebTokens.info;
@@ -1477,49 +1706,76 @@ class _StatusTag extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// Tasks Overview card — a [PremiumCard] listing task views with counts.
+// Tasks Overview card — a 2-column grid of tone-tinted mini stat tiles, one
+// per task view. Replaces the old flat name/count list with scannable,
+// clickable widgets (the brief's "attractive widgets" ask).
 // ---------------------------------------------------------------------------
 
-typedef _OverviewRow = ({String name, int value, VoidCallback onTap});
+typedef _OverviewRow = ({
+  String name,
+  int value,
+  Color tone,
+  VoidCallback onTap,
+});
 
-class _TasksListCard extends StatelessWidget {
-  const _TasksListCard({required this.rows, required this.onSeeAll});
+class _TasksOverviewCard extends StatelessWidget {
+  const _TasksOverviewCard({required this.rows, required this.onSeeAll});
   final List<_OverviewRow> rows;
   final VoidCallback onSeeAll;
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return PremiumCard(
       title: 'Tasks Overview',
+      subtitle: 'Your task queues at a glance',
       trailing: _SeeAllLink(onTap: onSeeAll),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (int i = 0; i < rows.length; i++) ...[
-            if (i > 0) Container(height: 1, color: t.borderSubtle),
-            _OverviewListRow(row: rows[i]),
+      // Built as a Column of paired Rows (not a LayoutBuilder/Wrap) so the
+      // card can sit inside the middle row's `IntrinsicHeight` — a
+      // LayoutBuilder descendant can't report intrinsic dimensions. `stretch`
+      // keeps the two tiles in each pair equal height.
+      child: Padding(
+        padding: const EdgeInsets.all(WebTokens.s4),
+        child: Column(
+          children: [
+            for (int i = 0; i < rows.length; i += 2) ...[
+              if (i > 0) const SizedBox(height: WebTokens.s3),
+              IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(child: _TaskStatTile(row: rows[i])),
+                    const SizedBox(width: WebTokens.s3),
+                    Expanded(
+                      child: i + 1 < rows.length
+                          ? _TaskStatTile(row: rows[i + 1])
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
-class _OverviewListRow extends StatefulWidget {
-  const _OverviewListRow({required this.row});
+class _TaskStatTile extends StatefulWidget {
+  const _TaskStatTile({required this.row});
   final _OverviewRow row;
 
   @override
-  State<_OverviewListRow> createState() => _OverviewListRowState();
+  State<_TaskStatTile> createState() => _TaskStatTileState();
 }
 
-class _OverviewListRowState extends State<_OverviewListRow> {
+class _TaskStatTileState extends State<_TaskStatTile> {
   bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
+    final tone = widget.row.tone;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1528,40 +1784,51 @@ class _OverviewListRowState extends State<_OverviewListRow> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.row.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
+          duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
+          padding: const EdgeInsets.all(WebTokens.s3),
           decoration: BoxDecoration(
-            color: _hover ? t.bgHover : t.bgElevated,
+            color: _hover ? tone.withValues(alpha: 0.06) : t.bgElevated,
+            borderRadius: BorderRadius.circular(WebTokens.rLg),
+            border: Border.all(
+              color: _hover ? tone.withValues(alpha: 0.35) : t.borderSubtle,
+              width: 1,
+            ),
           ),
-          // Vertical padding matches the tighter Recent Tickets `_BodyCell`
-          // (10 px) so the two cards share the same row rhythm at 6 rows.
-          padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s5,
-            vertical: 10,
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  widget.row.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: t.bodyBase.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: t.textPrimary,
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: tone,
+                      borderRadius: BorderRadius.circular(3),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      widget.row.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodySm.copyWith(
+                        color: t.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: WebTokens.s2),
+              const SizedBox(height: WebTokens.s2),
               Text(
                 Fmt.count(widget.row.value),
-                style: t.bodyBase
-                    .copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: t.textPrimary,
-                    )
-                    .withTabularNums(),
+                style: t
+                    .valueLarge(t.textPrimary)
+                    .copyWith(fontSize: 24, letterSpacing: -0.6),
               ),
             ],
           ),
@@ -1598,6 +1865,7 @@ class _ActivityCard extends StatelessWidget {
 
     return PremiumCard(
       title: 'Ticket Activity',
+      subtitle: 'Opened vs. closed over the selected range',
       dividerAfterHeader: false,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1619,7 +1887,7 @@ class _ActivityCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
           WebTokens.s5,
-          WebTokens.s3,
+          WebTokens.s4,
           WebTokens.s5,
           WebTokens.s5,
         ),
@@ -1658,8 +1926,7 @@ class _ActivityCard extends StatelessWidget {
               SizedBox(
                 height: 180,
                 child: Center(
-                  child:
-                      Text('No activity in this range', style: t.bodySm),
+                  child: Text('No activity in this range', style: t.bodySm),
                 ),
               )
             else
@@ -1693,11 +1960,7 @@ class _ActivityCard extends StatelessWidget {
 }
 
 class _Metric extends StatelessWidget {
-  const _Metric({
-    required this.value,
-    required this.label,
-    required this.tone,
-  });
+  const _Metric({required this.value, required this.label, required this.tone});
   final String value;
   final String label;
   final Color tone;
@@ -1735,8 +1998,6 @@ class _VDivider extends StatelessWidget {
 
 // ---------------------------------------------------------------------------
 // Range toggle — segmented pill group (single tinted bg, one segment lifted).
-// Feels less like three separate buttons and more like a real segmented
-// control, matching the ClickUp reference's inline widgets.
 // ---------------------------------------------------------------------------
 
 class _RangeToggle extends StatelessWidget {
@@ -1814,17 +2075,18 @@ class _RangeSegment extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Dashboard skeleton — placeholder layout shown while the initial data fetch
 // is in flight. Mirrors the real screen's rhythm (hero → KPI grid → recent
-// tickets + tasks overview → activity chart) so the swap to real content is
-// visually calm.
+// tickets + tasks overview → activity chart) so the swap is visually calm.
 // ---------------------------------------------------------------------------
 
-const _kSkelRadius = WebTokens.rLg;
+// Matches the unified card-surface radius (see [PremiumCard] / [KpiTile]) so
+// the skeleton→content swap doesn't visibly change corner geometry.
+const _kSkelRadius = WebTokens.r2xl;
 
 BoxDecoration _skelCard(WebTokens t) => BoxDecoration(
-      color: t.bgElevated,
-      borderRadius: BorderRadius.circular(_kSkelRadius),
-      border: Border.all(color: t.borderSubtle, width: 1),
-    );
+  color: t.bgElevated,
+  borderRadius: BorderRadius.circular(_kSkelRadius),
+  border: Border.all(color: t.borderSubtle, width: 1),
+);
 
 class _DashboardSkeleton extends StatelessWidget {
   const _DashboardSkeleton();
@@ -1839,60 +2101,81 @@ class _DashboardSkeleton extends StatelessWidget {
           final wide = constraints.maxWidth >= 1100;
           return SingleChildScrollView(
             padding: const EdgeInsets.symmetric(
-              horizontal: WebTokens.s10,
-              vertical: WebTokens.s6,
+              horizontal: WebTokens.s6,
+              vertical: WebTokens.s5,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Hero
-                const _SkelBar(width: 140, height: 12),
-                const SizedBox(height: 6),
-                const _SkelBar(width: 320, height: 26),
-                const SizedBox(height: WebTokens.s6),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1800),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Hero
+                    const _SkelBar(width: 150, height: 12),
+                    const SizedBox(height: WebTokens.s3),
+                    const _SkelBar(width: 340, height: 30),
+                    const SizedBox(height: 10),
+                    const _SkelBar(width: 220, height: 14),
+                    const SizedBox(height: WebTokens.s4),
 
-                // 4 KPI tiles
-                LayoutBuilder(
-                  builder: (context, c) {
-                    final w = c.maxWidth;
-                    final cols = w >= 1000 ? 4 : (w >= 640 ? 2 : 1);
-                    const gap = WebTokens.s4;
-                    final tileWidth = (w - gap * (cols - 1)) / cols;
-                    return Wrap(
-                      spacing: gap,
-                      runSpacing: gap,
-                      children: List.generate(
-                        4,
-                        (_) => SizedBox(
-                          width: tileWidth,
-                          child: const _SkelKpiTile(),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: WebTokens.s6),
+                    // 4 KPI cards
+                    LayoutBuilder(
+                      builder: (context, c) {
+                        final w = c.maxWidth;
+                        final cols = w >= 1000 ? 4 : (w >= 640 ? 2 : 1);
+                        const gap = WebTokens.s4;
+                        final tileWidth = (w - gap * (cols - 1)) / cols;
+                        return Wrap(
+                          spacing: gap,
+                          runSpacing: gap,
+                          children: List.generate(
+                            4,
+                            (_) => SizedBox(
+                              width: tileWidth,
+                              child: const _SkelKpiTile(),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: WebTokens.s5),
 
-                // Middle row
-                if (wide)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Expanded(flex: 2, child: _SkelRecentTicketsCard()),
-                      SizedBox(width: WebTokens.s5),
-                      Expanded(flex: 1, child: _SkelTasksCard()),
+                    // Workload row
+                    if (wide)
+                      const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: _SkelBlockCard(height: 220)),
+                          SizedBox(width: WebTokens.s5),
+                          Expanded(child: _SkelBlockCard(height: 220)),
+                        ],
+                      )
+                    else
+                      const _SkelBlockCard(height: 220),
+                    const SizedBox(height: WebTokens.s5),
+
+                    // Middle row
+                    if (wide)
+                      const Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 5, child: _SkelRecentTicketsCard()),
+                          SizedBox(width: WebTokens.s5),
+                          Expanded(flex: 3, child: _SkelBlockCard(height: 300)),
+                        ],
+                      )
+                    else ...const [
+                      _SkelRecentTicketsCard(),
+                      SizedBox(height: WebTokens.s5),
+                      _SkelBlockCard(height: 300),
                     ],
-                  )
-                else ...const [
-                  _SkelRecentTicketsCard(),
-                  SizedBox(height: WebTokens.s5),
-                  _SkelTasksCard(),
-                ],
 
-                const SizedBox(height: WebTokens.s5),
-                const _SkelActivityCard(),
-                const SizedBox(height: WebTokens.s10),
-              ],
+                    const SizedBox(height: WebTokens.s5),
+                    const _SkelBlockCard(height: 320),
+                    const SizedBox(height: WebTokens.s10),
+                  ],
+                ),
+              ),
             ),
           );
         },
@@ -1902,8 +2185,7 @@ class _DashboardSkeleton extends StatelessWidget {
 }
 
 /// Shimmering rectangle — the single primitive every skeleton block is built
-/// from. Uses a repeating linear-gradient sweep synced across instances by
-/// each instance's own controller.
+/// from. Uses a repeating linear-gradient sweep.
 class _SkelBar extends StatefulWidget {
   const _SkelBar({required this.width, required this.height, this.radius = 4});
   final double width;
@@ -1939,7 +2221,6 @@ class _SkelBarState extends State<_SkelBar>
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) {
-        // Sweep from left (-1) to right (+1) as the value moves 0 → 1.
         final dx = (_c.value * 2) - 1;
         return Container(
           width: widget.width == double.infinity ? null : widget.width,
@@ -1967,16 +2248,18 @@ class _SkelKpiTile extends StatelessWidget {
     final t = WebTokens.of(context);
     return Container(
       decoration: _skelCard(t),
-      padding: const EdgeInsets.all(WebTokens.s4),
+      padding: const EdgeInsets.all(WebTokens.s5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: const [
-          _SkelBar(width: 34, height: 34, radius: WebTokens.rSm),
-          SizedBox(height: WebTokens.s3),
-          _SkelBar(width: 60, height: 22),
-          SizedBox(height: 6),
-          _SkelBar(width: 100, height: 12),
+          _SkelBar(width: 40, height: 40, radius: WebTokens.rLg),
+          SizedBox(height: WebTokens.s4),
+          _SkelBar(width: 72, height: 28),
+          SizedBox(height: 8),
+          _SkelBar(width: 100, height: 13),
+          SizedBox(height: WebTokens.s4),
+          _SkelBar(width: double.infinity, height: 6, radius: WebTokens.rFull),
         ],
       ),
     );
@@ -1997,11 +2280,35 @@ class _SkelCardHeader extends StatelessWidget {
       ),
       child: Row(
         children: const [
-          _SkelBar(width: 26, height: 26, radius: WebTokens.rSm),
-          SizedBox(width: 10),
-          _SkelBar(width: 130, height: 14),
+          _SkelBar(width: 130, height: 15),
           Spacer(),
           _SkelBar(width: 56, height: 12),
+        ],
+      ),
+    );
+  }
+}
+
+/// Generic elevated skeleton card of a fixed height, with a header strip.
+class _SkelBlockCard extends StatelessWidget {
+  const _SkelBlockCard({required this.height});
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = WebTokens.of(context);
+    return Container(
+      decoration: _skelCard(t),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SkelCardHeader(),
+          Container(height: 1, color: t.borderSubtle),
+          Padding(
+            padding: const EdgeInsets.all(WebTokens.s5),
+            child: _SkelBar(width: double.infinity, height: height - 90),
+          ),
         ],
       ),
     );
@@ -2022,29 +2329,7 @@ class _SkelRecentTicketsCard extends StatelessWidget {
         children: [
           const _SkelCardHeader(),
           Container(height: 1, color: t.borderSubtle),
-
-          // Column headers strip
-          Container(
-            padding: const EdgeInsets.fromLTRB(
-              WebTokens.s5,
-              WebTokens.s3,
-              WebTokens.s5,
-              WebTokens.s3,
-            ),
-            color: t.bgTertiary,
-            child: Row(
-              children: const [
-                Expanded(flex: 3, child: _SkelBar(width: 60, height: 11)),
-                Expanded(flex: 1, child: _SkelBar(width: 60, height: 11)),
-                SizedBox(width: 130, child: _SkelBar(width: 56, height: 11)),
-                SizedBox(width: 78, child: _SkelBar(width: 40, height: 11)),
-                SizedBox(width: 92, child: _SkelBar(width: 60, height: 11)),
-              ],
-            ),
-          ),
-          Container(height: 1, color: t.borderSubtle),
-
-          for (int i = 0; i < 5; i++) ...[
+          for (int i = 0; i < 6; i++) ...[
             if (i > 0) Container(height: 1, color: t.borderSubtle),
             const _SkelTicketRow(),
           ],
@@ -2059,8 +2344,8 @@ class _SkelTicketRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
+    return const Padding(
+      padding: EdgeInsets.symmetric(
         horizontal: WebTokens.s5,
         vertical: WebTokens.s4,
       ),
@@ -2070,150 +2355,40 @@ class _SkelTicketRow extends StatelessWidget {
           Expanded(
             flex: 3,
             child: Row(
-              children: const [
+              children: [
                 _SkelBar(width: 52, height: 13),
                 SizedBox(width: WebTokens.s2),
                 Expanded(child: _SkelBar(width: double.infinity, height: 13)),
               ],
             ),
           ),
-          const Expanded(
-            flex: 1,
+          SizedBox(width: WebTokens.s4),
+          Expanded(
+            flex: 2,
             child: Row(
               children: [
-                _SkelBar(width: 22, height: 22, radius: 11),
+                _SkelBar(width: 24, height: 24, radius: 12),
                 SizedBox(width: 8),
                 Expanded(child: _SkelBar(width: double.infinity, height: 13)),
               ],
             ),
           ),
-          const SizedBox(
-            width: 130,
+          SizedBox(width: WebTokens.s4),
+          SizedBox(
+            width: 118,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: _SkelBar(width: 90, height: 18, radius: WebTokens.rXs),
+              child: _SkelBar(width: 84, height: 18, radius: WebTokens.rSm),
             ),
           ),
-          const SizedBox(
-            width: 78,
-            child: _SkelBar(width: 60, height: 13),
-          ),
-          const SizedBox(
-            width: 92,
-            child: Row(
-              children: [
-                _SkelBar(width: 13, height: 13),
-                SizedBox(width: 5),
-                Expanded(child: _SkelBar(width: double.infinity, height: 13)),
-              ],
+          SizedBox(
+            width: 110,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _SkelBar(width: 76, height: 18, radius: WebTokens.rSm),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SkelTasksCard extends StatelessWidget {
-  const _SkelTasksCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Container(
-      decoration: _skelCard(t),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _SkelCardHeader(),
-          Container(height: 1, color: t.borderSubtle),
-          for (int i = 0; i < 6; i++) ...[
-            if (i > 0) Container(height: 1, color: t.borderSubtle),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: WebTokens.s5,
-                vertical: WebTokens.s4,
-              ),
-              child: Row(
-                children: const [
-                  Expanded(child: _SkelBar(width: 120, height: 13)),
-                  SizedBox(width: WebTokens.s2),
-                  _SkelBar(width: 24, height: 13),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _SkelActivityCard extends StatelessWidget {
-  const _SkelActivityCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Container(
-      decoration: _skelCard(t),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _SkelCardHeader(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              WebTokens.s5,
-              WebTokens.s3,
-              WebTokens.s5,
-              WebTokens.s5,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: const [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _SkelBar(width: 80, height: 24),
-                          SizedBox(height: 6),
-                          _SkelBar(width: 60, height: 11),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _SkelBar(width: 80, height: 24),
-                          SizedBox(height: 6),
-                          _SkelBar(width: 60, height: 11),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _SkelBar(width: 80, height: 24),
-                          SizedBox(height: 6),
-                          _SkelBar(width: 60, height: 11),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: WebTokens.s3),
-                const _SkelBar(width: 260, height: 12),
-                const SizedBox(height: WebTokens.s5),
-                const _SkelBar(width: double.infinity, height: 220),
-              ],
-            ),
-          ),
+          SizedBox(width: 24),
         ],
       ),
     );

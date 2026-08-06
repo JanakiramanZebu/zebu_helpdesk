@@ -384,23 +384,19 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         onTap: widget.onPressed,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          height: 46,
-          transform: Matrix4.translationValues(0, _hover && enabled ? -1 : 0, 0),
+          height: 52,
           decoration: BoxDecoration(
-            // Filled Sign In button keeps the Mynt brand blue in both modes.
-            color: enabled
-                ? (_hover ? WebTokens.accentHoverLight : WebTokens.accentLight)
-                : WebTokens.accentLight.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(WebTokens.s1),
-            boxShadow: _hover && enabled
-                ? const [
-                    BoxShadow(
-                      color: Color(0x40002677), // rgba(0,55,183,~25%)
-                      blurRadius: 12,
-                      offset: Offset(0, 4),
-                    ),
-                  ]
+            // Stadium pill with the mobile brand gradient (mobile dialog
+            // primary-button parity); hover deepens both gradient stops.
+            // Disabled falls back to a flat washed fill — a washed-out
+            // gradient reads as broken.
+            gradient: enabled
+                ? (_hover ? t.brandGradientHover : t.brandGradient)
                 : null,
+            color: enabled
+                ? null
+                : WebTokens.accentLight.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(WebTokens.rFull),
           ),
           child: Center(
             child: widget.busy

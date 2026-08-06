@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 
-/// Minimal status / priority / tag indicator: **colored dot + label** with
-/// no background, no border. The signal is the color; the chrome comes off.
-/// Reads as premium precisely because it's restrained — Linear / Vercel
-/// "issue status" style rather than a chunky chip.
+import '../../features/dashboard/web/_tokens.dart';
+
+/// Status / priority / tag chip, matching the mobile app's `StatusChip`
+/// language: a **filled tinted pill** — the chip color at 12 % alpha as the
+/// background, radius 8, with the label (and optional leading icon) in the
+/// full-strength color. Reads as a solid, scannable badge in tables and
+/// detail panels, identical to the mobile ticket/task rows.
 ///
 /// Two sizes:
-///   * default — 12 px label, 6 px dot (fits table cells);
-///   * dense   — 11 px label, 5 px dot (fits tight inline chips).
+///   * default — 12 px label, H10/V5 padding (fits table cells);
+///   * dense   — 11 px label, H8/V3 padding (fits tight inline chips).
 ///
-/// Pass an [icon] to swap the dot for a filled glyph — used by priority
-/// rows (flag) and category tags where a shape reads faster than a dot.
+/// Pass an [icon] for chips where a glyph reads faster than color alone
+/// (priority flags, category tags).
 class StatusPill extends StatelessWidget {
   const StatusPill({
     super.key,
@@ -18,7 +21,7 @@ class StatusPill extends StatelessWidget {
     required this.color,
     this.icon,
     this.dense = false,
-    this.fontWeight = FontWeight.w500,
+    this.fontWeight = FontWeight.w600,
   });
 
   final String label;
@@ -26,45 +29,45 @@ class StatusPill extends StatelessWidget {
   final IconData? icon;
   final bool dense;
 
-  /// Label weight. Defaults to `w500` (matches the light restraint the pill
-  /// was designed for); pass `w600` when the pill also carries an
-  /// identity/type meaning that should read as bolder in a scannable column.
+  /// Label weight. Defaults to `w600` (mobile `StatusChip` weight); pass
+  /// `w500` for softer secondary tags.
   final FontWeight fontWeight;
 
   @override
   Widget build(BuildContext context) {
-    final size = dense ? 11.0 : 14.0;
-    final indicatorSize = dense ? 5.0 : 6.0;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (icon != null)
-          Icon(icon, size: indicatorSize + 5, color: color)
-        else
-          Container(
-            width: indicatorSize + 4,
-            height: indicatorSize,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
+    final fontSize = dense ? 11.0 : 12.0;
+    final iconSize = dense ? 12.0 : 14.0;
+    return Container(
+      padding: dense
+          ? const EdgeInsets.symmetric(horizontal: 8, vertical: 3)
+          : const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(WebTokens.rSm),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: iconSize, color: color),
+            const SizedBox(width: 4),
+          ],
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: color,
+                height: 1.25,
+                letterSpacing: 0.05,
+              ),
             ),
           ),
-        SizedBox(width: dense ? 6 : 7),
-        Flexible(
-          child: Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: size,
-              fontWeight: fontWeight,
-              color: color,
-              height: 1.25,
-              letterSpacing: 0.05,
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

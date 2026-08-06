@@ -152,10 +152,10 @@ class _WebFilterButtonState extends State<WebFilterButton> {
             clipBehavior: Clip.none,
             children: [
               // Active state is a **solid brand-blue tile** with a white
-              // glyph and a soft accent glow — the button reads as "on"
-              // at a glance, distinct from the outline-only inactive
-              // state. Inactive keeps the hairline-outlined chip so it
-              // sits quietly alongside the search input.
+              // glyph — the button reads as "on" at a glance, distinct from
+              // the outline-only inactive state. Inactive keeps the
+              // hairline-outlined chip so it sits quietly alongside the
+              // search input.
               AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
                 curve: Curves.easeOut,
@@ -173,7 +173,6 @@ class _WebFilterButtonState extends State<WebFilterButton> {
                     width: 1,
                   ),
                   borderRadius: BorderRadius.circular(WebTokens.rSm),
-                  boxShadow: active ? WebTokens.accentGlow : null,
                 ),
                 child: Icon(
                   Icons.tune,

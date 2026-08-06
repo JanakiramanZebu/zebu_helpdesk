@@ -8,13 +8,18 @@ import '../../../data/tickets_repository.dart';
 import '../../../models/meta.dart';
 import '../../../models/ticket.dart';
 import '../../../providers.dart';
+import '../../../widgets/app_dialog.dart';
+import '../../../widgets/app_dropdown.dart';
+import '../../../widgets/app_toast.dart';
 import '../../../widgets/list_controls.dart' show DateRange;
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
+import '../../../widgets/web/bulk_action_bar.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
+import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../widgets/web_filter_button.dart';
 import '../../dashboard/web/_tokens.dart';
@@ -35,6 +40,8 @@ import 'ticket_detail_panel.dart';
 /// ticket like `#020817` at `bodySm` w600 plus the shared `s3` cell
 /// padding. Split out of the "Ticket" column so the number reads as its
 /// own sortable value.
+/// Leading select-checkbox column, shared by header + rows + skeleton.
+const double _kColSelectWidth = 44;
 const double _kColNumberWidth = 90;
 const int _kColTicketFlex = 5;
 const int _kColRequesterFlex = 2;
@@ -48,11 +55,16 @@ const double _kColStatusWidth = 130;
 // size — the previous 100 px forced the year to wrap onto a second row.
 const double _kColCreatedWidth = 120;
 
+/// Fixed table row height — uniform, Asana-style rows. Replaces the previous
+/// `IntrinsicHeight` sizing so every row is the same height and the layout
+/// skips an extra measure pass.
+const double _kRowHeight = 44;
+
 /// Minimum table width — accounts for the fixed-width columns
 /// (90 + 130 + 130 + 120 = 470), the 3 px leading accent-stripe rail, and
 /// a readable minimum for each flex column. Below this the table
 /// horizontally scrolls instead of squeezing columns.
-const double _kTableMinWidth = 1120;
+const double _kTableMinWidth = 1164;
 
 /// Web-only tickets list.
 ///
@@ -123,6 +135,148 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     for (final f in _ticketFacets) f.key: 'all',
   };
   Map<String, List<MetaItem>> _facetOptions = const {};
+
+  // --- Bulk selection ------------------------------------------------------
+  /// Ids of tickets ticked via the row checkboxes. Persists across scroll
+  /// (appended pages), cleared on view/tab switch since the visible set
+  /// changes underneath it.
+  final Set<int> _selectedIds = {};
+
+  /// Currently visible (filtered + sorted) tickets, reported by
+  /// [PagedListView.onItems] — backs the header select-all + its tri-state.
+  List<Ticket> _visibleTickets = const [];
+
+  bool get _allChecked =>
+      _visibleTickets.isNotEmpty &&
+      _visibleTickets.every((t) => _selectedIds.contains(t.id));
+  bool get _someChecked => _selectedIds.isNotEmpty && !_allChecked;
+
+  void _onVisibleTickets(List<Ticket> items) {
+    final next = items.map((t) => t.id).toSet();
+    final cur = _visibleTickets.map((t) => t.id).toSet();
+    if (next.length == cur.length && next.containsAll(cur)) return;
+    setState(() => _visibleTickets = items);
+  }
+
+  void _toggleChecked(int id) => setState(() {
+        if (!_selectedIds.remove(id)) _selectedIds.add(id);
+      });
+
+  void _toggleCheckAll() => setState(() {
+        if (_allChecked) {
+          for (final t in _visibleTickets) {
+            _selectedIds.remove(t.id);
+          }
+        } else {
+          for (final t in _visibleTickets) {
+            _selectedIds.add(t.id);
+          }
+        }
+      });
+
+  void _clearSelection() => setState(_selectedIds.clear);
+
+  void _toast(String msg, {ToastType type = ToastType.info}) =>
+      AppToast.show(context, msg, type: type);
+
+  /// Runs [op] against every selected ticket, tolerating per-item failures,
+  /// then clears the selection and bumps the refresh sequence so rows re-fetch.
+  Future<void> _bulkRun(
+    Future<void> Function(int id) op, {
+    required String verb,
+  }) async {
+    final ids = _selectedIds.toList();
+    if (ids.isEmpty) return;
+    var failed = 0;
+    for (final id in ids) {
+      try {
+        await op(id);
+      } catch (_) {
+        failed++;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectedIds.clear();
+      _panelChangeSeq++;
+    });
+    final noun = ids.length == 1 ? 'ticket' : 'tickets';
+    if (failed == 0) {
+      _toast('$verb ${ids.length} $noun', type: ToastType.success);
+    } else {
+      _toast('$verb ${ids.length - failed}/${ids.length} — $failed failed',
+          type: ToastType.error);
+    }
+  }
+
+  /// Fetches a meta list and opens a picker under [anchor]; returns the id.
+  Future<int?> _pickMetaId(BuildContext anchor, String kind) async {
+    final List<MetaItem> items;
+    try {
+      items = await ref.read(metaRepositoryProvider).get(kind);
+    } catch (e) {
+      _toast('$e', type: ToastType.error);
+      return null;
+    }
+    if (!mounted || !anchor.mounted) return null;
+    return showAppDropdown<int>(
+      anchor,
+      entries: [
+        for (final m in items) AppDropdownItem<int>(value: m.id, label: m.name),
+      ],
+    );
+  }
+
+  Future<void> _bulkClaim() => _bulkRun(
+        (id) async => ref.read(ticketsRepositoryProvider).claim(id),
+        verb: 'Claimed',
+      );
+
+  Future<void> _bulkAssign(BuildContext anchor) async {
+    final agentId = await _pickMetaId(anchor, MetaKind.agents);
+    if (agentId == null) return;
+    await _bulkRun(
+      (id) async =>
+          ref.read(ticketsRepositoryProvider).assign(id, staffId: agentId),
+      verb: 'Assigned',
+    );
+  }
+
+  Future<void> _bulkStatus(BuildContext anchor) async {
+    final statusId = await _pickMetaId(anchor, MetaKind.statuses);
+    if (statusId == null) return;
+    await _bulkRun(
+      (id) async => ref.read(ticketsRepositoryProvider).setStatus(id, statusId),
+      verb: 'Updated',
+    );
+  }
+
+  Future<void> _bulkPriority(BuildContext anchor) async {
+    final priorityId = await _pickMetaId(anchor, MetaKind.priorities);
+    if (priorityId == null) return;
+    await _bulkRun(
+      (id) async =>
+          ref.read(ticketsRepositoryProvider).setPriority(id, priorityId),
+      verb: 'Updated',
+    );
+  }
+
+  Future<void> _bulkDelete() async {
+    final n = _selectedIds.length;
+    if (n == 0) return;
+    final ok = await showAppConfirmDialog(
+      context,
+      title: 'Delete $n ${n == 1 ? 'ticket' : 'tickets'}?',
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    );
+    if (ok != true) return;
+    await _bulkRun(
+      (id) => ref.read(ticketsRepositoryProvider).delete(id),
+      verb: 'Deleted',
+    );
+  }
 
   void _openTicket(int id) => setState(() => _openTicketId = id);
   // Closing the panel is a pure state change — no refetch on close.
@@ -199,16 +353,26 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     });
   }
 
-  bool _matches(Ticket t, String? meName) {
+  /// Per-item predicate. All values that are constant across a filter pass
+  /// ([meNameLower], date [bounds], the search [needle], and the active
+  /// [facetNeedles]) are computed once by the caller and passed in, so the
+  /// hot path here does no allocation, `DateTime.now()`, or RegExp compile.
+  bool _matches(
+    Ticket t, {
+    required String? meNameLower,
+    required (DateTime, DateTime)? bounds,
+    required String? needle,
+    required Map<String, String> facetNeedles,
+  }) {
     final viewOk = switch (_view) {
       'open' => !t.isClosed,
       'closed' => t.isClosed,
       'overdue' => t.isOverdue,
       'unassigned' => (t.assignee ?? '').trim().isEmpty,
       'mine' =>
-        meName == null || meName.isEmpty
+        meNameLower == null || meNameLower.isEmpty
             ? true
-            : (t.assignee ?? '').toLowerCase().contains(meName.toLowerCase()),
+            : (t.assignee ?? '').toLowerCase().contains(meNameLower),
       _ => true,
     };
     if (!viewOk) return false;
@@ -221,7 +385,6 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     }
 
     // Date range filter — matches against the ticket's created date.
-    final bounds = _dateRange.bounds(DateTime.now());
     if (bounds != null) {
       final c = t.created;
       if (c == null) return false;
@@ -230,6 +393,30 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     }
 
     // Facet dropdowns — match by option name (case-insensitive).
+    for (final entry in facetNeedles.entries) {
+      final haystack = switch (entry.key) {
+        'dept' => (t.departmentName ?? '').toLowerCase(),
+        'status' => t.statusName.toLowerCase(),
+        'priority' => (t.priority ?? '').toLowerCase(),
+        'agent' => (t.assignee ?? '').toLowerCase(),
+        _ => '',
+      };
+      if (!haystack.contains(entry.value)) return false;
+    }
+
+    if (needle == null) return true;
+    return _norm(t.number).contains(needle) ||
+        _norm(t.subject).contains(needle) ||
+        _norm(t.requester ?? '').contains(needle) ||
+        _norm(t.assignee ?? '').contains(needle) ||
+        _norm(t.departmentName ?? '').contains(needle);
+  }
+
+  /// Resolves the currently-selected facet dropdowns to a
+  /// `{facetKey: lowercased option name}` map — computed once per filter pass
+  /// instead of re-looked-up per ticket.
+  Map<String, String> _activeFacetNeedles() {
+    final out = <String, String>{};
     for (final f in _ticketFacets) {
       final sel = _facetSelected[f.key];
       if (sel == null || sel == 'all') continue;
@@ -237,25 +424,9 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
           ?.where((o) => o.id.toString() == sel)
           .firstOrNull;
       if (option == null) continue;
-      final needle = option.name.toLowerCase();
-      final haystack = switch (f.key) {
-        'dept' => (t.departmentName ?? '').toLowerCase(),
-        'status' => t.statusName.toLowerCase(),
-        'priority' => (t.priority ?? '').toLowerCase(),
-        'agent' => (t.assignee ?? '').toLowerCase(),
-        _ => '',
-      };
-      if (!haystack.contains(needle)) return false;
+      out[f.key] = option.name.toLowerCase();
     }
-
-    final q = _search.trim();
-    if (q.isEmpty) return true;
-    final needle = _norm(q);
-    return _norm(t.number).contains(needle) ||
-        _norm(t.subject).contains(needle) ||
-        _norm(t.requester ?? '').contains(needle) ||
-        _norm(t.assignee ?? '').contains(needle) ||
-        _norm(t.departmentName ?? '').contains(needle);
+    return out;
   }
 
   List<WebQuickFilter> _quickFilters() {
@@ -300,8 +471,10 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     });
   }
 
-  static String _norm(String s) =>
-      s.toLowerCase().replaceAll(RegExp(r'[#,\s₹]'), '');
+  // Compiled once — building a fresh RegExp per call was the single heaviest
+  // per-item cost, since `_matches` normalizes ~5 fields for every ticket.
+  static final RegExp _normPattern = RegExp(r'[#,\s₹]');
+  static String _norm(String s) => s.toLowerCase().replaceAll(_normPattern, '');
 
   int _compare(Ticket a, Ticket b) {
     return switch (_sort) {
@@ -322,6 +495,17 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     return a.compareTo(b);
   }
 
+  /// Tab-dot color per view — mirrors mobile `_viewColor` in
+  /// `tickets_list_screen.dart`.
+  static Color _viewDot(String key, WebTokens t) => switch (key) {
+    'open' || 'answered' => WebTokens.success,
+    'mine' => WebTokens.indigo,
+    'unassigned' => WebTokens.warning,
+    'overdue' => t.danger,
+    'closed' => const Color(0xFF737373),
+    _ => t.accent,
+  };
+
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(ticketsViewRequestProvider, (_, next) {
@@ -335,14 +519,37 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     final repo = ref.watch(ticketsRepositoryProvider);
     final query = TicketQuery(view: _view, sort: _sort, order: 'desc');
 
+    // Precompute everything the per-item filter needs exactly once per build,
+    // rather than per ticket. `filterKey` captures every input `_matches` /
+    // `_compare` read so PagedListView can memoize the filtered+sorted list
+    // and skip the work entirely when nothing relevant changed.
+    final meNameLower = meName?.toLowerCase();
+    final dateBounds = _dateRange.bounds(DateTime.now());
+    final searchQuery = _search.trim();
+    final searchNeedle = searchQuery.isEmpty ? null : _norm(searchQuery);
+    final facetNeedles = _activeFacetNeedles();
+    final filterKey = Object.hash(
+      _view,
+      _sort,
+      searchQuery,
+      meNameLower,
+      _dateRange,
+      Object.hashAll(_priorityFilters),
+      Object.hashAllUnordered([
+        for (final e in facetNeedles.entries) '${e.key}=${e.value}',
+      ]),
+    );
+
     // Build the tab items from the fixed view list, folding in live counts
     // as they arrive. If a count hasn't loaded yet the pill is omitted.
+    // Dot colors mirror the mobile `_viewColor` mapping.
     final tabItems = [
       for (final v in _views)
         SegmentedTabItem<String>(
           value: v.key,
           label: v.label,
           count: _counts[v.key],
+          dot: _viewDot(v.key, t),
         ),
     ];
 
@@ -420,8 +627,49 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
             SegmentedTabBar<String>(
               items: tabItems,
               selected: _view,
-              onSelect: (k) => setState(() => _view = k),
+              // Switching tabs refetches a different view, so the ticked rows
+              // would no longer be visible — clear the selection with it.
+              onSelect: (k) => setState(() {
+                _view = k;
+                _selectedIds.clear();
+              }),
             ),
+            if (_selectedIds.isNotEmpty)
+              WebBulkBar(
+                count: _selectedIds.length,
+                onClear: _clearSelection,
+                actions: [
+                  WebBulkButton(
+                    icon: Icons.person_pin_circle_outlined,
+                    label: 'Assign to me',
+                    onTap: (_) => _bulkClaim(),
+                  ),
+                  WebBulkButton(
+                    icon: Icons.assignment_ind_outlined,
+                    label: 'Assign',
+                    hasMenu: true,
+                    onTap: _bulkAssign,
+                  ),
+                  WebBulkButton(
+                    icon: Icons.label_outline,
+                    label: 'Status',
+                    hasMenu: true,
+                    onTap: _bulkStatus,
+                  ),
+                  WebBulkButton(
+                    icon: Icons.flag_outlined,
+                    label: 'Priority',
+                    hasMenu: true,
+                    onTap: _bulkPriority,
+                  ),
+                  WebBulkButton(
+                    icon: Icons.delete_outline,
+                    label: 'Delete',
+                    tone: t.danger,
+                    onTap: (_) => _bulkDelete(),
+                  ),
+                ],
+              ),
             Expanded(
               child: ListTableShell(
                 child: LayoutBuilder(
@@ -442,7 +690,12 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            _TableHeader(scrollGutter: horizontalScroll),
+                            _TableHeader(
+                              scrollGutter: horizontalScroll,
+                              allChecked: _allChecked,
+                              someChecked: _someChecked,
+                              onToggleAll: _toggleCheckAll,
+                            ),
                             Expanded(
                               child: ColoredBox(
                                 color: t.bgElevated,
@@ -450,7 +703,14 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                                   padding: EdgeInsets.zero,
                                   refreshKey:
                                       '$_view|$_search|$_panelChangeSeq',
-                                  itemFilter: (t) => _matches(t, meName),
+                                  filterKey: filterKey,
+                                  itemFilter: (ticket) => _matches(
+                                    ticket,
+                                    meNameLower: meNameLower,
+                                    bounds: dateBounds,
+                                    needle: searchNeedle,
+                                    facetNeedles: facetNeedles,
+                                  ),
                                   itemSort: _compare,
                                   emptyMessage: 'No tickets',
                                   emptyHint:
@@ -459,10 +719,15 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                                       repo.list(query.copyWith(page: page)),
                                   loadingBuilder: (_) =>
                                       const _TicketTableSkeleton(),
+                                  onItems: _onVisibleTickets,
                                   itemBuilder: (context, ticket) =>
                                       _TicketRow(
                                     ticket: ticket,
                                     selected: _openTicketId == ticket.id,
+                                    checked:
+                                        _selectedIds.contains(ticket.id),
+                                    onToggleChecked: () =>
+                                        _toggleChecked(ticket.id),
                                     onTap: () => _openTicket(ticket.id),
                                   ),
                                 ),
@@ -492,13 +757,23 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
 // ---------------------------------------------------------------------------
 
 class _TableHeader extends StatelessWidget {
-  const _TableHeader({this.scrollGutter = false});
+  const _TableHeader({
+    this.scrollGutter = false,
+    required this.allChecked,
+    required this.someChecked,
+    required this.onToggleAll,
+  });
 
   /// When true, reserves 10 px of trailing space at the right edge of
   /// the header to line up with the horizontal scrollbar sitting under
   /// the body. Off when the table isn't horizontally scrolling — the
   /// gutter would otherwise create a dead strip past "Created".
   final bool scrollGutter;
+
+  /// Header select-all tri-state (`allChecked`/`someChecked`) + its toggle.
+  final bool allChecked;
+  final bool someChecked;
+  final VoidCallback onToggleAll;
 
   @override
   Widget build(BuildContext context) {
@@ -523,6 +798,16 @@ class _TableHeader extends StatelessWidget {
         // and body now start at x = 0.
         child: Row(
           children: [
+            SizedBox(
+              width: _kColSelectWidth,
+              child: Center(
+                child: SelectCheckbox(
+                  value: allChecked ? true : (someChecked ? null : false),
+                  onChanged: (_) => onToggleAll(),
+                  tooltip: allChecked ? 'Deselect all' : 'Select all',
+                ),
+              ),
+            ),
             const _HeaderCell(width: _kColNumberWidth, label: '#'),
             const _HeaderCell(flex: _kColTicketFlex, label: 'Ticket'),
             const _HeaderCell(flex: _kColRequesterFlex, label: 'Requester'),
@@ -533,7 +818,6 @@ class _TableHeader extends StatelessWidget {
               width: _kColCreatedWidth,
               label: 'Created',
               alignRight: true,
-              last: true,
             ),
             if (scrollGutter) const SizedBox(width: 10),
           ],
@@ -551,13 +835,11 @@ class _HeaderCell extends StatelessWidget {
     required this.label,
     this.flex,
     this.width,
-    this.last = false,
     this.alignRight = false,
   });
   final String label;
   final int? flex;
   final double? width;
-  final bool last;
   final bool alignRight;
 
   @override
@@ -567,11 +849,6 @@ class _HeaderCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
         horizontal: WebTokens.s3,
         vertical: WebTokens.s3,
-      ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       // Header labels must stay on one line — "Department" was
@@ -601,18 +878,15 @@ class _BodyCell extends StatelessWidget {
     required this.child,
     this.flex,
     this.width,
-    this.last = false,
     this.alignRight = false,
   });
   final Widget child;
   final int? flex;
   final double? width;
-  final bool last;
   final bool alignRight;
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final content = Container(
       // Tighter vertical rhythm (6 px) than the previous 10 px so more
       // rows fit on-screen without feeling squeezed — matches the row
@@ -620,11 +894,6 @@ class _BodyCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(
         horizontal: WebTokens.s3,
         vertical: 8,
-      ),
-      decoration: BoxDecoration(
-        border: last
-            ? null
-            : Border(right: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: child,
@@ -645,10 +914,17 @@ class _TicketRow extends StatefulWidget {
   const _TicketRow({
     required this.ticket,
     required this.onTap,
+    required this.checked,
+    required this.onToggleChecked,
     this.selected = false,
   });
   final Ticket ticket;
   final VoidCallback onTap;
+
+  /// Row selection (bulk-action checkbox) — distinct from [selected], which
+  /// flags the row whose detail panel is open.
+  final bool checked;
+  final VoidCallback onToggleChecked;
   final bool selected;
 
   @override
@@ -685,19 +961,6 @@ class _TicketRowState extends State<_TicketRow> {
   Widget build(BuildContext context) {
     final t = WebTokens.of(context);
     final ticket = widget.ticket;
-    // Left accent stripe — red on overdue rows (permanent), brand-blue on
-    // hover, transparent otherwise. Kept in the layout on every row so
-    // content never shifts.
-    final Color stripeColor;
-    if (ticket.isOverdue) {
-      stripeColor = t.danger;
-    } else if (widget.selected) {
-      stripeColor = t.accent;
-    } else if (_hover) {
-      stripeColor = t.accent;
-    } else {
-      stripeColor = Colors.transparent;
-    }
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -715,20 +978,23 @@ class _TicketRowState extends State<_TicketRow> {
               bottom: BorderSide(color: t.borderSubtle, width: 1),
             ),
           ),
-          child: IntrinsicHeight(
+          child: SizedBox(
+            height: _kRowHeight,
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // AnimatedContainer(
-                //   duration: const Duration(milliseconds: 120),
-                //   curve: Curves.easeOut,
-                //   width: 3,
-                //   color: stripeColor,
-                // ),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
+                      SizedBox(
+                        width: _kColSelectWidth,
+                        child: Center(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: widget.onToggleChecked,
+                            child: SelectCheckbox(
+                              value: widget.checked,
+                              onChanged: (_) => widget.onToggleChecked(),
+                            ),
+                          ),
+                        ),
+                      ),
                       _BodyCell(
                         width: _kColNumberWidth,
                         child: Text(
@@ -780,7 +1046,6 @@ class _TicketRowState extends State<_TicketRow> {
                       ),
                       _BodyCell(
                         width: _kColCreatedWidth,
-                        last: true,
                         alignRight: true,
                         child: Text(
                           Fmt.date(ticket.created),
@@ -796,9 +1061,6 @@ class _TicketRowState extends State<_TicketRow> {
                               .withTabularNums(),
                         ),
                       ),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -933,6 +1195,7 @@ class _SkeletonRow extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SizedBox(width: _kColSelectWidth),
             _BodyCell(
               width: _kColNumberWidth,
               child: _block(56),
@@ -959,7 +1222,6 @@ class _SkeletonRow extends StatelessWidget {
             ),
             _BodyCell(
               width: _kColCreatedWidth,
-              last: true,
               alignRight: true,
               child: _block(66),
             ),

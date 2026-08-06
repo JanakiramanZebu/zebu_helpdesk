@@ -17,6 +17,10 @@ class Me {
     required this.profile,
     required this.primaryDepartment,
     required this.globalPermissions,
+    required this.permissionsByDepartment,
+    required this.visibilityDepartments,
+    required this.managedDepartments,
+    required this.teamIds,
     required this.limits,
   });
 
@@ -32,15 +36,68 @@ class Me {
   final bool avatarChangeable;
   final MeProfile profile;
   final NamedDeptRole? primaryDepartment;
+
+  /// Primary-role permission map (`code -> 0|1`). Serves as the collaborator
+  /// fallback in [canOn] — same role osTicket falls back to when the agent
+  /// holds no role in an object's own department.
   final Map<String, int> globalPermissions;
+
+  /// Per-department role permission maps: `deptId -> { code: 0|1, ... }`. The
+  /// source of truth for a role's abilities in a given department. Non-permission
+  /// keys the API includes here (`role_id`, `role_name`, `department_name`) are
+  /// harmless — [canOn] only ever queries permission codes.
+  final Map<int, Map<String, int>> permissionsByDepartment;
+
+  /// Departments whose objects this agent can see (manager/admin visibility).
+  final List<int> visibilityDepartments;
+
+  /// Departments this agent manages.
+  final List<int> managedDepartments;
+
+  /// Teams this agent belongs to.
+  final List<int> teamIds;
+
   final FileLimits limits;
 
+  /// Global (primary-role) permission test.
   bool can(String permission) => (globalPermissions[permission] ?? 0) == 1;
+
+  /// Whether this agent may perform [permission] on an object owned by
+  /// [departmentId]. Ports osTicket's `checkStaffPerm()` permission phase
+  /// (`include/class.ticket.php` / `class.task.php`): admins always pass; then
+  /// the agent's role in the object's own department; then the primary/global
+  /// role as the collaborator fallback. Object *visibility* is assumed already
+  /// granted — the backend only returns detail for objects the agent can see,
+  /// so a successfully loaded task/ticket has cleared the visibility gate.
+  bool canOn(String permission, int? departmentId) {
+    if (isAdmin) return true;
+    if (departmentId != null) {
+      final byDept = permissionsByDepartment[departmentId];
+      if (byDept != null && (byDept[permission] ?? 0) == 1) return true;
+    }
+    return can(permission);
+  }
 
   factory Me.fromJson(Map<String, dynamic> j) {
     final avatar = J.map(j['avatar']);
     final perms = <String, int>{};
     J.map(j['global_permissions']).forEach((k, v) => perms[k] = J.intOr(v));
+
+    final byDept = <int, Map<String, int>>{};
+    if (j['permissions_by_department'] is Map) {
+      J.map(j['permissions_by_department']).forEach((k, v) {
+        final deptId = int.tryParse(k.toString());
+        if (deptId == null || v is! Map) return;
+        final m = <String, int>{};
+        J.map(v).forEach((pk, pv) => m[pk] = J.intOr(pv));
+        byDept[deptId] = m;
+      });
+    }
+
+    final caps = J.map(j['computed_capabilities']);
+    List<int> intList(dynamic x) =>
+        J.list(x).map((e) => J.intOr(e)).toList();
+
     return Me(
       id: J.intOr(j['id']),
       username: J.strOr(j['username']),
@@ -57,6 +114,10 @@ class Me {
           ? NamedDeptRole.fromJson(J.map(j['primary_department']))
           : null,
       globalPermissions: perms,
+      permissionsByDepartment: byDept,
+      visibilityDepartments: intList(caps['visibility_departments']),
+      managedDepartments: intList(caps['managed_departments']),
+      teamIds: intList(caps['team_ids']),
       limits: FileLimits.fromJson(J.map(j['limits'])),
     );
   }
