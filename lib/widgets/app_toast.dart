@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../features/dashboard/web/_tokens.dart';
+import '../res/zebu_theme.dart';
+import '../res/zebu_spacing.dart';
+import '../res/zebu_text_styles.dart';
 
 /// Semantic category for [AppToast]. Drives the accent color, icon, and
 /// default title used by the toast card.
@@ -173,7 +175,7 @@ class _ToastCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final accent = _accentColor(controller.type, t);
     final visible = controller.visible;
 
@@ -199,7 +201,7 @@ class _ToastCard extends StatelessWidget {
                 color: t.bgElevated,
                 borderRadius: BorderRadius.circular(6),
                 border: Border.all(color: t.borderSubtle, width: 1),
-                boxShadow: WebTokens.shadowLg,
+                boxShadow: ZebuElevation.shadowLg,
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
@@ -224,7 +226,7 @@ class _ToastCard extends StatelessWidget {
                                   children: [
                                     Text(
                                       controller.title,
-                                      style: t.cardNameLg.copyWith(
+                                      style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold).copyWith(
                                         color: accent,
                                         height: 1.2,
                                       ),
@@ -232,7 +234,7 @@ class _ToastCard extends StatelessWidget {
                                     const SizedBox(height: 2),
                                     Text(
                                       controller.message,
-                                      style: t.bodySm.copyWith(
+                                      style: ZebuTextStyles.small(context).copyWith(
                                         color: t.textPrimary,
                                         height: 1.35,
                                       ),
@@ -260,10 +262,10 @@ class _ToastCard extends StatelessWidget {
     );
   }
 
-  Color _accentColor(ToastType type, WebTokens t) => switch (type) {
-    ToastType.success => WebTokens.success,
+  Color _accentColor(ToastType type, ZebuTheme t) => switch (type) {
+    ToastType.success => ZebuTheme.success,
     ToastType.error => t.danger,
-    ToastType.warning => WebTokens.warning,
+    ToastType.warning => ZebuTheme.warning,
     ToastType.info => t.accent,
   };
 }

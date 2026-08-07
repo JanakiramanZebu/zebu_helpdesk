@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
+import '../../res/zebu_spacing.dart';
 
 /// Card-styled wrapper for the full-width tables used across the web list
 /// screens (Tickets, Tasks, Users, Organizations, Canned, FAQ, Queues,
@@ -17,10 +18,10 @@ class ListTableShell extends StatelessWidget {
     super.key,
     required this.child,
     this.padding = const EdgeInsets.fromLTRB(
-      WebTokens.s6,
-      WebTokens.s4,
-      WebTokens.s6,
-      WebTokens.s6,
+      ZebuSpacing.s6,
+      ZebuSpacing.s4,
+      ZebuSpacing.s6,
+      ZebuSpacing.s6,
     ),
   });
 
@@ -37,8 +38,8 @@ class ListTableShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    final radius = BorderRadius.circular(WebTokens.rLg);
+    final t = ZebuTheme.of(context);
+    final radius = BorderRadius.circular(ZebuRadius.rLg);
     return Padding(
       padding: padding,
       child: DecoratedBox(

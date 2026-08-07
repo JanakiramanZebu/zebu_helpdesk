@@ -4,12 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_exception.dart';
 import '../../../models/saved_queue.dart';
 import '../../../providers.dart';
-import '../../dashboard/web/_tokens.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 const _kFlatRadius = 8.0;
 
 /// Web-styled create / rename dialog for saved queues. Matches the
-/// [_CreateOrgDialog] chrome (WebTokens shell, flat radius, brand-blue
+/// [_CreateOrgDialog] chrome (ZebuTheme shell, flat radius, brand-blue
 /// primary, danger error banner).
 class QueueEditorDialog extends ConsumerStatefulWidget {
   const QueueEditorDialog({super.key, this.existing});
@@ -68,40 +70,40 @@ class _QueueEditorDialogState extends ConsumerState<QueueEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return AlertDialog(
       backgroundColor: t.bgElevated,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       insetPadding: const EdgeInsets.all(40),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
         side: BorderSide(color: t.borderSubtle, width: 1),
       ),
       titlePadding: const EdgeInsets.fromLTRB(
-        WebTokens.s5,
-        WebTokens.s5,
-        WebTokens.s5,
-        WebTokens.s3,
+        ZebuSpacing.s5,
+        ZebuSpacing.s5,
+        ZebuSpacing.s5,
+        ZebuSpacing.s3,
       ),
       contentPadding: const EdgeInsets.fromLTRB(
-        WebTokens.s5,
+        ZebuSpacing.s5,
         0,
-        WebTokens.s5,
-        WebTokens.s4,
+        ZebuSpacing.s5,
+        ZebuSpacing.s4,
       ),
       actionsPadding: const EdgeInsets.fromLTRB(
-        WebTokens.s5,
+        ZebuSpacing.s5,
         0,
-        WebTokens.s5,
-        WebTokens.s4,
+        ZebuSpacing.s5,
+        ZebuSpacing.s4,
       ),
       title: Row(
         children: [
           Expanded(
             child: Text(
               _isEdit ? 'Rename queue' : 'New personal queue',
-              style: t.pageTitle,
+              style: ZebuTextStyles.pageTitle(context),
             ),
           ),
           _CloseIconBtn(
@@ -126,11 +128,11 @@ class _QueueEditorDialogState extends ConsumerState<QueueEditorDialog> {
               const SizedBox(height: 4),
               Text(
                 _fieldErrors['name']!,
-                style: t.bodySm.copyWith(color: t.danger),
+                style: ZebuTextStyles.small(context).copyWith(color: t.danger),
               ),
             ],
             if (!_isEdit) ...[
-              const SizedBox(height: WebTokens.s3),
+              const SizedBox(height: ZebuSpacing.s3),
               _FieldLabel(text: 'Search filter (optional)'),
               const SizedBox(height: 6),
               _ThemedTextField(
@@ -139,7 +141,7 @@ class _QueueEditorDialogState extends ConsumerState<QueueEditorDialog> {
               ),
             ],
             if (_formError != null) ...[
-              const SizedBox(height: WebTokens.s3),
+              const SizedBox(height: ZebuSpacing.s3),
               _ErrorBanner(message: _formError!),
             ],
           ],
@@ -150,7 +152,7 @@ class _QueueEditorDialogState extends ConsumerState<QueueEditorDialog> {
           label: 'Cancel',
           onTap: _saving ? null : () => Navigator.pop(context, false),
         ),
-        const SizedBox(width: WebTokens.s2),
+        const SizedBox(width: ZebuSpacing.s2),
         _PrimaryButton(
           label: _isEdit ? 'Save' : 'Create queue',
           busy: _saving,
@@ -171,10 +173,10 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Text(
       text,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: t.textPrimary,
         fontWeight: FontWeight.w600,
       ),
@@ -197,7 +199,7 @@ class _ThemedTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
@@ -215,7 +217,7 @@ class _ThemedTextField extends StatelessWidget {
     return TextField(
       controller: controller,
       autofocus: autofocus,
-      style: t.bodyBase,
+      style: ZebuTextStyles.body(context),
       decoration: InputDecoration(
         filled: true,
         fillColor: t.bgElevated,
@@ -225,11 +227,11 @@ class _ThemedTextField extends StatelessWidget {
         focusedBorder: focusedBorder,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s3,
+          horizontal: ZebuSpacing.s3,
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: t.bodyBase.copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -241,11 +243,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s2,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s2,
       ),
       decoration: BoxDecoration(
         color: t.dangerLight,
@@ -255,11 +257,11 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         children: [
           Icon(Icons.error_outline, size: 16, color: t.danger),
-          const SizedBox(width: WebTokens.s2),
+          const SizedBox(width: ZebuSpacing.s2),
           Expanded(
             child: Text(
               message,
-              style: t.bodySm.copyWith(color: t.danger),
+              style: ZebuTextStyles.small(context).copyWith(color: t.danger),
             ),
           ),
         ],
@@ -281,7 +283,7 @@ class _CloseIconBtnState extends State<_CloseIconBtn> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return Tooltip(
       message: 'Close',
@@ -300,7 +302,7 @@ class _CloseIconBtnState extends State<_CloseIconBtn> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hover && !disabled ? t.bgHover : t.bgTertiary,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             ),
             child: Icon(Icons.close, size: 16, color: t.textSecondary),
           ),
@@ -324,7 +326,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return MouseRegion(
       cursor: disabled
@@ -337,7 +339,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
+            horizontal: ZebuSpacing.s4,
             vertical: 10,
           ),
           decoration: BoxDecoration(
@@ -347,7 +349,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: t.textPrimary,
               fontWeight: FontWeight.w600,
             ),
@@ -380,8 +382,8 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
     // Filled primary button keeps the Mynt brand blue in both modes.
     final disabled = widget.onTap == null;
     final base = disabled
-        ? WebTokens.accentLight.withValues(alpha: 0.4)
-        : WebTokens.accentLight;
+        ? ZebuTheme.accentLight.withValues(alpha: 0.4)
+        : ZebuTheme.accentLight;
     final fill = _hover && !disabled
         ? Color.lerp(base, Colors.black, 0.08) ?? base
         : base;
@@ -396,7 +398,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
+            horizontal: ZebuSpacing.s4,
             vertical: 10,
           ),
           decoration: BoxDecoration(

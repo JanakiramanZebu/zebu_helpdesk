@@ -13,9 +13,11 @@ import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
-import '../../dashboard/web/_tokens.dart';
 import 'canned_detail_panel.dart';
 import 'canned_editor_dialog.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 // Column layout — header and rows share these so the vertical grid lines
 // up pixel-for-pixel. Mirrors the tickets table cell API.
@@ -91,7 +93,7 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final repo = ref.watch(cannedRepositoryProvider);
 
     return SlideOverHost(
@@ -132,7 +134,7 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
                       onChanged: _onSearchChanged,
                     ),
                   ),
-                  const SizedBox(width: WebTokens.s3),
+                  const SizedBox(width: ZebuSpacing.s3),
                   _NewButton(onTap: _openCreate),
                 ],
               ),
@@ -226,7 +228,7 @@ class _BackButtonState extends State<_BackButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Tooltip(
       message: 'Back',
       child: MouseRegion(
@@ -242,7 +244,7 @@ class _BackButtonState extends State<_BackButton> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
               border: Border.all(color: t.borderSubtle, width: 1),
             ),
             child: Icon(
@@ -274,7 +276,7 @@ class _NewButtonState extends State<_NewButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final bg = _hover ? t.accentHover : t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -288,7 +290,7 @@ class _NewButtonState extends State<_NewButton> {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             boxShadow: _hover
                 ? const [
                     BoxShadow(
@@ -305,13 +307,13 @@ class _NewButtonState extends State<_NewButton> {
               const Icon(
                 Icons.add_rounded,
                 size: 18,
-                color: WebTokens.textInverse,
+                color: ZebuTheme.textInverse,
               ),
               const SizedBox(width: 6),
               Text(
                 'New response',
-                style: t.bodyBase.copyWith(
-                  color: WebTokens.textInverse,
+                style: ZebuTextStyles.body(context).copyWith(
+                  color: ZebuTheme.textInverse,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -336,7 +338,7 @@ class _TableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -386,11 +388,11 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         border: last
@@ -403,7 +405,7 @@ class _HeaderCell extends StatelessWidget {
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.ellipsis,
-        style: t.tableHeader,
+        style: ZebuTextStyles.tableHeader(context),
         textAlign: alignRight ? TextAlign.right : TextAlign.left,
       ),
     );
@@ -430,10 +432,10 @@ class _BodyCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
         vertical: 8,
       ),
       decoration: BoxDecoration(
@@ -473,7 +475,7 @@ class _RowState extends State<_Row> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final c = widget.canned;
     final preview = Fmt.stripHtml(c.body).trim();
 
@@ -504,7 +506,7 @@ class _RowState extends State<_Row> {
                     c.title.trim().isEmpty ? '(untitled)' : c.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t.bodyBase.copyWith(
+                    style: ZebuTextStyles.body(context).copyWith(
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -518,7 +520,7 @@ class _RowState extends State<_Row> {
                   alignRight: true,
                   child: _Pill(
                     label: c.isGlobal ? 'Global' : 'Dept',
-                    tone: c.isGlobal ? WebTokens.info : t.textSecondary,
+                    tone: c.isGlobal ? ZebuTheme.info : t.textSecondary,
                   ),
                 ),
                 _BodyCell(
@@ -527,7 +529,7 @@ class _RowState extends State<_Row> {
                   alignRight: true,
                   child: _Pill(
                     label: c.isEnabled ? 'Enabled' : 'Disabled',
-                    tone: c.isEnabled ? WebTokens.success : t.danger,
+                    tone: c.isEnabled ? ZebuTheme.success : t.danger,
                   ),
                 ),
               ],
@@ -546,13 +548,13 @@ class _TextCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final empty = text.trim().isEmpty;
     return Text(
       empty ? '—' : text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: empty ? t.textSecondary : t.textPrimary,
         fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
       ),
@@ -567,16 +569,15 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: tone.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(WebTokens.rXs),
+        borderRadius: BorderRadius.circular(ZebuRadius.rXs),
       ),
       child: Text(
         label,
-        style: t.bodySm.copyWith(
+        style: ZebuTextStyles.small(context).copyWith(
           color: tone,
           fontWeight: FontWeight.w600,
           fontSize: 12,

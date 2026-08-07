@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_spacing.dart';
 
 /// Status / priority / tag chip, matching the mobile app's `StatusChip`
 /// language: a **filled tinted pill** — the chip color at 12 % alpha as the
@@ -43,7 +43,7 @@ class StatusPill extends StatelessWidget {
           : const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(WebTokens.rSm),
+        borderRadius: BorderRadius.circular(ZebuRadius.rSm),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

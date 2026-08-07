@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
 
 /// Tri-state selection checkbox shared by the list tables (inbox / tickets /
 /// tasks) for row selection and header select-all. `value` semantics:
@@ -21,7 +21,7 @@ class SelectCheckbox extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final checked = value == true;
     final indeterminate = value == null;
     final filled = checked || indeterminate;

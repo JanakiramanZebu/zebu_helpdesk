@@ -18,9 +18,11 @@ import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../widgets/web_filter_button.dart';
-import '../../dashboard/web/_tokens.dart';
 import '../../tasks/web/task_detail_panel.dart';
 import '../../tickets/web/ticket_detail_panel.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 // Column layout for the notifications table. Header and every row share these
 // so the vertical grid lines up pixel-for-pixel — same treatment as the
@@ -47,10 +49,10 @@ const double _kRowHeight = 48;
 /// table horizontally scrolls instead of squeezing columns.
 const double _kTableMinWidth = 1084;
 
-const _views = <({String key, String label})>[
-  (key: 'all', label: 'All'),
-  (key: 'unread', label: 'Unread'),
-  (key: 'read', label: 'Read'),
+const _views = <({String key, String label, IconData icon})>[
+  (key: 'all', label: 'All', icon: Icons.all_inbox_outlined),
+  (key: 'unread', label: 'Unread', icon: Icons.mark_email_unread_outlined),
+  (key: 'read', label: 'Read', icon: Icons.drafts_outlined),
 ];
 
 /// Web-only notifications inbox.
@@ -614,7 +616,7 @@ class _NotificationsScreenWebState
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
 
     // Group + filter up-front so the header's select-all and the list body
     // both read the same visible-object ledger this frame.
@@ -625,11 +627,7 @@ class _NotificationsScreenWebState
         SegmentedTabItem<String>(
           value: v.key,
           label: v.label,
-          dot: switch (v.key) {
-            'unread' => t.danger,
-            'read' => const Color(0xFF737373),
-            _ => t.accent,
-          },
+          icon: v.icon,
         ),
     ];
 
@@ -683,7 +681,7 @@ class _NotificationsScreenWebState
                           // state.
                           onClear: () => setState(_typeFlags.clear),
                         ),
-                        const SizedBox(width: WebTokens.s3),
+                        const SizedBox(width: ZebuSpacing.s3),
                         SizedBox(
                           width: searchWidth,
                           child: ListSearchInput(
@@ -691,7 +689,7 @@ class _NotificationsScreenWebState
                             onChanged: _onSearchChanged,
                           ),
                         ),
-                        const SizedBox(width: WebTokens.s3),
+                        const SizedBox(width: ZebuSpacing.s3),
                         // When one or more rows are selected the two ghost
                         // buttons switch to *bulk-on-selection* mode:
                         // "Mark all read" → "Mark read (N)" or "Mark
@@ -724,7 +722,7 @@ class _NotificationsScreenWebState
                                 : _markSelectedRead,
                           );
                         }),
-                        const SizedBox(width: WebTokens.s2),
+                        const SizedBox(width: ZebuSpacing.s2),
                         _GhostAction(
                           icon: Icons.delete_outline_rounded,
                           label: _selectedReadState.isEmpty
@@ -845,7 +843,7 @@ class _GhostActionState extends State<_GhostAction> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final fg = widget.tone ?? t.textPrimary;
     final iconOnly = widget.compact;
     final child = iconOnly
@@ -860,7 +858,7 @@ class _GhostActionState extends State<_GhostAction> {
               const SizedBox(width: 6),
               Text(
                 widget.label,
-                style: t.bodySm.copyWith(
+                style: ZebuTextStyles.small(context).copyWith(
                   color: fg,
                   fontWeight: FontWeight.w600,
                 ),
@@ -891,7 +889,7 @@ class _GhostActionState extends State<_GhostAction> {
                   : t.borderSubtle,
               width: 1,
             ),
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: child,
         ),
@@ -934,7 +932,7 @@ class _TableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -1010,17 +1008,16 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final inner = child ??
         Text(
           label!,
-          style: t.tableHeader,
+          style: ZebuTextStyles.tableHeader(context),
           textAlign: alignRight ? TextAlign.right : TextAlign.left,
         );
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s3,
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: inner,
@@ -1049,7 +1046,7 @@ class _BodyCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
         vertical: 8,
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
@@ -1112,12 +1109,12 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
 
   /// Tone the Type-column icon + label by object type (Task = green,
   /// Ticket = accent blue) so the column scans as two colour bands.
-  Color _typeTone(WebTokens t) =>
-      widget.group.type == 'task' ? WebTokens.success : t.accent;
+  Color _typeTone(ZebuTheme t) =>
+      widget.group.type == 'task' ? ZebuTheme.success : t.accent;
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final g = widget.group;
     final latest = g.latest;
     final typeTone = _typeTone(t);
@@ -1184,7 +1181,7 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
                           title,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: t.bodySm.copyWith(
+                          style: ZebuTextStyles.small(context).copyWith(
                             color: t.textPrimary,
                             fontWeight: unread
                                 ? FontWeight.w600
@@ -1200,7 +1197,7 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
                         width: _kColRefWidth,
                         child: Text(
                           '#${g.objectId}',
-                          style: t.bodySm
+                          style: ZebuTextStyles.small(context)
                               .copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: t.accent,
@@ -1226,7 +1223,7 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
                           softWrap: false,
                           overflow: TextOverflow.clip,
                           textAlign: TextAlign.right,
-                          style: t.bodySm
+                          style: ZebuTextStyles.small(context)
                               .copyWith(
                                 color: t.textPrimary,
                                 fontWeight: FontWeight.w500,
@@ -1261,13 +1258,13 @@ class _TextCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final empty = text.trim().isEmpty;
     return Text(
       empty ? '—' : text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: empty ? t.textSecondary : t.textPrimary,
         fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
       ),
@@ -1289,7 +1286,7 @@ class _DeleteButtonState extends State<_DeleteButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return AnimatedOpacity(
       opacity: widget.visible ? 1 : 0,
       duration: const Duration(milliseconds: 120),
@@ -1304,7 +1301,7 @@ class _DeleteButtonState extends State<_DeleteButton> {
             height: 28,
             decoration: BoxDecoration(
               color: _hover ? t.dangerLight : Colors.transparent,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             ),
             child: Icon(
               Icons.delete_outline,
@@ -1357,7 +1354,7 @@ class _NotificationTableSkeletonState extends State<_NotificationTableSkeleton>
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final rowCount = constraints.maxHeight.isFinite
@@ -1393,7 +1390,7 @@ class _SkeletonRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),

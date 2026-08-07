@@ -7,7 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:parchment/codecs.dart';
 
-import '../features/dashboard/web/_tokens.dart';
+import '../res/zebu_theme.dart';
+import '../res/zebu_spacing.dart';
+import '../res/zebu_text_styles.dart';
 
 const _kFlatRadius = 8.0;
 
@@ -216,11 +218,11 @@ class _CommentComposerState extends State<CommentComposer> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // Filled Send button keeps the Mynt brand blue in both modes — the
     // dark-mode cyan accent is reserved for text/borders. Notes swap to
     // warning amber as before.
-    final tone = _asNote ? WebTokens.warning : WebTokens.accentLight;
+    final tone = _asNote ? ZebuTheme.warning : ZebuTheme.accentLight;
     final showToggle = widget.scope == ComposerScope.replyAndNote;
     final hint = _asNote ? widget.noteHint : widget.replyHint;
     final sendLabel = _asNote ? widget.noteLabel : widget.replyLabel;
@@ -228,10 +230,10 @@ class _CommentComposerState extends State<CommentComposer> {
 
     return Container(
       padding: const EdgeInsets.fromLTRB(
-        WebTokens.s4,
-        WebTokens.s3,
-        WebTokens.s4,
-        WebTokens.s4,
+        ZebuSpacing.s4,
+        ZebuSpacing.s3,
+        ZebuSpacing.s4,
+        ZebuSpacing.s4,
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -249,16 +251,16 @@ class _CommentComposerState extends State<CommentComposer> {
                   active: !_asNote,
                   onTap: locked ? null : () => setState(() => _asNote = false),
                 ),
-                const SizedBox(width: WebTokens.s2),
+                const SizedBox(width: ZebuSpacing.s2),
                 _ToggleChip(
                   label: 'Note',
                   active: _asNote,
-                  tone: WebTokens.warning,
+                  tone: ZebuTheme.warning,
                   onTap: locked ? null : () => setState(() => _asNote = true),
                 ),
               ],
             ),
-            const SizedBox(height: WebTokens.s2),
+            const SizedBox(height: ZebuSpacing.s2),
           ],
           // Single bordered container — editor, chips, and toolbar all live
           // inside so the box reads as one comment "capsule".
@@ -281,10 +283,10 @@ class _CommentComposerState extends State<CommentComposer> {
                 // wasted air when each line was a short note).
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    WebTokens.s3,
-                    WebTokens.s2,
-                    WebTokens.s3,
-                    WebTokens.s2,
+                    ZebuSpacing.s3,
+                    ZebuSpacing.s2,
+                    ZebuSpacing.s3,
+                    ZebuSpacing.s2,
                   ),
                   child: Stack(
                     children: [
@@ -333,7 +335,7 @@ class _CommentComposerState extends State<CommentComposer> {
                           child: IgnorePointer(
                             child: Text(
                               hint,
-                              style: t.bodyBase.copyWith(
+                              style: ZebuTextStyles.body(context).copyWith(
                                 color: t.textSecondary,
                               ),
                             ),
@@ -346,9 +348,9 @@ class _CommentComposerState extends State<CommentComposer> {
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(
-                      WebTokens.s3,
+                      ZebuSpacing.s3,
                       6,
-                      WebTokens.s3,
+                      ZebuSpacing.s3,
                       6,
                     ),
                     decoration: BoxDecoration(
@@ -522,7 +524,7 @@ class _VDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       width: 1,
       height: 18,
@@ -558,7 +560,7 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     final bg = widget.active
         ? t.accent.withValues(alpha: 0.14)
@@ -589,7 +591,7 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Icon(widget.icon, size: 15, color: fg),
         ),
@@ -633,7 +635,7 @@ class _ToggleChipState extends State<_ToggleChip> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final effective = widget.tone ?? t.accent;
     // On-theme active state: same hairline `borderSubtle` outline the
     // other ghost controls in the panel use (Actions button, field
@@ -659,7 +661,7 @@ class _ToggleChipState extends State<_ToggleChip> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
+            horizontal: ZebuSpacing.s3,
             vertical: 6,
           ),
           decoration: BoxDecoration(
@@ -669,7 +671,7 @@ class _ToggleChipState extends State<_ToggleChip> {
           ),
           child: Text(
             widget.label,
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: widget.active ? effective : t.textSecondary,
               fontWeight: FontWeight.w600,
             ),
@@ -698,7 +700,7 @@ class _FileChipState extends State<_FileChip> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
@@ -723,7 +725,7 @@ class _FileChipState extends State<_FileChip> {
                 widget.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: t.bodySm.copyWith(fontWeight: FontWeight.w500),
+                style: ZebuTextStyles.small(context).copyWith(fontWeight: FontWeight.w500),
               ),
             ),
             if (widget.onRemove != null) ...[
@@ -789,7 +791,7 @@ class _SendButtonState extends State<_SendButton> {
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
+            horizontal: ZebuSpacing.s3,
             vertical: 8,
           ),
           decoration: BoxDecoration(
@@ -853,7 +855,7 @@ Future<String?> showEmojiPicker(BuildContext anchorContext) async {
   final anchorTopLeft = box.localToGlobal(Offset.zero, ancestor: overlayBox);
   final anchorSize = box.size;
   final viewport = overlayBox.size;
-  final t = WebTokens.of(anchorContext);
+  final t = ZebuTheme.of(anchorContext);
 
   const menuWidth = 280.0;
   const menuHeight = 224.0;
@@ -946,7 +948,7 @@ class _EmojiCellState extends State<_EmojiCell> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1154,16 +1156,16 @@ class _LinkCardState extends State<_LinkCard> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Material(
       color: t.bgElevated,
       elevation: 10,
-      borderRadius: BorderRadius.circular(WebTokens.rMd),
+      borderRadius: BorderRadius.circular(ZebuRadius.rMd),
       clipBehavior: Clip.antiAlias,
       child: DecoratedBox(
         decoration: BoxDecoration(
           border: Border.all(color: t.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(WebTokens.rMd),
+          borderRadius: BorderRadius.circular(ZebuRadius.rMd),
         ),
         child: Padding(
           padding: const EdgeInsets.all(8),
@@ -1230,13 +1232,13 @@ class _PopoverField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return TextField(
       controller: controller,
       focusNode: focusNode,
       keyboardType: keyboardType,
       onSubmitted: onSubmitted,
-      style: t.bodyBase.copyWith(color: t.textPrimary),
+      style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
       decoration: InputDecoration(
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
@@ -1244,7 +1246,7 @@ class _PopoverField extends StatelessWidget {
           vertical: 10,
         ),
         hintText: hint,
-        hintStyle: t.bodyBase.copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
         prefixIcon: prefixIcon == null
             ? null
             : Padding(
@@ -1253,15 +1255,15 @@ class _PopoverField extends StatelessWidget {
               ),
         prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(WebTokens.rSm),
+          borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           borderSide: BorderSide(color: t.borderSubtle, width: 1),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(WebTokens.rSm),
+          borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           borderSide: BorderSide(color: t.borderSubtle, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(WebTokens.rSm),
+          borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           borderSide: BorderSide(color: t.accent, width: 1.4),
         ),
       ),
@@ -1285,7 +1287,7 @@ class _ApplyButtonState extends State<_ApplyButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final enabled = widget.onTap != null;
     final fg = enabled
         ? t.accent
@@ -1306,11 +1308,11 @@ class _ApplyButtonState extends State<_ApplyButton> {
             color: enabled && _hover
                 ? t.accent.withValues(alpha: 0.08)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Text(
             'Apply',
-            style: t.bodyBase.copyWith(
+            style: ZebuTextStyles.body(context).copyWith(
               color: fg,
               fontWeight: FontWeight.w600,
             ),

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
+import '../../res/zebu_spacing.dart';
 import '../svg_icon.dart';
+import '../../res/zebu_text_styles.dart';
 
 /// ClickUp-style menu section: a small-caps eyebrow header followed by a
 /// stack of [MenuRow]s. The trailing divider is drawn by the section so a
@@ -24,7 +26,7 @@ class MenuSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -32,12 +34,12 @@ class MenuSection extends StatelessWidget {
         if (title != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              WebTokens.s3 + 4,
-              WebTokens.s3,
-              WebTokens.s3 + 4,
-              WebTokens.s1,
+              ZebuSpacing.s3 + 4,
+              ZebuSpacing.s3,
+              ZebuSpacing.s3 + 4,
+              ZebuSpacing.s1,
             ),
-            child: Text(title!.toUpperCase(), style: t.sectionCaps),
+            child: Text(title!.toUpperCase(), style: ZebuTextStyles.eyebrow(context)),
           ),
         ...children,
         if (showDivider)
@@ -83,7 +85,7 @@ class _MenuRowState extends State<MenuRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     final tone = widget.destructive ? t.danger : t.textPrimary;
     return MouseRegion(
@@ -103,7 +105,7 @@ class _MenuRowState extends State<MenuRow> {
             color: _hover && !disabled
                 ? (widget.destructive ? t.dangerLight : t.bgHover)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Row(
             children: [
@@ -115,7 +117,7 @@ class _MenuRowState extends State<MenuRow> {
               Expanded(
                 child: Text(
                   widget.label,
-                  style: t.bodyBase.copyWith(
+                  style: ZebuTextStyles.body(context).copyWith(
                     color: tone,
                     fontWeight: FontWeight.w500,
                   ),

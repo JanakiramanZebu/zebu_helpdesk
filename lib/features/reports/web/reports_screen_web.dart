@@ -6,9 +6,11 @@ import '../../../core/router/routes.dart';
 import '../../../models/reports.dart';
 import '../../../providers.dart';
 import '../../../widgets/states.dart';
-import '../../dashboard/web/_tokens.dart';
 import '../widgets/activity_chart_card.dart';
 import '../widgets/report_summary_card.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 /// Web-only reports view. Mirrors the [OrgsListScreenWeb] header language
 /// (back button + hero title) but the body is not a table — it's the same
@@ -64,7 +66,7 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return ColoredBox(
       color: t.bgPrimary,
       child: Column(
@@ -72,10 +74,10 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              WebTokens.s6,
-              WebTokens.s5,
-              WebTokens.s6,
-              WebTokens.s4,
+              ZebuSpacing.s6,
+              ZebuSpacing.s5,
+              ZebuSpacing.s6,
+              ZebuSpacing.s4,
             ),
             child: LayoutBuilder(
               builder: (context, rowConstraints) {
@@ -91,11 +93,11 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
                         }
                       },
                     ),
-                    const SizedBox(width: WebTokens.s3),
+                    const SizedBox(width: ZebuSpacing.s3),
                     Flexible(
                       child: Text(
                         'Reports',
-                        style: t.hero,
+                        style: ZebuTextStyles.hero(context),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -118,7 +120,7 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       titleRow,
-                      const SizedBox(height: WebTokens.s3),
+                      const SizedBox(height: ZebuSpacing.s3),
                       rangeSelector,
                     ],
                   );
@@ -128,7 +130,7 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(child: titleRow),
-                    const SizedBox(width: WebTokens.s3),
+                    const SizedBox(width: ZebuSpacing.s3),
                     rangeSelector,
                   ],
                 );
@@ -165,14 +167,14 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(
-          WebTokens.s6,
-          WebTokens.s5,
-          WebTokens.s6,
-          WebTokens.s8,
+          ZebuSpacing.s6,
+          ZebuSpacing.s5,
+          ZebuSpacing.s6,
+          ZebuSpacing.s8,
         ),
         children: [
           ReportSummaryCard(report: report),
-          const SizedBox(height: WebTokens.s4),
+          const SizedBox(height: ZebuSpacing.s4),
           ActivityChartCard(report: report),
         ],
       ),
@@ -197,7 +199,7 @@ class _BackButtonState extends State<_BackButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Tooltip(
       message: 'Back',
       child: MouseRegion(
@@ -213,7 +215,7 @@ class _BackButtonState extends State<_BackButton> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
               border: Border.all(color: t.borderSubtle, width: 1),
             ),
             child: Icon(
@@ -241,9 +243,9 @@ class _RangePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
+      padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
       decoration: BoxDecoration(
         color: t.bgElevated,
         border: Border.all(color: t.borderSubtle, width: 1),
@@ -259,7 +261,7 @@ class _RangePicker extends StatelessWidget {
             Icons.keyboard_arrow_down_rounded,
             color: t.textSecondary,
           ),
-          style: t.bodyBase.copyWith(
+          style: ZebuTextStyles.body(context).copyWith(
             color: t.textPrimary,
             fontWeight: FontWeight.w600,
           ),

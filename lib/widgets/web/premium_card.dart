@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
+import '../../res/zebu_spacing.dart';
+import '../../res/zebu_text_styles.dart';
 
 /// Flat, hairline-bordered container used as the surface for every card on
 /// the redesigned web app. Optional header slot renders a title (in
-/// [WebTokens.cardNameLg]) and a trailing action (typically a "See all"
+/// [ZebuTheme.cardNameLg]) and a trailing action (typically a "See all"
 /// link or a range picker). The body is passed as [child] and receives no
 /// default padding — callers with a full-width table body pass the child
 /// unpadded; callers wanting a padded body wrap in [Padding] themselves.
@@ -18,10 +20,10 @@ class PremiumCard extends StatelessWidget {
     this.trailing,
     this.subtitle,
     this.headerPadding = const EdgeInsets.fromLTRB(
-      WebTokens.s5,
-      WebTokens.s4,
-      WebTokens.s5,
-      WebTokens.s3,
+      ZebuSpacing.s5,
+      ZebuSpacing.s4,
+      ZebuSpacing.s5,
+      ZebuSpacing.s3,
     ),
     this.dividerAfterHeader = true,
     required this.child,
@@ -36,15 +38,15 @@ class PremiumCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
         // 16px — the unified "card surface" radius shared with [KpiTile] and
         // the loading skeletons, per the design system's r2xl stat-tile token.
-        borderRadius: BorderRadius.circular(WebTokens.r2xl),
+        borderRadius: BorderRadius.circular(ZebuRadius.r2xl),
         border: Border.all(color: t.borderSubtle, width: 1),
-        boxShadow: WebTokens.shadowXs,
+        boxShadow: ZebuElevation.shadowXs,
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -64,7 +66,7 @@ class PremiumCard extends StatelessWidget {
                       children: [
                         Text(
                           title!,
-                          style: t.cardNameLg,
+                          style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
@@ -72,7 +74,7 @@ class PremiumCard extends StatelessWidget {
                           const SizedBox(height: 2),
                           Text(
                             subtitle!,
-                            style: t.bodySm,
+                            style: ZebuTextStyles.small(context),
                             overflow: TextOverflow.ellipsis,
                             maxLines: 1,
                           ),

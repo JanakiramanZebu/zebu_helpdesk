@@ -21,8 +21,10 @@ import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../widgets/web_filter_button.dart';
-import '../../dashboard/web/_tokens.dart';
 import 'task_detail_panel.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 // Column layout for the tasks table. Header and every row share these so the
 // vertical grid lines up pixel-for-pixel without a `Table`/`Row` per-cell
@@ -68,13 +70,15 @@ class TasksListScreenWeb extends ConsumerStatefulWidget {
       _TasksListScreenWebState();
 }
 
-const _views = <({String key, String label})>[
-  (key: 'open', label: 'Open'),
-  (key: 'mine', label: 'Mine'),
-  (key: 'overdue', label: 'Overdue'),
-  (key: 'collaborator', label: 'Collaborator'),
-  (key: 'all', label: 'All'),
-  (key: 'closed', label: 'Closed'),
+/// Ordered saved views, each with the glyph its tab wears. Open and Closed
+/// share the tickets pairing — the same ring with opposite centres.
+const _views = <({String key, String label, IconData icon})>[
+  (key: 'open', label: 'Open', icon: Icons.radio_button_checked),
+  (key: 'mine', label: 'Mine', icon: Icons.person_outline),
+  (key: 'overdue', label: 'Overdue', icon: Icons.schedule_outlined),
+  (key: 'collaborator', label: 'Collaborator', icon: Icons.people_outline),
+  (key: 'all', label: 'All', icon: Icons.all_inbox_outlined),
+  (key: 'closed', label: 'Closed', icon: Icons.check_circle_outline),
 ];
 
 /// Ordered sort options mirrored from the mobile filter menu.
@@ -464,17 +468,6 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     return a.compareTo(b);
   }
 
-  /// Tab-dot color per view — mirrors mobile `_viewColor` in
-  /// `tasks_list_screen.dart`.
-  static Color _viewDot(String key, WebTokens t) => switch (key) {
-    'open' => WebTokens.success,
-    'mine' => WebTokens.indigo,
-    'overdue' => t.danger,
-    'collaborator' => WebTokens.warning,
-    'closed' => const Color(0xFF737373),
-    _ => t.accent,
-  };
-
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(tasksViewRequestProvider, (_, next) {
@@ -483,7 +476,7 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
       ref.read(tasksViewRequestProvider.notifier).set(null);
     });
 
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final meName = ref.watch(meProvider).asData?.value.name;
     final repo = ref.watch(tasksRepositoryProvider);
     final query = TaskQuery(view: _view, sort: _sort, order: 'desc');
@@ -518,7 +511,7 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
           value: v.key,
           label: v.label,
           count: _counts[v.key],
-          dot: _viewDot(v.key, t),
+          icon: v.icon,
         ),
     ];
 
@@ -573,7 +566,7 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                         // state.
                         onClear: _clearAllFilters,
                       ),
-                      const SizedBox(width: WebTokens.s3),
+                      const SizedBox(width: ZebuSpacing.s3),
                       SizedBox(
                         width: searchWidth,
                         child: ListSearchInput(
@@ -735,7 +728,7 @@ class _TableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -796,16 +789,15 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s3,
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       child: Text(
         label,
-        style: t.tableHeader,
+        style: ZebuTextStyles.tableHeader(context),
         textAlign: alignRight ? TextAlign.right : TextAlign.left,
       ),
     );
@@ -833,7 +825,7 @@ class _BodyCell extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
         vertical: 8,
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
@@ -877,7 +869,7 @@ class _TaskRowState extends State<_TaskRow> {
   // Color maps mirror the tickets list so both tables read as one product:
   // Normal priority = info-blue (not dead grey), High = warning amber,
   // Emergency = red, Low = success green.
-  Color _statusColor(WebTokens t) {
+  Color _statusColor(ZebuTheme t) {
     final task = widget.task;
     if (task.overdue) return t.danger;
     final s = task.statusName.toLowerCase();
@@ -886,22 +878,22 @@ class _TaskRowState extends State<_TaskRow> {
         s.contains('complete')) {
       return t.textSecondary;
     }
-    if (s.contains('open') || s.contains('new')) return WebTokens.success;
-    return WebTokens.info;
+    if (s.contains('open') || s.contains('new')) return ZebuTheme.success;
+    return ZebuTheme.info;
   }
 
-  Color _priorityColor(WebTokens t) {
+  Color _priorityColor(ZebuTheme t) {
     final p = (widget.task.priority?.name ?? '').toLowerCase();
     if (p.contains('emergency') || p.contains('urgent')) return t.danger;
-    if (p.contains('high')) return WebTokens.warning;
-    if (p.contains('low')) return WebTokens.success;
-    if (p.contains('normal')) return WebTokens.info;
-    return WebTokens.info;
+    if (p.contains('high')) return ZebuTheme.warning;
+    if (p.contains('low')) return ZebuTheme.success;
+    if (p.contains('normal')) return ZebuTheme.info;
+    return ZebuTheme.info;
   }
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final task = widget.task;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -941,7 +933,7 @@ class _TaskRowState extends State<_TaskRow> {
                         width: _kColNumberWidth,
                         child: Text(
                           '#${task.number}',
-                          style: t.bodySm
+                          style: ZebuTextStyles.small(context)
                               .copyWith(
                                 fontWeight: FontWeight.w600,
                                 color: t.accent,
@@ -958,12 +950,12 @@ class _TaskRowState extends State<_TaskRow> {
                                 task.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: t.bodyBase
+                                style: ZebuTextStyles.body(context)
                                     .copyWith(fontWeight: FontWeight.w500),
                               ),
                             ),
                             if (task.blocked) ...[
-                              const SizedBox(width: WebTokens.s2),
+                              const SizedBox(width: ZebuSpacing.s2),
                               Icon(
                                 Icons.lock_outline,
                                 size: 14,
@@ -987,7 +979,7 @@ class _TaskRowState extends State<_TaskRow> {
                       _BodyCell(
                         width: _kColPriorityWidth,
                         child: (task.priority?.name ?? '').isEmpty
-                            ? Text('—', style: t.bodySm)
+                            ? Text('—', style: ZebuTextStyles.small(context))
                             : StatusPill(
                                 label: _titleCase(task.priority!.name),
                                 color: _priorityColor(t),
@@ -1012,7 +1004,7 @@ class _TaskRowState extends State<_TaskRow> {
                           softWrap: false,
                           overflow: TextOverflow.clip,
                           textAlign: TextAlign.right,
-                          style: t.bodySm
+                          style: ZebuTextStyles.small(context)
                               .copyWith(
                                 color: t.textPrimary,
                                 fontWeight: FontWeight.w500,
@@ -1045,14 +1037,14 @@ class _TextCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final empty = text.trim().isEmpty;
     final display = empty ? (emptyLabel ?? '—') : text;
     return Text(
       display,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: empty ? t.textSecondary : t.textPrimary,
         fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
       ),
@@ -1102,7 +1094,7 @@ class _TaskTableSkeletonState extends State<_TaskTableSkeleton>
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         final rowCount = constraints.maxHeight.isFinite
@@ -1138,7 +1130,7 @@ class _SkeletonRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),

@@ -20,7 +20,9 @@ import '../../tasks/web/create_task_screen_web.dart';
 import '../../tasks/web/task_detail_panel.dart';
 import '../../tickets/web/create_ticket_screen_web.dart';
 import '../../tickets/web/ticket_detail_panel.dart';
-import '_tokens.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
+import '../../../res/zebu_text_styles.dart';
 
 /// Web-only dashboard.
 ///
@@ -219,7 +221,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // Nested slide-over hosts (tickets outer, tasks inner) so opening either
     // detail keeps the dashboard content visible on the left. Only one is
     // open at a time — `_openTicket` clears `_openTaskId` and vice versa.
@@ -238,7 +240,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
     );
   }
 
-  Widget _buildBody(BuildContext context, WebTokens t) {
+  Widget _buildBody(BuildContext context, ZebuTheme t) {
     if (_loading) return const _DashboardSkeleton();
     if (_error != null) return ErrorView(error: _error!, onRetry: _load);
     final summary = _summary;
@@ -265,7 +267,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
         svgAsset: Assets.navTickets,
         value: totals.open,
         label: 'Open Tickets',
-        tone: WebTokens.success,
+        tone: ZebuTheme.success,
         onTap: () => _openTickets('open'),
         denominator: totals.total,
         denominatorLabel: 'total',
@@ -293,7 +295,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
         svg: _kSvgOverdueTasks,
         value: _tasksOverdue ?? 0,
         label: 'Overdue Tasks',
-        tone: WebTokens.warning,
+        tone: ZebuTheme.warning,
         onTap: () => _openTasks('overdue'),
         denominator: _tasksAll,
         denominatorLabel: 'all',
@@ -312,13 +314,13 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
             (
               name: 'Open',
               value: _tasksOpen ?? 0,
-              tone: WebTokens.success,
+              tone: ZebuTheme.success,
               onTap: () => _openTasks('open'),
             ),
             (
               name: 'Mine',
               value: _tasksMine ?? 0,
-              tone: WebTokens.indigo,
+              tone: ZebuTheme.indigo,
               onTap: () => _openTasks('mine'),
             ),
             (
@@ -330,7 +332,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
             (
               name: 'Collaborator',
               value: _tasksCollaborator ?? 0,
-              tone: WebTokens.warning,
+              tone: ZebuTheme.warning,
               onTap: () => _openTasks('collaborator'),
             ),
             (
@@ -350,8 +352,8 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
           return SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(
-              horizontal: WebTokens.s6,
-              vertical: WebTokens.s5,
+              horizontal: ZebuSpacing.s6,
+              vertical: ZebuSpacing.s5,
             ),
             // Content fills the workspace on standard desktops (up to ~1900);
             // the 1800 cap only engages on ultra-wide (2000 px+) monitors so
@@ -369,11 +371,11 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
                       onNewTicket: () => showCreateTicketDialog(context),
                       onNewTask: () => showCreateTaskDialog(context),
                     ),
-                    const SizedBox(height: WebTokens.s4),
+                    const SizedBox(height: ZebuSpacing.s4),
 
                     // --- KPI grid -----------------------------------------
                     _KpiGrid(items: kpis),
-                    const SizedBox(height: WebTokens.s4),
+                    const SizedBox(height: ZebuSpacing.s4),
 
                     // --- Workload row (surfaces summary.byPriority /
                     //     .byDepartment — real data the app was already
@@ -387,7 +389,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
                         departments: summary.byDepartment,
                         onSeeAll: () => _openTickets('open'),
                       ),
-                      const SizedBox(height: WebTokens.s4),
+                      const SizedBox(height: ZebuSpacing.s4),
                     ],
 
                     // --- Middle row: Recent Tickets (left) + Tasks (right) -
@@ -406,7 +408,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
                                 onSeeAll: () => _openTickets('open'),
                               ),
                             ),
-                            const SizedBox(width: WebTokens.s4),
+                            const SizedBox(width: ZebuSpacing.s4),
                             Expanded(
                               flex: 3,
                               child: taskRows.isEmpty
@@ -426,7 +428,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
                         onSeeAll: () => _openTickets('open'),
                       ),
                       if (taskRows.isNotEmpty) ...[
-                        const SizedBox(height: WebTokens.s4),
+                        const SizedBox(height: ZebuSpacing.s4),
                         _TasksOverviewCard(
                           rows: taskRows,
                           onSeeAll: () => _openTasks('open'),
@@ -436,7 +438,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
 
                     // --- Activity chart -----------------------------------
                     if (_volume != null) ...[
-                      const SizedBox(height: WebTokens.s4),
+                      const SizedBox(height: ZebuSpacing.s4),
                       _ActivityCard(
                         report: _volume!,
                         days: _days,
@@ -445,7 +447,7 @@ class _DashboardScreenWebState extends ConsumerState<DashboardScreenWeb> {
                       ),
                     ],
 
-                    const SizedBox(height: WebTokens.s10),
+                    const SizedBox(height: ZebuSpacing.s10),
                   ],
                 ),
               ),
@@ -486,7 +488,7 @@ class _Hero extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final unread = ref
         .watch(unreadCountProvider)
         .maybeWhen(data: (c) => c, orElse: () => 0);
@@ -511,22 +513,22 @@ class _Hero extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(dateLabel.toUpperCase(), style: t.sectionCaps),
+                Text(dateLabel.toUpperCase(), style: ZebuTextStyles.eyebrow(context)),
               ],
             ),
-            const SizedBox(height: WebTokens.s3),
+            const SizedBox(height: ZebuSpacing.s3),
             // Page title — 32 px, semibold (not bold) per the design system's
             // "medium & semibold over bold" rule.
             Text(
               greeting,
-              style: t.hero.copyWith(
+              style: ZebuTextStyles.hero(context).copyWith(
                 fontSize: 32,
                 fontWeight: FontWeight.w600,
                 letterSpacing: -0.8,
                 height: 1.1,
               ),
             ),
-            const SizedBox(height: WebTokens.s3),
+            const SizedBox(height: ZebuSpacing.s3),
             _Subline(spans: subline),
           ],
         );
@@ -541,7 +543,7 @@ class _Hero extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               heroBlock,
-              // const SizedBox(height: WebTokens.s4),
+              // const SizedBox(height: ZebuSpacing.s4),
               // actions,
             ],
           );
@@ -550,7 +552,7 @@ class _Hero extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(child: heroBlock),
-            // const SizedBox(width: WebTokens.s4),
+            // const SizedBox(width: ZebuSpacing.s4),
             // actions,
           ],
         );
@@ -584,17 +586,17 @@ class _Subline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     if (spans.isEmpty) {
       return Text(
         "You're all caught up. Nothing needs you right now.",
-        style: t.bodyBase.copyWith(color: t.textSecondary),
+        style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
       );
     }
     final children = <InlineSpan>[
       TextSpan(
         text: 'You have ',
-        style: t.bodyBase.copyWith(color: t.textSecondary),
+        style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
       ),
     ];
     for (var i = 0; i < spans.length; i++) {
@@ -602,7 +604,7 @@ class _Subline extends StatelessWidget {
       children.add(
         TextSpan(
           text: Fmt.count(s.count),
-          style: t.bodyBase.copyWith(
+          style: ZebuTextStyles.body(context).copyWith(
             color: t.textPrimary,
             fontWeight: FontWeight.w600,
           ),
@@ -611,21 +613,21 @@ class _Subline extends StatelessWidget {
       children.add(
         TextSpan(
           text: ' ${s.label}',
-          style: t.bodyBase.copyWith(color: t.textSecondary),
+          style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
         ),
       );
       if (i < spans.length - 2) {
         children.add(
           TextSpan(
             text: ', ',
-            style: t.bodyBase.copyWith(color: t.textSecondary),
+            style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
           ),
         );
       } else if (i == spans.length - 2) {
         children.add(
           TextSpan(
             text: ' and ',
-            style: t.bodyBase.copyWith(color: t.textSecondary),
+            style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
           ),
         );
       }
@@ -633,7 +635,7 @@ class _Subline extends StatelessWidget {
     children.add(
       TextSpan(
         text: '.',
-        style: t.bodyBase.copyWith(color: t.textSecondary),
+        style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
       ),
     );
     return Text.rich(TextSpan(children: children));
@@ -659,7 +661,7 @@ class _HeroActions extends StatelessWidget {
           onTap: onNewTask,
           primary: false,
         ),
-        const SizedBox(width: WebTokens.s2),
+        const SizedBox(width: ZebuSpacing.s2),
         _HeroActionButton(
           label: 'New ticket',
           icon: Icons.add_rounded,
@@ -697,7 +699,7 @@ class _HeroActionButtonState extends State<_HeroActionButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final primary = widget.primary;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -718,21 +720,21 @@ class _HeroActionButtonState extends State<_HeroActionButton> {
             duration: const Duration(milliseconds: 140),
             curve: Curves.easeOut,
             height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: WebTokens.s5),
+            padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s5),
             decoration: BoxDecoration(
               // Flat accent fill for the primary action — no gradient, matching
-              // the app's flat-CTA language (see `ShellTokens.ctaBg`) and the
-              // "avoid heavy gradients" design goal. Hover deepens the fill in
-              // the same family so the AnimatedContainer lerps color→color.
+              // the app's flat-CTA language and the "avoid heavy gradients"
+              // design goal. Hover deepens the fill in the same family so the
+              // AnimatedContainer lerps color→color.
               color: primary
                   ? (_hover ? t.accentHover : t.accent)
                   : (_hover ? t.bgHover : t.bgElevated),
-              borderRadius: BorderRadius.circular(WebTokens.rMd),
+              borderRadius: BorderRadius.circular(ZebuRadius.rMd),
               border: primary
                   ? null
                   : Border.all(color: t.borderDefault, width: 1),
               boxShadow: primary
-                  ? (_hover ? WebTokens.shadowMd : WebTokens.shadowSm)
+                  ? (_hover ? ZebuElevation.shadowMd : ZebuElevation.shadowSm)
                   : null,
             ),
             child: Row(
@@ -743,7 +745,7 @@ class _HeroActionButtonState extends State<_HeroActionButton> {
                   size: 18,
                   color: primary ? Colors.white : t.textSecondary,
                 ),
-                const SizedBox(width: WebTokens.s2),
+                const SizedBox(width: ZebuSpacing.s2),
                 Text(
                   widget.label,
                   style: TextStyle(
@@ -841,7 +843,7 @@ class _KpiGrid extends StatelessWidget {
   const _KpiGrid({required this.items});
   final List<_KpiData> items;
 
-  static const double _gap = WebTokens.s3;
+  static const double _gap = ZebuSpacing.s3;
 
   @override
   Widget build(BuildContext context) {
@@ -913,7 +915,7 @@ class _WorkloadRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(child: priorityCard),
-                const SizedBox(width: WebTokens.s4),
+                const SizedBox(width: ZebuSpacing.s4),
                 Expanded(child: deptCard),
               ],
             ),
@@ -922,7 +924,7 @@ class _WorkloadRow extends StatelessWidget {
         return Column(
           children: [
             priorityCard,
-            const SizedBox(height: WebTokens.s5),
+            const SizedBox(height: ZebuSpacing.s5),
             deptCard,
           ],
         );
@@ -931,11 +933,11 @@ class _WorkloadRow extends StatelessWidget {
   }
 }
 
-Color _priorityTone(String name, WebTokens t) {
+Color _priorityTone(String name, ZebuTheme t) {
   final n = name.toLowerCase();
   if (n.contains('emergency') || n.contains('urgent')) return t.danger;
-  if (n.contains('high')) return WebTokens.warning;
-  if (n.contains('low')) return WebTokens.success;
+  if (n.contains('high')) return ZebuTheme.warning;
+  if (n.contains('low')) return ZebuTheme.success;
   if (n.contains('normal')) return t.accent;
   return t.accent;
 }
@@ -950,7 +952,7 @@ class _PriorityWorkloadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // Sort by descending open count so the largest bucket sits at top.
     final sorted = [...priorities]..sort((a, b) => b.open.compareTo(a.open));
     final total = sorted.fold<int>(0, (acc, p) => acc + p.open);
@@ -961,10 +963,10 @@ class _PriorityWorkloadCard extends StatelessWidget {
       trailing: _SeeAllLink(onTap: onSeeAll),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          WebTokens.s5,
-          WebTokens.s4,
-          WebTokens.s5,
-          WebTokens.s5,
+          ZebuSpacing.s5,
+          ZebuSpacing.s4,
+          ZebuSpacing.s5,
+          ZebuSpacing.s5,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -984,7 +986,7 @@ class _PriorityWorkloadCard extends StatelessWidget {
               ],
               total: total,
             ),
-            const SizedBox(height: WebTokens.s5),
+            const SizedBox(height: ZebuSpacing.s5),
             for (final bucket in sorted)
               _PriorityRow(
                 bucket: bucket,
@@ -1013,18 +1015,18 @@ class _CompositionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     if (segments.isEmpty || total == 0) {
       return Container(
         height: 10,
         decoration: BoxDecoration(
           color: t.bgTertiary,
-          borderRadius: BorderRadius.circular(WebTokens.rFull),
+          borderRadius: BorderRadius.circular(ZebuRadius.rFull),
         ),
       );
     }
     return ClipRRect(
-      borderRadius: BorderRadius.circular(WebTokens.rFull),
+      borderRadius: BorderRadius.circular(ZebuRadius.rFull),
       child: SizedBox(
         height: 10,
         child: Row(
@@ -1063,7 +1065,7 @@ class _PriorityRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
@@ -1083,13 +1085,13 @@ class _PriorityRow extends StatelessWidget {
               bucket.priority.isEmpty ? '—' : bucket.priority,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
+              style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 10),
           Text(
             '${(share * 100).round()}%',
-            style: t.caption.copyWith(color: t.textSecondary),
+            style: ZebuTextStyles.caption(context).copyWith(color: t.textSecondary),
           ),
           const SizedBox(width: 12),
           SizedBox(
@@ -1097,7 +1099,7 @@ class _PriorityRow extends StatelessWidget {
             child: Text(
               Fmt.count(bucket.open),
               textAlign: TextAlign.right,
-              style: t.bodyBase
+              style: ZebuTextStyles.body(context)
                   .copyWith(fontWeight: FontWeight.w600, color: t.textPrimary)
                   .withTabularNums(),
             ),
@@ -1120,7 +1122,6 @@ class _DepartmentLoadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     // Sort by descending open count so the busiest team sits at top; cap at
     // 6 rows so a large helpdesk doesn't stretch the card to a wall of text.
     final sorted = [...departments]..sort((a, b) => b.open.compareTo(a.open));
@@ -1134,10 +1135,10 @@ class _DepartmentLoadCard extends StatelessWidget {
       trailing: _SeeAllLink(onTap: onSeeAll),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          WebTokens.s5,
-          WebTokens.s2,
-          WebTokens.s5,
-          WebTokens.s3,
+          ZebuSpacing.s5,
+          ZebuSpacing.s2,
+          ZebuSpacing.s5,
+          ZebuSpacing.s3,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1149,10 +1150,10 @@ class _DepartmentLoadCard extends StatelessWidget {
               ),
             if (overflow > 0)
               Padding(
-                padding: const EdgeInsets.only(top: WebTokens.s2),
+                padding: const EdgeInsets.only(top: ZebuSpacing.s2),
                 child: Text(
                   'and $overflow more teams…',
-                  style: t.bodySm.copyWith(fontStyle: FontStyle.italic),
+                  style: ZebuTextStyles.small(context).copyWith(fontStyle: FontStyle.italic),
                 ),
               ),
           ],
@@ -1169,15 +1170,15 @@ class _DepartmentRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final name = bucket.dept.isEmpty ? '—' : bucket.dept;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: WebTokens.s2),
+      padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s2),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           UserAvatar(name: name, radius: 15),
-          const SizedBox(width: WebTokens.s3),
+          const SizedBox(width: ZebuSpacing.s3),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1190,16 +1191,16 @@ class _DepartmentRow extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: t.bodyBase.copyWith(
+                        style: ZebuTextStyles.body(context).copyWith(
                           fontWeight: FontWeight.w500,
                           color: t.textPrimary,
                         ),
                       ),
                     ),
-                    const SizedBox(width: WebTokens.s2),
+                    const SizedBox(width: ZebuSpacing.s2),
                     _CountPill(
                       label: '${Fmt.count(bucket.open)} open',
-                      color: WebTokens.success,
+                      color: ZebuTheme.success,
                     ),
                     if (bucket.overdue > 0) ...[
                       const SizedBox(width: 6),
@@ -1214,7 +1215,7 @@ class _DepartmentRow extends StatelessWidget {
                 // Relative-load bar — this team's open volume against the
                 // busiest team, so the row reads "how loaded" at a glance.
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(WebTokens.rFull),
+                  borderRadius: BorderRadius.circular(ZebuRadius.rFull),
                   child: Container(
                     height: 5,
                     color: t.bgTertiary,
@@ -1252,7 +1253,7 @@ class _CountPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(WebTokens.rXs),
+        borderRadius: BorderRadius.circular(ZebuRadius.rXs),
         border: Border.all(color: color.withValues(alpha: 0.18), width: 1),
       ),
       child: Text(
@@ -1286,7 +1287,7 @@ class _SeeAllLinkState extends State<_SeeAllLink> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1336,7 +1337,7 @@ class _RecentTicketsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return PremiumCard(
       title: 'Recent Tickets',
       subtitle: 'Latest open tickets across your desk',
@@ -1349,8 +1350,8 @@ class _RecentTicketsCard extends StatelessWidget {
           Container(
             color: t.bgTertiary.withValues(alpha: 0.5),
             padding: const EdgeInsets.symmetric(
-              horizontal: WebTokens.s5,
-              vertical: WebTokens.s3,
+              horizontal: ZebuSpacing.s5,
+              vertical: ZebuSpacing.s3,
             ),
             child: const Row(
               children: [
@@ -1386,11 +1387,11 @@ class _RecentTicketsEmpty extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s5,
-        vertical: WebTokens.s10,
+        horizontal: ZebuSpacing.s5,
+        vertical: ZebuSpacing.s10,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1400,25 +1401,25 @@ class _RecentTicketsEmpty extends StatelessWidget {
             height: 48,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: WebTokens.success.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(WebTokens.rLg),
+              color: ZebuTheme.success.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(ZebuRadius.rLg),
             ),
             child: const Icon(
               Icons.inbox_rounded,
               size: 24,
-              color: WebTokens.success,
+              color: ZebuTheme.success,
             ),
           ),
-          const SizedBox(height: WebTokens.s3),
+          const SizedBox(height: ZebuSpacing.s3),
           Text(
             'No open tickets',
-            style: t.cardName.copyWith(color: t.textPrimary),
+            style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
           ),
           const SizedBox(height: 4),
           Text(
             'New tickets will show up here as they arrive.',
             textAlign: TextAlign.center,
-            style: t.bodySm,
+            style: ZebuTextStyles.small(context),
           ),
         ],
       ),
@@ -1435,10 +1436,9 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final content = Align(
       alignment: Alignment.centerLeft,
-      child: Text(label, style: t.tableHeader),
+      child: Text(label, style: ZebuTextStyles.tableHeader(context)),
     );
     if (flex != null) return Expanded(flex: flex!, child: content);
     if (width != null) return SizedBox(width: width!, child: content);
@@ -1462,7 +1462,7 @@ class _TicketRowState extends State<_TicketRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final overdue = widget.ticket.isOverdue;
     // Left edge accent: red on overdue, accent-blue on hover, transparent
     // otherwise (kept in the layout so content never shifts horizontally).
@@ -1498,7 +1498,7 @@ class _TicketRowState extends State<_TicketRow> {
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: WebTokens.s5 - 3,
+                    horizontal: ZebuSpacing.s5 - 3,
                   ),
                   child: Row(
                     children: [
@@ -1508,20 +1508,20 @@ class _TicketRowState extends State<_TicketRow> {
                           children: [
                             Text(
                               '#${widget.ticket.number}',
-                              style: t.bodySm
+                              style: ZebuTextStyles.small(context)
                                   .copyWith(
                                     fontWeight: FontWeight.w600,
                                     color: t.accent,
                                   )
                                   .withTabularNums(),
                             ),
-                            const SizedBox(width: WebTokens.s2),
+                            const SizedBox(width: ZebuSpacing.s2),
                             Flexible(
                               child: Text(
                                 widget.ticket.subject,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: t.bodyBase.copyWith(
+                                style: ZebuTextStyles.body(context).copyWith(
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
@@ -1582,10 +1582,10 @@ class _PriorityCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final name = (priority ?? '').trim();
     if (name.isEmpty) {
-      return Text('—', style: t.bodySm);
+      return Text('—', style: ZebuTextStyles.small(context));
     }
     return StatusPill(
       label: _titleCase(name),
@@ -1595,13 +1595,13 @@ class _PriorityCell extends StatelessWidget {
     );
   }
 
-  static Color _tone(String name, WebTokens t) {
+  static Color _tone(String name, ZebuTheme t) {
     final n = name.toLowerCase();
     if (n.contains('emergency') || n.contains('urgent')) return t.danger;
-    if (n.contains('high')) return WebTokens.warning;
-    if (n.contains('low')) return WebTokens.success;
-    if (n.contains('normal')) return WebTokens.info;
-    return WebTokens.info;
+    if (n.contains('high')) return ZebuTheme.warning;
+    if (n.contains('low')) return ZebuTheme.success;
+    if (n.contains('normal')) return ZebuTheme.info;
+    return ZebuTheme.info;
   }
 
   static String _titleCase(String s) {
@@ -1620,7 +1620,7 @@ class _AssigneeCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final name = (assignee ?? '').trim();
     if (name.isEmpty) {
       return Row(
@@ -1647,7 +1647,7 @@ class _AssigneeCell extends StatelessWidget {
               'Unassigned',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: t.bodySm.copyWith(
+              style: ZebuTextStyles.small(context).copyWith(
                 color: t.textSecondary,
                 fontWeight: FontWeight.w500,
               ),
@@ -1666,7 +1666,7 @@ class _AssigneeCell extends StatelessWidget {
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: t.textPrimary,
               fontWeight: FontWeight.w500,
             ),
@@ -1685,7 +1685,7 @@ class _StatusTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final label = ticket.isOverdue ? 'Overdue' : _titleCase(ticket.statusName);
     return StatusPill(label: label, color: _fg(t), dense: true);
   }
@@ -1695,13 +1695,13 @@ class _StatusTag extends StatelessWidget {
     return s[0].toUpperCase() + s.substring(1).toLowerCase();
   }
 
-  Color _fg(WebTokens t) {
+  Color _fg(ZebuTheme t) {
     if (ticket.isOverdue) return t.danger;
     final s = ticket.statusName.toLowerCase();
     if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
-    if (s.contains('unassigned')) return WebTokens.info;
-    if (s.contains('open')) return WebTokens.success;
-    return WebTokens.info;
+    if (s.contains('unassigned')) return ZebuTheme.info;
+    if (s.contains('open')) return ZebuTheme.success;
+    return ZebuTheme.info;
   }
 }
 
@@ -1734,17 +1734,17 @@ class _TasksOverviewCard extends StatelessWidget {
       // LayoutBuilder descendant can't report intrinsic dimensions. `stretch`
       // keeps the two tiles in each pair equal height.
       child: Padding(
-        padding: const EdgeInsets.all(WebTokens.s4),
+        padding: const EdgeInsets.all(ZebuSpacing.s4),
         child: Column(
           children: [
             for (int i = 0; i < rows.length; i += 2) ...[
-              if (i > 0) const SizedBox(height: WebTokens.s3),
+              if (i > 0) const SizedBox(height: ZebuSpacing.s3),
               IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Expanded(child: _TaskStatTile(row: rows[i])),
-                    const SizedBox(width: WebTokens.s3),
+                    const SizedBox(width: ZebuSpacing.s3),
                     Expanded(
                       child: i + 1 < rows.length
                           ? _TaskStatTile(row: rows[i + 1])
@@ -1774,7 +1774,7 @@ class _TaskStatTileState extends State<_TaskStatTile> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final tone = widget.row.tone;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -1786,10 +1786,10 @@ class _TaskStatTileState extends State<_TaskStatTile> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.all(WebTokens.s3),
+          padding: const EdgeInsets.all(ZebuSpacing.s3),
           decoration: BoxDecoration(
             color: _hover ? tone.withValues(alpha: 0.06) : t.bgElevated,
-            borderRadius: BorderRadius.circular(WebTokens.rLg),
+            borderRadius: BorderRadius.circular(ZebuRadius.rLg),
             border: Border.all(
               color: _hover ? tone.withValues(alpha: 0.35) : t.borderSubtle,
               width: 1,
@@ -1815,7 +1815,7 @@ class _TaskStatTileState extends State<_TaskStatTile> {
                       widget.row.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: t.bodySm.copyWith(
+                      style: ZebuTextStyles.small(context).copyWith(
                         color: t.textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
@@ -1823,11 +1823,11 @@ class _TaskStatTileState extends State<_TaskStatTile> {
                   ),
                 ],
               ),
-              const SizedBox(height: WebTokens.s2),
+              const SizedBox(height: ZebuSpacing.s2),
               Text(
                 Fmt.count(widget.row.value),
-                style: t
-                    .valueLarge(t.textPrimary)
+                style: ZebuTextStyles.hero(context)
+                    .withTabularNums()
                     .copyWith(fontSize: 24, letterSpacing: -0.6),
               ),
             ],
@@ -1857,7 +1857,7 @@ class _ActivityCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final span = report.days == 0 ? 1 : report.days;
     final avgOpened = report.openedTotal / span;
     final avgClosed = report.closedTotal / span;
@@ -1886,10 +1886,10 @@ class _ActivityCard extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(
-          WebTokens.s5,
-          WebTokens.s4,
-          WebTokens.s5,
-          WebTokens.s5,
+          ZebuSpacing.s5,
+          ZebuSpacing.s4,
+          ZebuSpacing.s5,
+          ZebuSpacing.s5,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1899,7 +1899,7 @@ class _ActivityCard extends StatelessWidget {
                 _Metric(
                   value: Fmt.count(report.openedTotal),
                   label: 'OPENED',
-                  tone: WebTokens.success,
+                  tone: ZebuTheme.success,
                 ),
                 _VDivider(color: t.borderSubtle),
                 _Metric(
@@ -1911,22 +1911,22 @@ class _ActivityCard extends StatelessWidget {
                 _Metric(
                   value: net > 0 ? '+${Fmt.count(net)}' : Fmt.count(net),
                   label: 'NET',
-                  tone: net > 0 ? t.danger : WebTokens.success,
+                  tone: net > 0 ? t.danger : ZebuTheme.success,
                 ),
               ],
             ),
-            const SizedBox(height: WebTokens.s3),
+            const SizedBox(height: ZebuSpacing.s3),
             Text(
               'Avg ${avgOpened.toStringAsFixed(1)} opened · '
               '${avgClosed.toStringAsFixed(1)} closed per day',
-              style: t.bodySm,
+              style: ZebuTextStyles.small(context),
             ),
-            const SizedBox(height: WebTokens.s5),
+            const SizedBox(height: ZebuSpacing.s5),
             if (report.series.isEmpty)
               SizedBox(
                 height: 180,
                 child: Center(
-                  child: Text('No activity in this range', style: t.bodySm),
+                  child: Text('No activity in this range', style: ZebuTextStyles.small(context)),
                 ),
               )
             else
@@ -1938,7 +1938,7 @@ class _ActivityCard extends StatelessWidget {
                 series: [
                   ChartSeries(
                     label: 'Opened',
-                    color: WebTokens.success,
+                    color: ZebuTheme.success,
                     values: [
                       for (final p in report.series) p.opened.toDouble(),
                     ],
@@ -1967,14 +1967,16 @@ class _Metric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: t.valueLarge(tone)),
-          const SizedBox(height: WebTokens.s1),
-          Text(label, style: t.tinyLabel),
+          Text(
+            value,
+            style: ZebuTextStyles.hero(context, color: tone).withTabularNums(),
+          ),
+          const SizedBox(height: ZebuSpacing.s1),
+          Text(label, style: ZebuTextStyles.label(context)),
         ],
       ),
     );
@@ -1990,7 +1992,7 @@ class _VDivider extends StatelessWidget {
     return Container(
       width: 1,
       height: 40,
-      margin: const EdgeInsets.symmetric(horizontal: WebTokens.s5),
+      margin: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s5),
       color: color,
     );
   }
@@ -2009,12 +2011,12 @@ class _RangeToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
         color: t.bgTertiary,
-        borderRadius: BorderRadius.circular(WebTokens.rSm),
+        borderRadius: BorderRadius.circular(ZebuRadius.rSm),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2043,7 +2045,7 @@ class _RangeSegment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -2054,8 +2056,8 @@ class _RangeSegment extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
           decoration: BoxDecoration(
             color: active ? t.bgElevated : Colors.transparent,
-            borderRadius: BorderRadius.circular(WebTokens.rXs),
-            boxShadow: active ? WebTokens.shadowSm : null,
+            borderRadius: BorderRadius.circular(ZebuRadius.rXs),
+            boxShadow: active ? ZebuElevation.shadowSm : null,
           ),
           child: Text(
             label,
@@ -2080,9 +2082,9 @@ class _RangeSegment extends StatelessWidget {
 
 // Matches the unified card-surface radius (see [PremiumCard] / [KpiTile]) so
 // the skeleton→content swap doesn't visibly change corner geometry.
-const _kSkelRadius = WebTokens.r2xl;
+const _kSkelRadius = ZebuRadius.r2xl;
 
-BoxDecoration _skelCard(WebTokens t) => BoxDecoration(
+BoxDecoration _skelCard(ZebuTheme t) => BoxDecoration(
   color: t.bgElevated,
   borderRadius: BorderRadius.circular(_kSkelRadius),
   border: Border.all(color: t.borderSubtle, width: 1),
@@ -2093,7 +2095,7 @@ class _DashboardSkeleton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return ColoredBox(
       color: t.bgPrimary,
       child: LayoutBuilder(
@@ -2101,8 +2103,8 @@ class _DashboardSkeleton extends StatelessWidget {
           final wide = constraints.maxWidth >= 1100;
           return SingleChildScrollView(
             padding: const EdgeInsets.symmetric(
-              horizontal: WebTokens.s6,
-              vertical: WebTokens.s5,
+              horizontal: ZebuSpacing.s6,
+              vertical: ZebuSpacing.s5,
             ),
             child: Center(
               child: ConstrainedBox(
@@ -2112,18 +2114,18 @@ class _DashboardSkeleton extends StatelessWidget {
                   children: [
                     // Hero
                     const _SkelBar(width: 150, height: 12),
-                    const SizedBox(height: WebTokens.s3),
+                    const SizedBox(height: ZebuSpacing.s3),
                     const _SkelBar(width: 340, height: 30),
                     const SizedBox(height: 10),
                     const _SkelBar(width: 220, height: 14),
-                    const SizedBox(height: WebTokens.s4),
+                    const SizedBox(height: ZebuSpacing.s4),
 
                     // 4 KPI cards
                     LayoutBuilder(
                       builder: (context, c) {
                         final w = c.maxWidth;
                         final cols = w >= 1000 ? 4 : (w >= 640 ? 2 : 1);
-                        const gap = WebTokens.s4;
+                        const gap = ZebuSpacing.s4;
                         final tileWidth = (w - gap * (cols - 1)) / cols;
                         return Wrap(
                           spacing: gap,
@@ -2138,7 +2140,7 @@ class _DashboardSkeleton extends StatelessWidget {
                         );
                       },
                     ),
-                    const SizedBox(height: WebTokens.s5),
+                    const SizedBox(height: ZebuSpacing.s5),
 
                     // Workload row
                     if (wide)
@@ -2146,13 +2148,13 @@ class _DashboardSkeleton extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(child: _SkelBlockCard(height: 220)),
-                          SizedBox(width: WebTokens.s5),
+                          SizedBox(width: ZebuSpacing.s5),
                           Expanded(child: _SkelBlockCard(height: 220)),
                         ],
                       )
                     else
                       const _SkelBlockCard(height: 220),
-                    const SizedBox(height: WebTokens.s5),
+                    const SizedBox(height: ZebuSpacing.s5),
 
                     // Middle row
                     if (wide)
@@ -2160,19 +2162,19 @@ class _DashboardSkeleton extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Expanded(flex: 5, child: _SkelRecentTicketsCard()),
-                          SizedBox(width: WebTokens.s5),
+                          SizedBox(width: ZebuSpacing.s5),
                           Expanded(flex: 3, child: _SkelBlockCard(height: 300)),
                         ],
                       )
                     else ...const [
                       _SkelRecentTicketsCard(),
-                      SizedBox(height: WebTokens.s5),
+                      SizedBox(height: ZebuSpacing.s5),
                       _SkelBlockCard(height: 300),
                     ],
 
-                    const SizedBox(height: WebTokens.s5),
+                    const SizedBox(height: ZebuSpacing.s5),
                     const _SkelBlockCard(height: 320),
-                    const SizedBox(height: WebTokens.s10),
+                    const SizedBox(height: ZebuSpacing.s10),
                   ],
                 ),
               ),
@@ -2217,7 +2219,7 @@ class _SkelBarState extends State<_SkelBar>
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) {
@@ -2245,21 +2247,21 @@ class _SkelKpiTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: _skelCard(t),
-      padding: const EdgeInsets.all(WebTokens.s5),
+      padding: const EdgeInsets.all(ZebuSpacing.s5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: const [
-          _SkelBar(width: 40, height: 40, radius: WebTokens.rLg),
-          SizedBox(height: WebTokens.s4),
+          _SkelBar(width: 40, height: 40, radius: ZebuRadius.rLg),
+          SizedBox(height: ZebuSpacing.s4),
           _SkelBar(width: 72, height: 28),
           SizedBox(height: 8),
           _SkelBar(width: 100, height: 13),
-          SizedBox(height: WebTokens.s4),
-          _SkelBar(width: double.infinity, height: 6, radius: WebTokens.rFull),
+          SizedBox(height: ZebuSpacing.s4),
+          _SkelBar(width: double.infinity, height: 6, radius: ZebuRadius.rFull),
         ],
       ),
     );
@@ -2273,10 +2275,10 @@ class _SkelCardHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        WebTokens.s5,
-        WebTokens.s4,
-        WebTokens.s5,
-        WebTokens.s3,
+        ZebuSpacing.s5,
+        ZebuSpacing.s4,
+        ZebuSpacing.s5,
+        ZebuSpacing.s3,
       ),
       child: Row(
         children: const [
@@ -2296,7 +2298,7 @@ class _SkelBlockCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: _skelCard(t),
       clipBehavior: Clip.antiAlias,
@@ -2306,7 +2308,7 @@ class _SkelBlockCard extends StatelessWidget {
           const _SkelCardHeader(),
           Container(height: 1, color: t.borderSubtle),
           Padding(
-            padding: const EdgeInsets.all(WebTokens.s5),
+            padding: const EdgeInsets.all(ZebuSpacing.s5),
             child: _SkelBar(width: double.infinity, height: height - 90),
           ),
         ],
@@ -2320,7 +2322,7 @@ class _SkelRecentTicketsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: _skelCard(t),
       clipBehavior: Clip.antiAlias,
@@ -2346,8 +2348,8 @@ class _SkelTicketRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Padding(
       padding: EdgeInsets.symmetric(
-        horizontal: WebTokens.s5,
-        vertical: WebTokens.s4,
+        horizontal: ZebuSpacing.s5,
+        vertical: ZebuSpacing.s4,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -2357,12 +2359,12 @@ class _SkelTicketRow extends StatelessWidget {
             child: Row(
               children: [
                 _SkelBar(width: 52, height: 13),
-                SizedBox(width: WebTokens.s2),
+                SizedBox(width: ZebuSpacing.s2),
                 Expanded(child: _SkelBar(width: double.infinity, height: 13)),
               ],
             ),
           ),
-          SizedBox(width: WebTokens.s4),
+          SizedBox(width: ZebuSpacing.s4),
           Expanded(
             flex: 2,
             child: Row(
@@ -2373,19 +2375,19 @@ class _SkelTicketRow extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(width: WebTokens.s4),
+          SizedBox(width: ZebuSpacing.s4),
           SizedBox(
             width: 118,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: _SkelBar(width: 84, height: 18, radius: WebTokens.rSm),
+              child: _SkelBar(width: 84, height: 18, radius: ZebuRadius.rSm),
             ),
           ),
           SizedBox(
             width: 110,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: _SkelBar(width: 76, height: 18, radius: WebTokens.rSm),
+              child: _SkelBar(width: 76, height: 18, radius: ZebuRadius.rSm),
             ),
           ),
           SizedBox(width: 24),

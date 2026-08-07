@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/assets.dart';
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
+import '../../res/zebu_spacing.dart';
 import '../svg_icon.dart';
+import '../../res/zebu_text_styles.dart';
 
 /// Unified search input used at the top of every list screen.
 ///
@@ -40,7 +42,7 @@ class _ListSearchInputState extends State<ListSearchInput> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // White surface with a hairline border — reads as a proper outlined
     // input (matches the filter button beside it and the app's other
     // form fields). Static: no hover fill shift or focus color change,
@@ -50,13 +52,13 @@ class _ListSearchInputState extends State<ListSearchInput> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: t.bgElevated,
-          borderRadius: BorderRadius.circular(WebTokens.rSm),
+          borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           border: Border.all(color: t.borderSubtle, width: 1),
         ),
         child: SizedBox(
         height: 40,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
+          padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -77,7 +79,7 @@ class _ListSearchInputState extends State<ListSearchInput> {
                 // default the field would draw text a couple of pixels
                 // above center.
                 textAlignVertical: TextAlignVertical.center,
-                style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
+                style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
                 decoration: InputDecoration(
                   isCollapsed: true,
                   // The global inputDecorationTheme fills every TextField with
@@ -96,7 +98,7 @@ class _ListSearchInputState extends State<ListSearchInput> {
                   fillColor: Colors.transparent,
                   hoverColor: Colors.transparent,
                   hintText: widget.hintText,
-                  hintStyle: t.bodyBase.copyWith(
+                  hintStyle: ZebuTextStyles.body(context).copyWith(
                     color: t.textSecondary,
                     letterSpacing: -0.1,
                   ),
@@ -133,7 +135,7 @@ class _ClearButtonState extends State<_ClearButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -146,7 +148,7 @@ class _ClearButtonState extends State<_ClearButton> {
           height: 22,
           decoration: BoxDecoration(
             color: _hover ? t.bgHover : Colors.transparent,
-            borderRadius: BorderRadius.circular(WebTokens.rFull),
+            borderRadius: BorderRadius.circular(ZebuRadius.rFull),
           ),
           child: Icon(
             Icons.close_rounded,

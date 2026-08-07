@@ -22,8 +22,11 @@ import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../widgets/web_filter_button.dart';
-import '../../dashboard/web/_tokens.dart';
+import '../../../res/zebu_web_color_styles.dart';
+import '../../../res/zebu_text_styles.dart';
 import 'ticket_detail_panel.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 // Column layout for the tickets table. Header and every row share these
 // so the vertical grid lines up pixel-for-pixel without a `Table`/`Row`
@@ -81,13 +84,19 @@ class TicketsListScreenWeb extends ConsumerStatefulWidget {
       _TicketsListScreenWebState();
 }
 
-const _views = <({String key, String label})>[
-  (key: 'open', label: 'Open'),
-  (key: 'mine', label: 'Mine'),
-  (key: 'unassigned', label: 'Unassigned'),
-  (key: 'overdue', label: 'Overdue'),
-  (key: 'answered', label: 'Answered'),
-  (key: 'closed', label: 'Closed'),
+/// Ordered saved views, each with the glyph its tab wears.
+///
+/// The pairings are deliberate: Open and Closed are the same ring with
+/// opposite centres — a solid dot (GitHub's "issue open" glyph) against a
+/// tick — and Mine/Unassigned are a person against a struck-through person.
+/// Same shape, opposite state, readable without reading the label.
+const _views = <({String key, String label, IconData icon})>[
+  (key: 'open', label: 'Open', icon: Icons.radio_button_checked),
+  (key: 'mine', label: 'Mine', icon: Icons.person_outline),
+  (key: 'unassigned', label: 'Unassigned', icon: Icons.person_off_outlined),
+  (key: 'overdue', label: 'Overdue', icon: Icons.schedule_outlined),
+  (key: 'answered', label: 'Answered', icon: Icons.mark_chat_read_outlined),
+  (key: 'closed', label: 'Closed', icon: Icons.check_circle_outline),
 ];
 
 /// Ordered sort options mirrored from the mobile filter menu.
@@ -495,17 +504,6 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     return a.compareTo(b);
   }
 
-  /// Tab-dot color per view — mirrors mobile `_viewColor` in
-  /// `tickets_list_screen.dart`.
-  static Color _viewDot(String key, WebTokens t) => switch (key) {
-    'open' || 'answered' => WebTokens.success,
-    'mine' => WebTokens.indigo,
-    'unassigned' => WebTokens.warning,
-    'overdue' => t.danger,
-    'closed' => const Color(0xFF737373),
-    _ => t.accent,
-  };
-
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(ticketsViewRequestProvider, (_, next) {
@@ -514,7 +512,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
       ref.read(ticketsViewRequestProvider.notifier).set(null);
     });
 
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final meName = ref.watch(meProvider).asData?.value.name;
     final repo = ref.watch(ticketsRepositoryProvider);
     final query = TicketQuery(view: _view, sort: _sort, order: 'desc');
@@ -549,7 +547,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
           value: v.key,
           label: v.label,
           count: _counts[v.key],
-          dot: _viewDot(v.key, t),
+          icon: v.icon,
         ),
     ];
 
@@ -611,7 +609,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                         // never revealed "Clear all" until reopen.
                         onClear: _clearAllFilters,
                       ),
-                      const SizedBox(width: WebTokens.s3),
+                      const SizedBox(width: ZebuSpacing.s3),
                       SizedBox(
                         width: searchWidth,
                         child: ListSearchInput(
@@ -777,7 +775,7 @@ class _TableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // Same structure the Recent Tickets card on the dashboard uses: an
     // IntrinsicHeight Row of `_HeaderCell` boxes whose right-border
     // creates the vertical grid line. Removing the outer horizontal
@@ -844,11 +842,10 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s3,
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
       // Header labels must stay on one line — "Department" was
@@ -860,8 +857,8 @@ class _HeaderCell extends StatelessWidget {
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.ellipsis,
-        style: t.tableHeader,
         textAlign: alignRight ? TextAlign.right : TextAlign.left,
+        style: ZebuTextStyles.tableHeader(context),
       ),
     );
     if (flex != null) return Expanded(flex: flex!, child: content);
@@ -892,7 +889,7 @@ class _BodyCell extends StatelessWidget {
       // rows fit on-screen without feeling squeezed — matches the row
       // heights users typically expect from a data-dense table.
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
         vertical: 8,
       ),
       alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
@@ -938,28 +935,28 @@ class _TicketRowState extends State<_TicketRow> {
   // tables read as one product: Unassigned = calm info-blue (not alarming
   // amber), Normal priority = info-blue (not dead grey), High = warning
   // amber (Emergency stays red).
-  Color _statusColor(WebTokens t) {
+  Color _statusColor(ZebuTheme t) {
     final ticket = widget.ticket;
     if (ticket.isOverdue) return t.danger;
     final s = ticket.statusName.toLowerCase();
     if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
-    if (s.contains('unassigned')) return WebTokens.info;
-    if (s.contains('open') || s.contains('new')) return WebTokens.success;
-    return WebTokens.info;
+    if (s.contains('unassigned')) return ZebuTheme.info;
+    if (s.contains('open') || s.contains('new')) return ZebuTheme.success;
+    return ZebuTheme.info;
   }
 
-  Color _priorityColor(WebTokens t) {
+  Color _priorityColor(ZebuTheme t) {
     final p = (widget.ticket.priority ?? '').toLowerCase();
     if (p.contains('emergency') || p.contains('urgent')) return t.danger;
-    if (p.contains('high')) return WebTokens.warning;
-    if (p.contains('low')) return WebTokens.success;
-    if (p.contains('normal')) return WebTokens.info;
-    return WebTokens.info;
+    if (p.contains('high')) return ZebuTheme.warning;
+    if (p.contains('low')) return ZebuTheme.success;
+    if (p.contains('normal')) return ZebuTheme.info;
+    return ZebuTheme.info;
   }
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final ticket = widget.ticket;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -999,12 +996,12 @@ class _TicketRowState extends State<_TicketRow> {
                         width: _kColNumberWidth,
                         child: Text(
                           '#${ticket.number}',
-                          style: t.bodySm
-                              .copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: t.accent,
-                              )
-                              .withTabularNums(),
+                          style: ZebuTextStyles.tableCell(
+                            context,
+                            lightColor: ZebuColors.primary,
+                            darkColor: ZebuColors.primaryDark,
+                            fontWeight: ZebuFonts.semiBold,
+                          ).withTabularNums(),
                         ),
                       ),
                       _BodyCell(
@@ -1013,8 +1010,7 @@ class _TicketRowState extends State<_TicketRow> {
                           ticket.subject,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: t.bodyBase
-                              .copyWith(fontWeight: FontWeight.w500),
+                          style: ZebuTextStyles.tableCell(context),
                         ),
                       ),
                       _BodyCell(
@@ -1028,7 +1024,10 @@ class _TicketRowState extends State<_TicketRow> {
                       _BodyCell(
                         width: _kColPriorityWidth,
                         child: (ticket.priority ?? '').isEmpty
-                            ? Text('—', style: t.bodySm)
+                            ? Text(
+                                '—',
+                                style: ZebuTextStyles.small(context),
+                              )
                             : StatusPill(
                                 label: _titleCase(ticket.priority!),
                                 color: _priorityColor(t),
@@ -1053,12 +1052,9 @@ class _TicketRowState extends State<_TicketRow> {
                           softWrap: false,
                           overflow: TextOverflow.clip,
                           textAlign: TextAlign.right,
-                          style: t.bodySm
-                              .copyWith(
-                                color: t.textPrimary,
-                                fontWeight: FontWeight.w500,
-                              )
-                              .withTabularNums(),
+                          style: ZebuTextStyles.tableCell(
+                            context,
+                          ).withTabularNums(),
                         ),
                       ),
               ],
@@ -1082,17 +1078,16 @@ class _TextCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     final empty = text.trim().isEmpty;
     final display = empty ? '—' : text;
     return Text(
       display,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
-        color: empty ? t.textSecondary : t.textPrimary,
-        fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
-      ),
+      // Placeholder dashes read lighter than real values.
+      style: empty
+          ? ZebuTextStyles.small(context)
+          : ZebuTextStyles.tableCell(context),
     );
   }
 }
@@ -1145,7 +1140,7 @@ class _TicketTableSkeletonState extends State<_TicketTableSkeleton>
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return LayoutBuilder(
       builder: (context, constraints) {
         // Fill the full available height with skeleton rows rather than
@@ -1184,7 +1179,7 @@ class _SkeletonRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),

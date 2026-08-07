@@ -13,7 +13,9 @@ import '../../../models/task.dart';
 import '../../../providers.dart';
 import '../../../widgets/app_dropdown.dart';
 import '../../../widgets/app_toast.dart';
-import '../../dashboard/web/_tokens.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 const _kFlatRadius = 8.0;
 
@@ -208,13 +210,13 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       clipBehavior: Clip.hardEdge,
       decoration: BoxDecoration(
         color: t.bgElevated,
         border: Border.all(color: t.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
       ),
       child: AbsorbPointer(
         absorbing: _saving,
@@ -230,25 +232,25 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
     );
   }
 
-  Widget _buildBody(WebTokens t) {
+  Widget _buildBody(ZebuTheme t) {
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(
-        WebTokens.s6,
-        WebTokens.s4,
-        WebTokens.s6,
-        WebTokens.s5,
+        ZebuSpacing.s6,
+        ZebuSpacing.s4,
+        ZebuSpacing.s6,
+        ZebuSpacing.s5,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_error != null) ...[
             _ErrorBanner(message: _error!),
-            const SizedBox(height: WebTokens.s4),
+            const SizedBox(height: ZebuSpacing.s4),
           ],
 
           // --- TASK DETAILS ----------------------------------------------
           _SectionTitle('Task details'),
-          const SizedBox(height: WebTokens.s3),
+          const SizedBox(height: ZebuSpacing.s3),
           _LabeledField(
             label: 'Title',
             required: true,
@@ -259,7 +261,7 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
               hasError: _fieldErrors['title'] != null,
             ),
           ),
-          const SizedBox(height: WebTokens.s4),
+          const SizedBox(height: ZebuSpacing.s4),
           _LabeledField(
             label: 'Description',
             required: true,
@@ -272,18 +274,18 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
               hasError: _fieldErrors['description'] != null,
             ),
           ),
-          const SizedBox(height: WebTokens.s4),
+          const SizedBox(height: ZebuSpacing.s4),
           _AttachmentsBlock(
             files: _files,
             onAdd: _pickFiles,
             onRemove: (f) => setState(() => _files.remove(f)),
           ),
 
-          const SizedBox(height: WebTokens.s5),
+          const SizedBox(height: ZebuSpacing.s5),
 
           // --- OPTIONS ---------------------------------------------------
           _SectionTitle('Options'),
-          const SizedBox(height: WebTokens.s3),
+          const SizedBox(height: ZebuSpacing.s3),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -308,7 +310,7 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
                   ),
                 ),
               ),
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
               Expanded(
                 child: _LabeledField(
                   label: 'Priority',
@@ -332,7 +334,7 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
               ),
             ],
           ),
-          const SizedBox(height: WebTokens.s3),
+          const SizedBox(height: ZebuSpacing.s3),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -350,7 +352,7 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
                   ),
                 ),
               ),
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
               Expanded(
                 child: _LabeledField(
                   label: 'Parent task',
@@ -385,11 +387,11 @@ class _HeaderBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s5,
-        vertical: WebTokens.s4,
+        horizontal: ZebuSpacing.s5,
+        vertical: ZebuSpacing.s4,
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -397,7 +399,7 @@ class _HeaderBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Text('New task', style: t.hero),
+          Text('New task', style: ZebuTextStyles.hero(context)),
           const Spacer(),
           _IconBtn(
             icon: Icons.close_rounded,
@@ -428,11 +430,11 @@ class _FooterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s5,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s5,
+        vertical: ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -442,7 +444,7 @@ class _FooterBar extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           _SecondaryButton(label: 'Cancel', onTap: onCancel),
-          const SizedBox(width: WebTokens.s2),
+          const SizedBox(width: ZebuSpacing.s2),
           _PrimaryButton(
             label: saving ? 'Creating…' : 'Create task',
             onTap: saving ? null : onSubmit,
@@ -474,7 +476,7 @@ class _IconBtnState extends State<_IconBtn> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final bg = _hover
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
@@ -493,7 +495,7 @@ class _IconBtnState extends State<_IconBtn> {
           decoration: BoxDecoration(
             color: bg,
             border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Icon(widget.icon, size: 16, color: fg),
         ),
@@ -519,7 +521,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -528,7 +530,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
         onTap: widget.onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
+            horizontal: ZebuSpacing.s4,
             vertical: 10,
           ),
           decoration: BoxDecoration(
@@ -538,7 +540,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: t.textPrimary,
               fontWeight: FontWeight.w600,
             ),
@@ -565,8 +567,8 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
   Widget build(BuildContext context) {
     final disabled = widget.onTap == null;
     final effective = disabled
-        ? WebTokens.accentLight.withValues(alpha: 0.4)
-        : WebTokens.accentLight;
+        ? ZebuTheme.accentLight.withValues(alpha: 0.4)
+        : ZebuTheme.accentLight;
     return MouseRegion(
       cursor: disabled
           ? SystemMouseCursors.forbidden
@@ -578,7 +580,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
+            horizontal: ZebuSpacing.s4,
             vertical: 10,
           ),
           decoration: BoxDecoration(
@@ -607,8 +609,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Text(label.toUpperCase(), style: t.sectionCaps);
+    return Text(label.toUpperCase(), style: ZebuTextStyles.eyebrow(context));
   }
 }
 
@@ -627,7 +628,7 @@ class _LabeledField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -635,7 +636,7 @@ class _LabeledField extends StatelessWidget {
           children: [
             Text(
               label,
-              style: t.bodySm.copyWith(
+              style: ZebuTextStyles.small(context).copyWith(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w600,
               ),
@@ -657,7 +658,7 @@ class _LabeledField extends StatelessWidget {
         child,
         if (error != null) ...[
           const SizedBox(height: 4),
-          Text(error!, style: t.bodySm.copyWith(color: t.danger)),
+          Text(error!, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
         ],
       ],
     );
@@ -692,7 +693,7 @@ class _SelectFieldState extends State<_SelectField> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final hasValue = widget.value != null && widget.value!.isNotEmpty;
     final borderColor = widget.hasError
         ? t.danger
@@ -709,7 +710,7 @@ class _SelectFieldState extends State<_SelectField> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
+            horizontal: ZebuSpacing.s3,
             vertical: 10,
           ),
           decoration: BoxDecoration(
@@ -721,14 +722,14 @@ class _SelectFieldState extends State<_SelectField> {
             children: [
               if (widget.icon != null) ...[
                 Icon(widget.icon, size: 16, color: t.textSecondary),
-                const SizedBox(width: WebTokens.s2),
+                const SizedBox(width: ZebuSpacing.s2),
               ],
               Expanded(
                 child: Text(
                   hasValue ? widget.value! : (widget.placeholder ?? 'Select…'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.bodyBase.copyWith(
+                  style: ZebuTextStyles.body(context).copyWith(
                     color: textColor,
                     fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
                   ),
@@ -765,7 +766,7 @@ class _MiniIconState extends State<_MiniIcon> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -778,7 +779,7 @@ class _MiniIconState extends State<_MiniIcon> {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: _hover ? t.dangerLight : Colors.transparent,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Icon(
             widget.icon,
@@ -808,7 +809,7 @@ class _TextInput extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
@@ -827,7 +828,7 @@ class _TextInput extends StatelessWidget {
       controller: controller,
       minLines: minLines,
       maxLines: maxLines,
-      style: t.bodyBase,
+      style: ZebuTextStyles.body(context),
       decoration: InputDecoration(
         filled: true,
         fillColor: t.bgElevated,
@@ -837,11 +838,11 @@ class _TextInput extends StatelessWidget {
         focusedBorder: focusedBorder,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s3,
+          horizontal: ZebuSpacing.s3,
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: t.bodyBase.copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -860,7 +861,7 @@ class _AttachmentsBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -868,7 +869,7 @@ class _AttachmentsBlock extends StatelessWidget {
           children: [
             Text(
               'Attachments',
-              style: t.bodySm.copyWith(
+              style: ZebuTextStyles.small(context).copyWith(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w600,
               ),
@@ -877,13 +878,13 @@ class _AttachmentsBlock extends StatelessWidget {
             _AddFilesButton(onTap: onAdd),
           ],
         ),
-        const SizedBox(height: WebTokens.s2),
+        const SizedBox(height: ZebuSpacing.s2),
         if (files.isEmpty)
-          Text('No files added', style: t.bodySm)
+          Text('No files added', style: ZebuTextStyles.small(context))
         else
           Wrap(
-            spacing: WebTokens.s2,
-            runSpacing: WebTokens.s2,
+            spacing: ZebuSpacing.s2,
+            runSpacing: ZebuSpacing.s2,
             children: [
               for (final f in files)
                 _Chip(
@@ -911,7 +912,7 @@ class _AddFilesButtonState extends State<_AddFilesButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -950,9 +951,9 @@ class _Chip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
-      padding: const EdgeInsets.fromLTRB(WebTokens.s2, 4, 4, 4),
+      padding: const EdgeInsets.fromLTRB(ZebuSpacing.s2, 4, 4, 4),
       decoration: BoxDecoration(
         color: t.bgTertiary,
         border: Border.all(color: t.borderSubtle, width: 1),
@@ -971,7 +972,7 @@ class _Chip extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: t.bodySm.copyWith(
+              style: ZebuTextStyles.small(context).copyWith(
                 color: t.textPrimary,
                 fontWeight: FontWeight.w500,
               ),
@@ -991,11 +992,11 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s2,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s2,
       ),
       decoration: BoxDecoration(
         color: t.dangerLight,
@@ -1005,9 +1006,9 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         children: [
           Icon(Icons.error_outline, size: 16, color: t.danger),
-          const SizedBox(width: WebTokens.s2),
+          const SizedBox(width: ZebuSpacing.s2),
           Expanded(
-            child: Text(message, style: t.bodySm.copyWith(color: t.danger)),
+            child: Text(message, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
           ),
         ],
       ),
@@ -1077,7 +1078,7 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Dialog(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -1089,21 +1090,21 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
           decoration: BoxDecoration(
             color: t.bgElevated,
             border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                  WebTokens.s5,
-                  WebTokens.s4,
-                  WebTokens.s5,
-                  WebTokens.s3,
+                  ZebuSpacing.s5,
+                  ZebuSpacing.s4,
+                  ZebuSpacing.s5,
+                  ZebuSpacing.s3,
                 ),
                 child: Row(
                   children: [
-                    Text('Select parent task', style: t.pageTitle),
+                    Text('Select parent task', style: ZebuTextStyles.pageTitle(context)),
                     const Spacer(),
                     _IconBtn(
                       icon: Icons.close_rounded,
@@ -1115,12 +1116,12 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: WebTokens.s5),
+                padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s5),
                 child: TextField(
                   controller: _ctrl,
                   autofocus: true,
                   onChanged: _onChanged,
-                  style: t.bodyBase,
+                  style: ZebuTextStyles.body(context),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: t.bgElevated,
@@ -1132,7 +1133,7 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
                       color: t.textSecondary,
                     ),
                     hintText: 'Search task by number or title',
-                    hintStyle: t.bodyBase.copyWith(color: t.textSecondary),
+                    hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(_kFlatRadius),
@@ -1149,19 +1150,19 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
                   ),
                 ),
               ),
-              const SizedBox(height: WebTokens.s2),
+              const SizedBox(height: ZebuSpacing.s2),
               Expanded(
                 child: _loading
                     ? const Center(child: CircularProgressIndicator())
                     : _error != null
                     ? Center(
-                        child: Text(_error!, style: t.bodySm),
+                        child: Text(_error!, style: ZebuTextStyles.small(context)),
                       )
                     : _results.isEmpty
-                    ? Center(child: Text('No tasks found', style: t.bodySm))
+                    ? Center(child: Text('No tasks found', style: ZebuTextStyles.small(context)))
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(
-                          vertical: WebTokens.s2,
+                          vertical: ZebuSpacing.s2,
                         ),
                         itemCount: _results.length,
                         itemBuilder: (_, i) {
@@ -1195,7 +1196,7 @@ class _TaskPickRowState extends State<_TaskPickRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1205,8 +1206,8 @@ class _TaskPickRowState extends State<_TaskPickRow> {
         child: Container(
           color: _hover ? t.bgHover : Colors.transparent,
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s5,
-            vertical: WebTokens.s3,
+            horizontal: ZebuSpacing.s5,
+            vertical: ZebuSpacing.s3,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1215,12 +1216,12 @@ class _TaskPickRowState extends State<_TaskPickRow> {
                 widget.task.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
+                style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 2),
               Text(
                 '#${widget.task.number} · ${widget.task.statusName}',
-                style: t.bodySm,
+                style: ZebuTextStyles.small(context),
               ),
             ],
           ),

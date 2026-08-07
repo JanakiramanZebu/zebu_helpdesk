@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../features/dashboard/web/_tokens.dart';
+import '../res/zebu_theme.dart';
+import '../res/zebu_spacing.dart';
+import '../res/zebu_text_styles.dart';
 import 'list_controls.dart' show DateRange;
 
 /// One selectable quick-filter chip shown inside the [WebFilterButton]'s
@@ -133,7 +135,7 @@ class _WebFilterButtonState extends State<WebFilterButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final active = _activeCount > 0;
     return Builder(
       builder: (btnCtx) => MouseRegion(
@@ -166,19 +168,19 @@ class _WebFilterButtonState extends State<WebFilterButton> {
                   // Active filter chip reads as a filled primary button —
                   // keep Mynt brand blue in both modes.
                   color: active
-                      ? WebTokens.accentLight
+                      ? ZebuTheme.accentLight
                       : (_hover ? t.bgHover : t.bgElevated),
                   border: Border.all(
-                    color: active ? WebTokens.accentLight : t.borderSubtle,
+                    color: active ? ZebuTheme.accentLight : t.borderSubtle,
                     width: 1,
                   ),
-                  borderRadius: BorderRadius.circular(WebTokens.rSm),
+                  borderRadius: BorderRadius.circular(ZebuRadius.rSm),
                 ),
                 child: Icon(
                   Icons.tune,
                   size: 17,
                   color: active
-                      ? WebTokens.textInverse
+                      ? ZebuTheme.textInverse
                       : t.textSecondary,
                 ),
               ),
@@ -198,7 +200,7 @@ class _WebFilterButtonState extends State<WebFilterButton> {
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: t.danger,
-                      borderRadius: BorderRadius.circular(WebTokens.rFull),
+                      borderRadius: BorderRadius.circular(ZebuRadius.rFull),
                       border: Border.all(color: t.bgElevated, width: 2),
                     ),
                     child: Text(
@@ -206,7 +208,7 @@ class _WebFilterButtonState extends State<WebFilterButton> {
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w700,
-                        color: WebTokens.textInverse,
+                        color: ZebuTheme.textInverse,
                         height: 1.1,
                       ),
                     ),
@@ -378,7 +380,7 @@ class _FilterPanelState extends State<_FilterPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // Dedicated scroll controller so we can attach a persistent Scrollbar
     // to the panel's internal SingleChildScrollView — otherwise the user
     // has no signal that the sections continue past the visible viewport
@@ -386,12 +388,12 @@ class _FilterPanelState extends State<_FilterPanel> {
     return Material(
       color: t.bgElevated,
       elevation: 10,
-      borderRadius: BorderRadius.circular(WebTokens.rMd),
+      borderRadius: BorderRadius.circular(ZebuRadius.rMd),
       clipBehavior: Clip.antiAlias,
       child: DecoratedBox(
         decoration: BoxDecoration(
           border: Border.all(color: t.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(WebTokens.rMd),
+          borderRadius: BorderRadius.circular(ZebuRadius.rMd),
         ),
         child: Scrollbar(
           controller: _scroll,
@@ -399,7 +401,7 @@ class _FilterPanelState extends State<_FilterPanel> {
           child: SingleChildScrollView(
             controller: _scroll,
             child: Padding(
-            padding: const EdgeInsets.all(WebTokens.s4),
+            padding: const EdgeInsets.all(ZebuSpacing.s4),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,7 +411,7 @@ class _FilterPanelState extends State<_FilterPanel> {
                     Expanded(
                       child: Text(
                         'Filters',
-                        style: t.bodyBase.copyWith(
+                        style: ZebuTextStyles.body(context).copyWith(
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -438,9 +440,9 @@ class _FilterPanelState extends State<_FilterPanel> {
                   ],
                 ),
                 if (widget.filters.isNotEmpty) ...[
-                  const SizedBox(height: WebTokens.s3),
+                  const SizedBox(height: ZebuSpacing.s3),
                   _SectionHeader(label: 'Quick filters'),
-                  const SizedBox(height: WebTokens.s2),
+                  const SizedBox(height: ZebuSpacing.s2),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
@@ -464,7 +466,7 @@ class _FilterPanelState extends State<_FilterPanel> {
                 // other cell falls back to an invisible spacer so the
                 // remaining control still occupies its natural half.
                 if (widget.sort != null || widget.dateRange != null) ...[
-                  const SizedBox(height: WebTokens.s4),
+                  const SizedBox(height: ZebuSpacing.s4),
                   _TwoColumnRow(
                     left: widget.sort == null
                         ? const SizedBox.shrink()
@@ -505,16 +507,16 @@ class _FilterPanelState extends State<_FilterPanel> {
                   ),
                 ],
                 if (widget.facets.isNotEmpty) ...[
-                  const SizedBox(height: WebTokens.s4),
+                  const SizedBox(height: ZebuSpacing.s4),
                   _SectionHeader(label: 'Filters'),
-                  const SizedBox(height: WebTokens.s2),
+                  const SizedBox(height: ZebuSpacing.s2),
                   // 2-column grid — pair facets up so the panel fills
                   // width evenly instead of a tall column of stacked
                   // full-width dropdowns. Odd-count trailing facet ends
                   // up alone in the last row with an empty right cell.
                   for (var i = 0; i < widget.facets.length; i += 2)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: WebTokens.s2),
+                      padding: const EdgeInsets.only(bottom: ZebuSpacing.s2),
                       child: _TwoColumnRow(
                         left: _LabelledDropdown(
                           label: widget.facets[i].label,
@@ -607,7 +609,7 @@ class _TwoColumnRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: left),
-        const SizedBox(width: WebTokens.s3),
+        const SizedBox(width: ZebuSpacing.s3),
         Expanded(child: right),
       ],
     );
@@ -624,14 +626,14 @@ class _LabelledDropdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           label,
-          style: t.bodySm.copyWith(
+          style: ZebuTextStyles.small(context).copyWith(
             color: t.textSecondary,
             fontWeight: FontWeight.w500,
           ),
@@ -649,10 +651,10 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Text(
       label,
-      style: t.tinyLabel.copyWith(color: t.textSecondary),
+      style: ZebuTextStyles.label(context).copyWith(color: t.textSecondary),
     );
   }
 }
@@ -747,7 +749,7 @@ class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Builder(
       builder: (btnCtx) => MouseRegion(
         cursor: SystemMouseCursors.click,
@@ -763,14 +765,14 @@ class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
               border: Border.all(color: t.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             ),
             child: Row(
               children: [
                 Expanded(
                   child: Text(
                     widget.label,
-                    style: t.bodyBase.copyWith(color: t.textPrimary),
+                    style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -802,16 +804,16 @@ class _DropdownMenu<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Material(
       color: t.bgElevated,
       elevation: 8,
-      borderRadius: BorderRadius.circular(WebTokens.rSm),
+      borderRadius: BorderRadius.circular(ZebuRadius.rSm),
       clipBehavior: Clip.antiAlias,
       child: DecoratedBox(
         decoration: BoxDecoration(
           border: Border.all(color: t.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(WebTokens.rSm),
+          borderRadius: BorderRadius.circular(ZebuRadius.rSm),
         ),
         child: SingleChildScrollView(
           child: Column(
@@ -850,7 +852,7 @@ class _DropdownRowState<T> extends State<_DropdownRow<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -868,7 +870,7 @@ class _DropdownRowState<T> extends State<_DropdownRow<T>> {
               Expanded(
                 child: Text(
                   widget.entry.label,
-                  style: t.bodyBase.copyWith(
+                  style: ZebuTextStyles.body(context).copyWith(
                     color: widget.isSelected
                         ? t.accent
                         : t.textPrimary,
@@ -909,7 +911,7 @@ class _FilterChipState extends State<_FilterChip> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final active = widget.active;
     // Active state is a solid brand-blue pill — unambiguous "on" that
     // reads instantly against several inactive siblings. Inactive stays
@@ -930,13 +932,13 @@ class _FilterChipState extends State<_FilterChip> {
             // Active filter pill reads as a filled primary button — keep
             // Mynt brand blue in both modes.
             color: active
-                ? WebTokens.accentLight
+                ? ZebuTheme.accentLight
                 : (_hover ? t.bgHover : t.bgElevated),
             border: Border.all(
-              color: active ? WebTokens.accentLight : t.borderSubtle,
+              color: active ? ZebuTheme.accentLight : t.borderSubtle,
               width: 1,
             ),
-            borderRadius: BorderRadius.circular(WebTokens.rFull),
+            borderRadius: BorderRadius.circular(ZebuRadius.rFull),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -945,14 +947,14 @@ class _FilterChipState extends State<_FilterChip> {
                 active ? Icons.check_rounded : Icons.add_rounded,
                 size: 14,
                 color:
-                    active ? WebTokens.textInverse : t.textSecondary,
+                    active ? ZebuTheme.textInverse : t.textSecondary,
               ),
               const SizedBox(width: 6),
               Text(
                 widget.label,
-                style: t.bodySm.copyWith(
+                style: ZebuTextStyles.small(context).copyWith(
                   color:
-                      active ? WebTokens.textInverse : t.textPrimary,
+                      active ? ZebuTheme.textInverse : t.textPrimary,
                   fontWeight: active ? FontWeight.w600 : FontWeight.w500,
                 ),
               ),
@@ -977,7 +979,7 @@ class _ClearAllButtonState extends State<_ClearAllButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // Plain accent-text link — no border, no fill. Underlines on hover
     // so the affordance is legible without a chip fighting the header
     // "Filters" title. Matches the "See all" link pattern used across
@@ -991,7 +993,7 @@ class _ClearAllButtonState extends State<_ClearAllButton> {
         onTap: widget.onTap,
         child: Text(
           'Clear all',
-          style: t.bodySm.copyWith(
+          style: ZebuTextStyles.small(context).copyWith(
             color: t.accent,
             fontWeight: FontWeight.w600,
             decoration:

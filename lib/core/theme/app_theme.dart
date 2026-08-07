@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import '../../res/zebu_text_styles.dart';
 
 /// Zebu Helpdesk visual theme, aligned to the **Mynt Plus** design system:
 /// the Mynt brand blue (`#0037B7`), Inter typeface, profit-green / loss-red
@@ -78,14 +78,14 @@ class AppTheme {
     );
 
     return base.copyWith(
-      textTheme: GoogleFonts.interTextTheme(base.textTheme),
+      textTheme: ZebuFonts.textTheme(base.textTheme),
       appBarTheme: AppBarTheme(
         elevation: 0,
         scrolledUnderElevation: 0.5,
         centerTitle: false,
         backgroundColor: scheme.surface,
         foregroundColor: scheme.onSurface,
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: ZebuFonts.face(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           color: scheme.onSurface,
@@ -138,7 +138,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: GoogleFonts.inter(
+          textStyle: ZebuFonts.face(
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
@@ -150,7 +150,7 @@ class AppTheme {
           minimumSize: const Size.fromHeight(50),
           side: BorderSide(color: scheme.outlineVariant),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: GoogleFonts.inter(
+          textStyle: ZebuFonts.face(
             fontSize: 15,
             fontWeight: FontWeight.w600,
           ),
@@ -159,7 +159,7 @@ class AppTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: isLight ? brand : brandLight,
-          textStyle: GoogleFonts.inter(
+          textStyle: ZebuFonts.face(
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
@@ -182,11 +182,11 @@ class AppTheme {
         ),
         labelColor: isLight ? brand : brandLight,
         unselectedLabelColor: scheme.onSurfaceVariant,
-        labelStyle: GoogleFonts.inter(
+        labelStyle: ZebuFonts.face(
           fontSize: 13.5,
           fontWeight: FontWeight.w600,
         ),
-        unselectedLabelStyle: GoogleFonts.inter(
+        unselectedLabelStyle: ZebuFonts.face(
           fontSize: 13.5,
           fontWeight: FontWeight.w500,
         ),
@@ -202,7 +202,7 @@ class AppTheme {
         backgroundColor: scheme.surface,
         indicatorColor: scheme.primaryContainer,
         labelTextStyle: WidgetStatePropertyAll(
-          GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w500),
+          ZebuFonts.face(fontSize: 12, fontWeight: FontWeight.w500),
         ),
       ),
       listTileTheme: const ListTileThemeData(

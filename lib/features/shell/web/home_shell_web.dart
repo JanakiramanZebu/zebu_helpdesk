@@ -1,60 +1,225 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 
-import '../../../core/assets.dart';
 import '../../../core/router/routes.dart';
-import '../../../providers.dart';
-import '../../../core/theme/theme_controller.dart';
-import '../../../widgets/app_dropdown.dart';
-import '../../../widgets/svg_icon.dart';
-import '../../../widgets/user_avatar.dart';
-import '../../dashboard/web/_tokens.dart';
-import '../../profile/web/profile_screen_web.dart';
 import '../../tasks/web/create_task_screen_web.dart';
 import '../../tickets/web/create_ticket_screen_web.dart';
 import '_shell_tokens.dart';
+import 'nav_panel.dart';
+import 'nav_rail.dart';
 import 'profile_menu_popover.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_text_styles.dart';
 
 /// Web-only top-level shell. Replaces `HomeShell` on the web target.
 ///
-/// Layout: full-width top bar (workspace pill on the left, action cluster on
-/// the right) above a Row of a dark [_Sidebar] + content. The five primary
-/// branches (Dashboard / Tickets / Tasks / Inbox / More) map 1:1 to the
-/// existing [StatefulNavigationShell] indices declared in `app_router.dart`.
+/// Three columns on one canvas:
 ///
-/// Visual language is inspired by the ClickUp workspace shell:
-///   * dark, always-visible sidebar rail — collapsible at narrow widths;
-///   * flat, hairline-bordered top bar with a workspace pill on the left and
-///     an action cluster on the right;
-///   * no invented global search — the app has no such endpoint, so we don't
-///     draw a decorative field for it.
-class HomeShellWeb extends StatelessWidget {
+/// ```
+///   ┌────┬───────────────┬──────────────────────────┐
+///   │rail│  sub-panel    │      workspace card      │
+///   │ 72 │  280 · animated to 0 when there is       │
+///   │    │  nothing to show                         │
+///   └────┴───────────────┴──────────────────────────┘
+/// ```
+///
+/// The rail is icon-only at rest and hover-expands to a labelled sidebar,
+/// **floating over** the other two columns so the page never reflows just
+/// because the pointer crossed it. The sub-panel is the opposite: it takes
+/// real layout space and pushes the workspace, because its contents are a
+/// place you work from rather than a menu you glance at.
+///
+/// Two things can occupy the panel slot:
+///   * a **section panel** tied to the active destination — persistent, and
+///     collapsed/restored by clicking the section you are already in;
+///   * a **transient panel** opened by an action (Create) — dismisses on
+///     choice, on ✕, on re-clicking the CTA, or on a click in the content.
+///
+/// There is no top bar. It previously held only the brand lockup, a theme
+/// toggle, and an avatar; all three now live in the rail, so the bar was
+/// 60 px of empty chrome. See commit 2262f5a to restore it.
+class HomeShellWeb extends ConsumerStatefulWidget {
   const HomeShellWeb({super.key, required this.shell});
   final StatefulNavigationShell shell;
 
-  void _go(int index) =>
-      shell.goBranch(index, initialLocation: index == shell.currentIndex);
+  @override
+  ConsumerState<HomeShellWeb> createState() => _HomeShellWebState();
+}
+
+class _HomeShellWebState extends ConsumerState<HomeShellWeb> {
+  /// Pointer is dwelling on the rail — see [_onRailEnter] for why this is
+  /// timer-gated rather than bound straight to the MouseRegion.
+  bool _railExpanded = false;
+
+  /// Transient Create panel is up.
+  bool _createOpen = false;
+
+  /// The profile popover is open. It anchors to the rail's footer row, so
+  /// the rail has to stay expanded underneath it for as long as it is up —
+  /// letting the pointer-exit collapse it would leave the menu attached to
+  /// nothing.
+  bool _profileMenuOpen = false;
+
+  /// Agent collapsed the section panel by re-clicking its rail item.
+  /// Session-scoped for now; persisting it is a follow-up once the panel
+  /// earns its keep.
+  bool _panelCollapsed = false;
+
+  Timer? _hoverTimer;
+
+  // Hover-expanding on a bare `onEnter` makes the rail strobe every time the
+  // pointer crosses it on the way somewhere else. A short dwell on entry and
+  // a slightly longer grace on exit is what makes it feel deliberate — the
+  // same tuning Intercom uses.
+  static const _enterDelay = Duration(milliseconds: 140);
+  static const _exitDelay = Duration(milliseconds: 180);
+
+  @override
+  void dispose() {
+    _hoverTimer?.cancel();
+    super.dispose();
+  }
+
+  void _setRail(bool value, Duration delay) {
+    _hoverTimer?.cancel();
+    if (_railExpanded == value) return;
+    _hoverTimer = Timer(delay, () {
+      if (mounted) setState(() => _railExpanded = value);
+    });
+  }
+
+  void _onRailEnter() => _setRail(true, _enterDelay);
+  void _onRailExit() => _setRail(false, _exitDelay);
+
+  /// Collapses the rail immediately, skipping the exit grace period — used
+  /// after a selection, where waiting would leave the rail hanging open over
+  /// the page the agent just navigated to.
+  void _collapseRailNow() {
+    _hoverTimer?.cancel();
+    if (_railExpanded) setState(() => _railExpanded = false);
+  }
+
+  void _toggleCreate() {
+    _collapseRailNow();
+    setState(() => _createOpen = !_createOpen);
+  }
+
+  void _closeCreate() {
+    if (_createOpen) setState(() => _createOpen = false);
+  }
+
+  void _select(int index) {
+    _collapseRailNow();
+    _closeCreate();
+
+    // Clicking the section you are already in toggles its panel. Only
+    // Workspace has one; every other section keeps the plain "reset to my
+    // initial location" behaviour.
+    if (index == widget.shell.currentIndex) {
+      if (_hasSectionPanel(index)) {
+        setState(() => _panelCollapsed = !_panelCollapsed);
+      } else {
+        widget.shell.goBranch(index, initialLocation: true);
+      }
+      return;
+    }
+
+    // Entering a section always arrives with its panel open, whatever state
+    // the previous section's panel was left in.
+    setState(() => _panelCollapsed = false);
+
+    // Workspace has no screen of its own — it is a panel of destinations —
+    // so entering it lands on the first of them.
+    if (index == kIdxWorkspace) {
+      context.go(Routes.users);
+      return;
+    }
+
+    widget.shell.goBranch(index);
+  }
+
+  void _goWorkspace(String path) {
+    _collapseRailNow();
+    context.go(path);
+  }
+
+  /// Opens the profile popover and holds the rail open for its lifetime.
+  ///
+  /// The pointer necessarily leaves the rail to reach the menu, which would
+  /// otherwise trip the exit timer and collapse the surface the menu is
+  /// anchored to. `showProfileMenu` completes when the popover is dismissed,
+  /// so awaiting it is exactly the window the rail must stay open for.
+  Future<void> _openProfileMenu(BuildContext anchor) async {
+    _hoverTimer?.cancel();
+    setState(() => _profileMenuOpen = true);
+    try {
+      await showProfileMenu(anchor);
+    } finally {
+      if (mounted) setState(() => _profileMenuOpen = false);
+    }
+  }
+
+  /// Whether [index] has a second level at all.
+  ///
+  /// Only Workspace does. Tickets / Tasks / Inbox keep their saved views as a
+  /// `SegmentedTabBar` on the screen itself rather than in this panel — the
+  /// tabs sit with the table they filter, which is where they were.
+  static bool _hasSectionPanel(int index) => index == kIdxWorkspace;
+
+  /// The panel belonging to the active section, or null when it has none.
+  Widget? _sectionPanel(int index, String path) => switch (index) {
+    kIdxWorkspace => WorkspacePanel(currentPath: path, onGo: _goWorkspace),
+    _ => null,
+  };
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.sizeOf(context).width;
-    final collapsed = width < ShellTokens.collapseBreakpoint;
-    final sidebarWidth = collapsed
-        ? ShellTokens.sidebarCollapsed
-        : ShellTokens.sidebarExpanded;
+    final base = Theme.of(context);
+    final t = ZebuTheme.of(context);
+    final s = ShellTokens.of(context);
+
+    final path = GoRouterState.of(context).uri.path;
+    final index = widget.shell.currentIndex;
+
+    // Below the breakpoint a 280 px panel plus an open detail slide-over
+    // leaves the list column unusable, so the panel stands down.
+    final tooNarrow =
+        MediaQuery.sizeOf(context).width < ShellTokens.panelCollapseBreakpoint;
+
+    // Workspace is the only section with a second level: the destinations
+    // that used to sit behind the "More" tab.
+    final sectionPanel = _sectionPanel(index, path);
+    final hasSection = sectionPanel != null;
+    final showPanel =
+        _createOpen || (hasSection && !_panelCollapsed && !tooNarrow);
+
+    // The panel widget is always built, and visibility is expressed purely
+    // as width. Tearing the child out at the same moment the width animates
+    // would pop the contents away before the column finished closing.
+    final panel = _createOpen
+        ? CreatePanel(
+            onClose: _closeCreate,
+            onNewTicket: () {
+              _closeCreate();
+              showCreateTicketDialog(context);
+            },
+            onNewTask: () {
+              _closeCreate();
+              showCreateTaskDialog(context);
+            },
+          )
+        : (sectionPanel ?? const SizedBox.shrink());
 
     // Apply the Zebu Premium typeface (Inter) to the entire web tree — the
     // family called out globally in DESIGN_SYSTEM.md. Mobile never reaches
     // this widget, so this scoped override never affects Android/iOS, which
     // already use Inter via AppTheme.
-    final base = Theme.of(context);
-    final t = WebTokens.of(context);
-    final s = ShellTokens.of(context);
     return Theme(
       data: base.copyWith(
-        textTheme: GoogleFonts.interTextTheme(base.textTheme),
+        textTheme: ZebuFonts.textTheme(base.textTheme),
         scrollbarTheme: ScrollbarThemeData(
           thumbVisibility: const WidgetStatePropertyAll(true),
           thickness: const WidgetStatePropertyAll(8),
@@ -74,464 +239,147 @@ class HomeShellWeb extends StatelessWidget {
         behavior: const _WebScrollBehavior(),
         child: Scaffold(
           backgroundColor: s.canvas,
-          body: Column(
+          body: Stack(
             children: [
-              _TopBar(logoSlotWidth: sidebarWidth),
-              Expanded(
-                child: Row(
-                  children: [
-                    _Sidebar(
-                      currentIndex: shell.currentIndex,
-                      onTap: _go,
-                      collapsed: collapsed,
-                    ),
-                    // Inset workspace: the routed content lives in a rounded
-                    // card floating on the chrome canvas. The hairline is
-                    // painted as a *foreground* decoration because every
-                    // routed screen fills an opaque bgPrimary that would
-                    // otherwise bury a background border; the ClipRRect keeps
-                    // full-bleed screen content and slide-over panels inside
-                    // the rounded corners. The base ColoredBox guarantees the
-                    // canvas never flashes through during branch swaps.
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.all(
-                          ShellTokens.workspaceGutter,
-                        ),
-                        child: DecoratedBox(
-                          position: DecorationPosition.foreground,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: s.workspaceBorder,
-                              width: 1,
-                            ),
-                            borderRadius: BorderRadius.circular(
-                              ShellTokens.workspaceRadius,
-                            ),
+              // --- Layout row: rail gutter | panel | workspace ------------
+              Row(
+                children: [
+                  // The rail itself floats in the Stack above; this reserves
+                  // its resting footprint so content starts clear of it.
+                  const SizedBox(width: ShellTokens.railWidth),
+                  _PanelSlot(open: showPanel, child: panel),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        ShellTokens.workspaceGutter,
+                        ShellTokens.workspaceGutter,
+                        ShellTokens.workspaceGutter,
+                        ShellTokens.workspaceGutter,
+                      ),
+                      // Inset workspace: the routed content lives in a
+                      // rounded card floating on the chrome canvas. The
+                      // hairline is painted as a *foreground* decoration
+                      // because every routed screen fills an opaque
+                      // bgPrimary that would otherwise bury a background
+                      // border; the ClipRRect keeps full-bleed screen
+                      // content and slide-over panels inside the rounded
+                      // corners. The base ColoredBox guarantees the canvas
+                      // never flashes through during branch swaps.
+                      child: DecoratedBox(
+                        position: DecorationPosition.foreground,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: s.cardBorder, width: 1),
+                          borderRadius: BorderRadius.circular(
+                            ShellTokens.workspaceRadius,
                           ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(
-                              ShellTokens.workspaceRadius,
-                            ),
-                            child: ColoredBox(color: t.bgPrimary, child: shell),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(
+                            ShellTokens.workspaceRadius,
+                          ),
+                          child: ColoredBox(
+                            color: t.bgPrimary,
+                            child: widget.shell,
                           ),
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
 
-// Branch indices must match the order declared in `app_router.dart`. On web
-// the router adds a dedicated Inbox branch between Tasks and More, so the web
-// destination list is 5 entries wide (mobile still uses 4). Each destination
-// uses the mobile app's custom nav glyph (one SVG per destination — the
-// selected state is a color tint, matching the mobile FloatingNavBar).
-const _destinations = <_NavDest>[
-  _NavDest(label: 'Dashboard', svg: Assets.navDashboard),
-  _NavDest(label: 'Tickets', svg: Assets.navTickets),
-  _NavDest(label: 'Tasks', svg: Assets.navTasks),
-  _NavDest(label: 'Inbox', svg: Assets.navInbox),
-  _NavDest(label: 'More', svg: Assets.navMore),
-];
-
-// Named indices so intent is obvious at the call sites below.
-const _idxDashboard = 0;
-const _idxTickets = 1;
-const _idxTasks = 2;
-const _idxInbox = 3;
-const _idxMore = 4;
-
-class _NavDest {
-  const _NavDest({required this.label, required this.svg});
-  final String label;
-
-  /// Mobile nav glyph asset (`Assets.nav*`) — tinted per selection state.
-  final String svg;
-}
-
-// --- Sidebar ----------------------------------------------------------------
-
-class _Sidebar extends ConsumerWidget {
-  const _Sidebar({
-    required this.currentIndex,
-    required this.onTap,
-    required this.collapsed,
-  });
-
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-  final bool collapsed;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = ShellTokens.of(context);
-    final t = WebTokens.of(context);
-    final width = collapsed
-        ? ShellTokens.sidebarCollapsed
-        : ShellTokens.sidebarExpanded;
-    return Container(
-      width: width,
-      // Rich brand-tinted rail — a soft vertical gradient (see
-      // [ShellTokens.sidebarGradient]) gives the sidebar depth and ties it to
-      // the Mynt-blue brand instead of reading as flat white chrome. The
-      // inset workspace card's hairline still provides the right-edge break.
-      decoration: BoxDecoration(gradient: s.sidebarGradient),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 14),
-          _CreateButton(collapsed: collapsed),
-          const SizedBox(height: 18),
-          _SectionLabel(text: 'Menu', collapsed: collapsed),
-          _SideNavItem(
-            svg: _destinations[_idxDashboard].svg,
-            label: _destinations[_idxDashboard].label,
-            tone: t.accent,
-            selected: currentIndex == _idxDashboard,
-            collapsed: collapsed,
-            onTap: () => onTap(_idxDashboard),
-          ),
-          _SideNavItem(
-            svg: _destinations[_idxTickets].svg,
-            label: _destinations[_idxTickets].label,
-            tone: WebTokens.indigo,
-            selected: currentIndex == _idxTickets,
-            collapsed: collapsed,
-            onTap: () => onTap(_idxTickets),
-          ),
-          _SideNavItem(
-            svg: _destinations[_idxTasks].svg,
-            label: _destinations[_idxTasks].label,
-            tone: WebTokens.success,
-            selected: currentIndex == _idxTasks,
-            collapsed: collapsed,
-            onTap: () => onTap(_idxTasks),
-          ),
-          // Inbox is a full shell branch — tapping it switches branches (like
-          // Dashboard/Tickets) instead of pushing a route over the shell. The
-          // badge shows the live unread count.
-          _InboxNavItem(
-            collapsed: collapsed,
-            selected: currentIndex == _idxInbox,
-            onTap: () => onTap(_idxInbox),
-          ),
-          const SizedBox(height: 10),
-          _SectionLabel(text: 'Workspace', collapsed: collapsed),
-          _SideNavItem(
-            svg: _destinations[_idxMore].svg,
-            label: _destinations[_idxMore].label,
-            tone: const Color(0xFF8B5CF6),
-            selected: currentIndex == _idxMore,
-            collapsed: collapsed,
-            onTap: () => onTap(_idxMore),
-          ),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Container(height: 1, color: s.sidebarDivider),
-          ),
-          _ProfileFooter(collapsed: collapsed),
-        ],
-      ),
-    );
-  }
-}
-
-/// Small uppercase section label that groups a run of nav items. In
-/// collapsed mode we render a hairline divider instead so the grouping
-/// still reads without a label crashing into the icon-only rail.
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.text, required this.collapsed});
-  final String text;
-  final bool collapsed;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = ShellTokens.of(context);
-    if (collapsed) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-        child: Container(height: 1, color: s.sidebarDivider),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(22, 2, 22, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10.5,
-          fontWeight: FontWeight.w700,
-          color: s.sidebarTextIdle,
-          letterSpacing: 0.9,
-        ),
-      ),
-    );
-  }
-}
-
-/// Sidebar primary action — brand-gradient CTA, ported from the mobile
-/// FloatingNavBar create button (`[brandLight, brand]` topLeft→bottomRight).
-/// Hover deepens both gradient stops in the same family so the
-/// AnimatedContainer lerps smoothly; no lift, no glow.
-/// Sidebar primary CTA. A gradient "Create ▾" split that opens a small menu
-/// offering New ticket / New task (Asana's "+ Create" pattern), so task
-/// creation has a first-class entry point alongside tickets.
-class _CreateButton extends StatefulWidget {
-  const _CreateButton({required this.collapsed});
-  final bool collapsed;
-
-  @override
-  State<_CreateButton> createState() => _CreateButtonState();
-}
-
-class _CreateButtonState extends State<_CreateButton> {
-  bool _hover = false;
-  bool _pressed = false;
-
-  void _setPressed(bool v) {
-    if (_pressed != v) setState(() => _pressed = v);
-  }
-
-  Future<void> _openMenu(BuildContext anchorContext) async {
-    final choice = await showAppDropdown<String>(
-      anchorContext,
-      minWidth: 200,
-      entries: const [
-        AppDropdownItem(
-          value: 'ticket',
-          label: 'New ticket',
-          icon: Icons.confirmation_number_outlined,
-        ),
-        AppDropdownItem(
-          value: 'task',
-          label: 'New task',
-          icon: Icons.check_circle_outline,
-        ),
-      ],
-    );
-    if (!mounted || choice == null) return;
-    if (choice == 'ticket') {
-      showCreateTicketDialog(context);
-    } else {
-      showCreateTaskDialog(context);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = ShellTokens.of(context);
-    final borderColor = _hover ? s.ctaBorderHover : s.ctaBorder;
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: widget.collapsed ? 12 : 11),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: Builder(
-          builder: (anchorContext) => GestureDetector(
-            onTap: () => _openMenu(anchorContext),
-            onTapDown: (_) => _setPressed(true),
-            onTapUp: (_) => _setPressed(false),
-            onTapCancel: () => _setPressed(false),
-            child: AnimatedScale(
-              scale: _pressed ? 0.97 : 1,
-              duration: const Duration(milliseconds: 110),
-              curve: Curves.easeOut,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 140),
-                curve: Curves.easeOut,
-                height: 40,
-                decoration: BoxDecoration(
-                  // Flat solid brand-blue fill (no dark-navy gradient bottom).
-                  // Hover deepens one step in the same family.
-                  color: _hover ? s.ctaBgHover : s.ctaBg,
-                  borderRadius: BorderRadius.circular(WebTokens.rSm),
-                  border: borderColor == null
-                      ? null
-                      : Border.all(color: borderColor, width: 1),
+              // --- Dismiss barrier for the transient Create panel ---------
+              // Covers only the workspace column, so the first click in the
+              // content closes the panel instead of acting on the page.
+              if (_createOpen)
+                Positioned(
+                  left: ShellTokens.railWidth + ShellTokens.panelWidth,
+                  top: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _closeCreate,
+                  ),
                 ),
-                child: widget.collapsed
-                    ? Tooltip(
-                        message: 'Create',
-                        child: Center(
-                          child: Icon(
-                            Icons.add_rounded,
-                            color: s.ctaIconFg,
-                            size: 22,
-                          ),
-                        ),
-                      )
-                    : Row(
-                        children: [
-                          const SizedBox(width: 12),
-                          Icon(Icons.add_rounded, color: s.ctaIconFg, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Create',
-                            style: TextStyle(
-                              color: s.ctaFg,
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
-                            ),
-                          ),
-                          const Spacer(),
-                          Icon(
-                            Icons.keyboard_arrow_down_rounded,
-                            color: s.ctaFg,
-                            size: 18,
-                          ),
-                          const SizedBox(width: 10),
-                        ],
-                      ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
-class _SideNavItem extends StatefulWidget {
-  const _SideNavItem({
-    required this.svg,
-    required this.label,
-    required this.tone,
-    required this.selected,
-    required this.collapsed,
-    required this.onTap,
-    this.trailing,
-  });
+              // --- Section-panel collapse chevron ------------------------
+              // Parked on request. The panel can still be collapsed and
+              // restored by clicking the section you are already in (see
+              // [_select]), so the capability is intact — this is only the
+              // edge affordance. Restore this block and [_CollapseChevron]
+              // below to bring it back.
+              //
+              // if (hasSection && !_createOpen && !tooNarrow)
+              //   AnimatedPositioned(
+              //     duration: const Duration(milliseconds: 200),
+              //     curve: Curves.easeOutCubic,
+              //     left: showPanel
+              //         ? ShellTokens.railWidth + ShellTokens.panelWidth - 11
+              //         : ShellTokens.railWidth + 2,
+              //     top: ShellTokens.workspaceGutter + 22,
+              //     child: _CollapseChevron(
+              //       collapsed: !showPanel,
+              //       onTap: () =>
+              //           setState(() => _panelCollapsed = !_panelCollapsed),
+              //     ),
+              //   ),
 
-  /// Mobile nav glyph asset (`Assets.nav*`) — rendered inside a per-destination
-  /// coloured tile that fills solid + glows when the row is selected.
-  final String svg;
-  final String label;
-
-  /// Destination accent — each nav item owns a distinct hue (ClickUp / Height
-  /// style) so the rail reads as a colourful, modern task tool.
-  final Color tone;
-  final bool selected;
-  final bool collapsed;
-  final VoidCallback onTap;
-  final Widget? trailing;
-
-  @override
-  State<_SideNavItem> createState() => _SideNavItemState();
-}
-
-class _SideNavItemState extends State<_SideNavItem> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = ShellTokens.of(context);
-    final tone = widget.tone;
-    // Modern task-tool rail (ClickUp / Height): each destination owns a hue.
-    // The selected row washes its tone at low alpha across the whole pill and
-    // the label goes strong-neutral for readability; hover shows a neutral
-    // preview fill. Idle is transparent so the brand-tinted rail shows through.
-    final bg = widget.selected
-        ? tone.withValues(alpha: 0.14)
-        : (_hover ? tone.withValues(alpha: 0.07) : Colors.transparent);
-    final textColor = widget.selected ? s.profileNameFg : s.sidebarTextIdle;
-
-    // Coloured icon tile — the signature of the modern look. Idle rows carry a
-    // soft tone-tinted tile with a tone-coloured glyph; the selected row fills
-    // the tile solid with a white glyph and a soft tone-coloured glow. Every
-    // value tweens so switching branches glides rather than snapping.
-    final iconChip = AnimatedContainer(
-      duration: const Duration(milliseconds: 180),
-      curve: Curves.easeOut,
-      width: 30,
-      height: 30,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: widget.selected
-            ? tone
-            : tone.withValues(alpha: _hover ? 0.20 : 0.12),
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
-        boxShadow: widget.selected
-            ? [
-                BoxShadow(
-                  color: tone.withValues(alpha: 0.35),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: SvgIcon(
-        widget.svg,
-        size: 18,
-        color: widget.selected ? Colors.white : tone,
-      ),
-    );
-
-    final child = widget.collapsed
-        ? Tooltip(
-            message: widget.label,
-            child: Center(child: iconChip),
-          )
-        : Row(
-            children: [
-              const SizedBox(width: 10),
-              iconChip,
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  widget.label,
-                  style: TextStyle(
-                    color: textColor,
-                    fontSize: 13.5,
-                    fontWeight: widget.selected
-                        ? FontWeight.w600
-                        : FontWeight.w500,
-                    letterSpacing: 0.15,
+              // --- Floating rail -----------------------------------------
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: MouseRegion(
+                  onEnter: (_) => _onRailEnter(),
+                  onExit: (_) => _onRailExit(),
+                  child: NavRail(
+                    expanded: _railExpanded || _profileMenuOpen,
+                    currentIndex: widget.shell.currentIndex,
+                    createOpen: _createOpen,
+                    onSelect: _select,
+                    onCreate: _toggleCreate,
+                    onProfile: _openProfileMenu,
                   ),
                 ),
               ),
-              if (widget.trailing != null) ...[
-                widget.trailing!,
-                const SizedBox(width: 10),
-              ],
             ],
-          );
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: widget.onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            curve: Curves.easeOut,
-            height: 44,
-            decoration: BoxDecoration(
-              color: bg,
-              // Big soft radius → a "floating pill" nav row, the modern
-              // task-tool look. A hairline in the row's tone appears only when
-              // selected so the active pill reads as a crisp coloured chip.
-              borderRadius: BorderRadius.circular(WebTokens.r2xl),
-              border: Border.all(
-                color: widget.selected
-                    ? tone.withValues(alpha: 0.28)
-                    : Colors.transparent,
-                width: 1,
-              ),
+// ---------------------------------------------------------------------------
+// Panel slot
+// ---------------------------------------------------------------------------
+
+/// Animates the sub-panel column between zero and [ShellTokens.panelWidth],
+/// pushing the workspace as it goes.
+///
+/// The child is laid out at full panel width throughout via [OverflowBox] and
+/// revealed by clipping, so its contents never reflow mid-animation — the
+/// same technique the rail uses for its labels.
+class _PanelSlot extends StatelessWidget {
+  const _PanelSlot({required this.open, required this.child});
+  final bool open;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOutCubic,
+      width: open ? ShellTokens.panelWidth : 0,
+      child: ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.centerLeft,
+          minWidth: ShellTokens.panelWidth,
+          maxWidth: ShellTokens.panelWidth,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              vertical: ShellTokens.workspaceGutter,
             ),
             child: child,
           ),
@@ -541,543 +389,62 @@ class _SideNavItemState extends State<_SideNavItem> {
   }
 }
 
-/// Inbox nav row with a live unread count. Uses a ClickUp-style compact pink
-/// pill instead of the previous blue chip so it reads as a notification
-/// signal rather than a badge count.
-class _InboxNavItem extends ConsumerWidget {
-  const _InboxNavItem({
-    required this.collapsed,
-    required this.selected,
-    required this.onTap,
-  });
-  final bool collapsed;
-  final bool selected;
-  final VoidCallback onTap;
+// Parked with its usage above — restore both together.
+// /// Zendesk-style edge affordance for collapsing the section panel — an
+// /// agent reading a long ticket thread can reclaim 280 px without losing
+// /// their place in the section.
+// class _CollapseChevron extends StatefulWidget {
+//   const _CollapseChevron({required this.collapsed, required this.onTap});
+//   final bool collapsed;
+//   final VoidCallback onTap;
+//
+//   @override
+//   State<_CollapseChevron> createState() => _CollapseChevronState();
+// }
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final unread = ref
-        .watch(unreadCountProvider)
-        .maybeWhen(data: (c) => c, orElse: () => 0);
-    final s = ShellTokens.of(context);
-    return _SideNavItem(
-      svg: Assets.navInbox,
-      label: 'Inbox',
-      tone: s.sidebarBadgePink,
-      selected: selected,
-      collapsed: collapsed,
-      onTap: onTap,
-      trailing: unread > 0 && !collapsed
-          ? Container(
-              constraints: const BoxConstraints(minWidth: 20),
-              height: 18,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
-              decoration: BoxDecoration(
-                color: s.sidebarBadgePink,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                unread > 99 ? '99+' : '$unread',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                  height: 1,
-                ),
-              ),
-            )
-          : null,
-    );
-  }
-}
+// class _CollapseChevronState extends State<_CollapseChevron> {
+//   bool _hover = false;
+//
+//   @override
+//   Widget build(BuildContext context) {
+//     final t = ZebuTheme.of(context);
+//     final s = ShellTokens.of(context);
+//     return Tooltip(
+//       message: widget.collapsed ? 'Show panel' : 'Hide panel',
+//       child: MouseRegion(
+//         cursor: SystemMouseCursors.click,
+//         onEnter: (_) => setState(() => _hover = true),
+//         onExit: (_) => setState(() => _hover = false),
+//         child: GestureDetector(
+//           behavior: HitTestBehavior.opaque,
+//           onTap: widget.onTap,
+//           child: Container(
+//             width: 22,
+//             height: 22,
+//             alignment: Alignment.center,
+//             decoration: BoxDecoration(
+//               color: _hover ? t.bgHover : t.bgElevated,
+//               shape: BoxShape.circle,
+//               border: Border.all(color: s.cardBorder, width: 1),
+//               boxShadow: ZebuElevation.shadowSm,
+//             ),
+//             child: Icon(
+//               widget.collapsed
+//                   ? Icons.chevron_right_rounded
+//                   : Icons.chevron_left_rounded,
+//               size: 16,
+//               color: _hover ? t.textPrimary : t.textSecondary,
+//             ),
+//           ),
+//         ),
+//       ),
+//     );
+//   }
+// }
 
-/// Sidebar footer — compact avatar + name/email. On the dark rail we use a
-/// lighter tint for the initials so the initial reads at a glance, and the
-/// text tones follow [ShellTokens] so the row never fights the nav items
-/// above.
-class _ProfileFooter extends ConsumerStatefulWidget {
-  const _ProfileFooter({required this.collapsed});
-  final bool collapsed;
-
-  @override
-  ConsumerState<_ProfileFooter> createState() => _ProfileFooterState();
-}
-
-class _ProfileFooterState extends ConsumerState<_ProfileFooter> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = ShellTokens.of(context);
-    final me = ref.watch(meProvider);
-    return me.maybeWhen(
-      data: (m) {
-        final initial = m.name.trim().isNotEmpty
-            ? m.name.trim()[0].toUpperCase()
-            : '?';
-        // Availability dot on the avatar's corner — mobile _AvatarWithStatus
-        // parity: 10px dot ringed by the rail color so it reads as sitting
-        // on top of the avatar. Green = available, grey = away.
-        final avatar = SizedBox(
-          width: 32,
-          height: 32,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: s.profileAvatarBg,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  initial,
-                  style: TextStyle(
-                    color: s.profileAvatarFg,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              Positioned(
-                right: -1,
-                bottom: -1,
-                child: Container(
-                  width: 10,
-                  height: 10,
-                  decoration: BoxDecoration(
-                    color: m.available
-                        ? WebTokens.success
-                        : const Color(0xFF737373),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: s.canvas, width: 2),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-
-        if (widget.collapsed) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: Center(
-              child: Tooltip(message: m.name, child: avatar),
-            ),
-          );
-        }
-
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => showProfileDialog(context),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              curve: Curves.easeOut,
-              margin: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              padding: const EdgeInsets.fromLTRB(8, 8, 6, 8),
-              decoration: BoxDecoration(
-                color: _hover ? s.sidebarHover : s.sidebarBg,
-                borderRadius: BorderRadius.circular(WebTokens.rSm),
-                // Hairline border appears only on hover, so the footer sits
-                // flush at rest but promotes into a card the moment it's
-                // interactive — mirrors the KPI tile hover treatment.
-                border: Border.all(
-                  color: _hover ? s.sidebarBorder : Colors.transparent,
-                  width: 1,
-                ),
-              ),
-              child: Row(
-                children: [
-                  avatar,
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          m.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: s.profileNameFg,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          m.email,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: s.profileEmailFg,
-                            fontSize: 11.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Trailing kebab hints that the row opens a menu. Fades
-                  // in / brightens on hover so at rest it's just a whisper.
-                  Icon(
-                    Icons.more_horiz_rounded,
-                    size: 18,
-                    color: _hover ? s.profileNameFg : s.profileEmailFg,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-      orElse: () => SizedBox(height: widget.collapsed ? 50 : 70),
-    );
-  }
-}
-
-// --- Top bar ----------------------------------------------------------------
-
-/// Custom Zebu wording lockup shown in the app-bar brand slot — a rounded
-/// product-icon tile beside the "Zebu Helpdesk" name + "Support workspace"
-/// subtitle. Replaces the standalone SVG wordmark. Collapses to the icon mark
-/// alone when the rail is narrow.
-class _BrandLockup extends StatelessWidget {
-  const _BrandLockup({required this.collapsed});
-  final bool collapsed;
-
-  @override
-  Widget build(BuildContext context) {
-    final s = ShellTokens.of(context);
-    final mark = Container(
-      width: 32,
-      height: 32,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
-        boxShadow: WebTokens.shadowSm,
-        border: Border.all(color: s.workspaceBorder, width: 1),
-      ),
-      child: Image.asset(Assets.appIcon, fit: BoxFit.cover),
-    );
-
-    if (collapsed) return mark;
-
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        mark,
-        const SizedBox(width: 10),
-        Flexible(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Zebu Helpdesk',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: s.profileNameFg,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.3,
-                  height: 1.1,
-                ),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                'Support workspace',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: s.sidebarTextIdle,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  height: 1.1,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TopBar extends ConsumerWidget {
-  const _TopBar({required this.logoSlotWidth});
-
-  /// Width of the left slot reserved for the brand logo. Matches the sidebar
-  /// width below so the logo sits directly above it (Asana-style).
-  final double logoSlotWidth;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final s = ShellTokens.of(context);
-    final t = WebTokens.of(context);
-    final unread = ref.watch(unreadCountProvider);
-    final unreadCount = unread.maybeWhen(data: (c) => c, orElse: () => 0);
-
-    return Container(
-      height: ShellTokens.topbarHeight,
-      // Defined app-bar band — a subtle tinted surface closed off by a bottom
-      // hairline so the top bar reads as its own chrome, not empty white space.
-      decoration: BoxDecoration(
-        color: s.topbarBg,
-        border: Border(bottom: BorderSide(color: s.topbarBorder, width: 1)),
-      ),
-      child: Row(
-        children: [
-          // Brand slot — the custom Zebu wording lockup (icon tile + name +
-          // subtitle) sits here, same width as the sidebar so it aligns above
-          // it. Collapses to just the icon mark on the narrow rail.
-          Builder(
-            builder: (context) {
-              final collapsed = logoSlotWidth < 100;
-              return SizedBox(
-                width: logoSlotWidth,
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: collapsed ? 8 : 16),
-                  child: Align(
-                    alignment: collapsed
-                        ? Alignment.center
-                        : Alignment.centerLeft,
-                    child: _BrandLockup(collapsed: collapsed),
-                  ),
-                ),
-              );
-            },
-          ),
-          // Right action cluster. Kept lean — theme toggle, notifications,
-          // and an avatar button that opens the profile popover. No invented
-          // global search field here (the backend has no such endpoint).
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  const _TopBarIconButton.themeToggle(),
-                  const SizedBox(width: 8),
-                  // _TopBarNotifButton(unread: unreadCount, tokens: t),
-                  // const SizedBox(width: 8),
-                  const _AvatarMenuButton(),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A unified icon button style for the top bar: 36 px hit-area, subtle hover
-/// tint, hairline "ghost" border on hover so the button previews an outline
-/// without hard-committing to it. Currently used only by the theme toggle;
-/// exposed as a constructor variant so future top-bar actions reuse the same
-/// treatment.
-class _TopBarIconButton extends ConsumerWidget {
-  const _TopBarIconButton.themeToggle() : _variant = _TopBarIconVariant.theme;
-  final _TopBarIconVariant _variant;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    switch (_variant) {
-      case _TopBarIconVariant.theme:
-        return const _ThemeToggle();
-    }
-  }
-}
-
-enum _TopBarIconVariant { theme }
-
-/// Dark/light toggle. Reads the current effective brightness (system-resolved
-/// if the mode is [ThemeMode.system]) and flips to the opposite. Explicit
-/// choices persist via [ThemeModeController.set].
-class _ThemeToggle extends ConsumerStatefulWidget {
-  const _ThemeToggle();
-
-  @override
-  ConsumerState<_ThemeToggle> createState() => _ThemeToggleState();
-}
-
-class _ThemeToggleState extends ConsumerState<_ThemeToggle> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    final mode = ref.watch(themeModeProvider);
-    final systemDark =
-        MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-    final isDark = switch (mode) {
-      ThemeMode.dark => true,
-      ThemeMode.light => false,
-      ThemeMode.system => systemDark,
-    };
-    return _TopBarGhost(
-      tooltip: isDark ? 'Switch to light mode' : 'Switch to dark mode',
-      onTap: () => ref
-          .read(themeModeProvider.notifier)
-          .set(isDark ? ThemeMode.light : ThemeMode.dark),
-      hover: _hover,
-      onHover: (v) => setState(() => _hover = v),
-      child: Icon(
-        isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
-        size: 18,
-        color: t.textPrimary,
-      ),
-    );
-  }
-}
-
-/// Notifications button + unread badge. Uses Material [Badge] so the count
-/// anchors to the top-right and never grows over the icon glyph.
-class _TopBarNotifButton extends StatefulWidget {
-  const _TopBarNotifButton({required this.unread, required this.tokens});
-  final int unread;
-  final WebTokens tokens;
-
-  @override
-  State<_TopBarNotifButton> createState() => _TopBarNotifButtonState();
-}
-
-class _TopBarNotifButtonState extends State<_TopBarNotifButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = widget.tokens;
-    return _TopBarGhost(
-      tooltip: 'Notifications',
-      onTap: () => context.go(Routes.notifications),
-      hover: _hover,
-      onHover: (v) => setState(() => _hover = v),
-      child: Badge(
-        isLabelVisible: widget.unread > 0,
-        label: Text(widget.unread > 99 ? '99+' : '${widget.unread}'),
-        backgroundColor: t.danger,
-        textColor: Colors.white,
-        textStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
-        largeSize: 16,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        offset: const Offset(2, -4),
-        child: SvgIcon(Assets.bell, size: 20, color: t.textPrimary),
-      ),
-    );
-  }
-}
-
-/// Shared visual container for top-bar actions — 36 px square with a subtle
-/// hover tint and hairline border-on-hover, so each action gets the same
-/// "premium ghost" treatment without every caller re-declaring it.
-class _TopBarGhost extends StatelessWidget {
-  const _TopBarGhost({
-    required this.child,
-    required this.onTap,
-    required this.tooltip,
-    required this.hover,
-    required this.onHover,
-  });
-  final Widget child;
-  final VoidCallback onTap;
-  final String tooltip;
-  final bool hover;
-  final ValueChanged<bool> onHover;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Tooltip(
-      message: tooltip,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => onHover(true),
-        onExit: (_) => onHover(false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              // Elevated white pill so each action reads as a real button that
-              // pops against the tinted top-bar band — not a bare glyph. Hover
-              // warms the fill + border for a tactile step-up.
-              color: hover ? t.bgHover : t.bgElevated,
-              borderRadius: BorderRadius.circular(WebTokens.rMd),
-              border: Border.all(
-                color: hover ? t.borderStrong : t.borderDefault,
-                width: 1,
-              ),
-              boxShadow: WebTokens.shadowXs,
-            ),
-            child: Center(child: child),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Avatar circle in the top-right that opens the profile popover. Replaces
-/// the old generic `account_circle_outlined` glyph with a real initial from
-/// [UserAvatar] so identity is visible without opening the menu.
-class _AvatarMenuButton extends ConsumerStatefulWidget {
-  const _AvatarMenuButton();
-
-  @override
-  ConsumerState<_AvatarMenuButton> createState() => _AvatarMenuButtonState();
-}
-
-class _AvatarMenuButtonState extends ConsumerState<_AvatarMenuButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    final me = ref.watch(meProvider);
-    final name = me.maybeWhen(data: (m) => m.name, orElse: () => 'Profile');
-    return Builder(
-      builder: (anchorContext) => Tooltip(
-        message: name,
-        child: MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onEnter: (_) => setState(() => _hover = true),
-          onExit: (_) => setState(() => _hover = false),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => showProfileMenu(anchorContext),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 100),
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: _hover ? t.accent : t.borderSubtle,
-                  width: 1.5,
-                ),
-              ),
-              child: UserAvatar(name: name, radius: 14),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// --- Scrollbar behavior -----------------------------------------------------
+// ---------------------------------------------------------------------------
+// Scrollbar behavior
+// ---------------------------------------------------------------------------
 
 /// Web-only [ScrollBehavior] that draws a persistent Material scrollbar
 /// around every child [Scrollable] regardless of the underlying

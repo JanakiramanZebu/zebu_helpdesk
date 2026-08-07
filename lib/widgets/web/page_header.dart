@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_spacing.dart';
+import '../../res/zebu_text_styles.dart';
 
 /// Width below which the header switches from a side-by-side layout
 /// (title | trailing) to a stacked layout (title on top, trailing below).
@@ -35,10 +36,10 @@ class PageHeader extends StatelessWidget {
     this.leading,
     this.trailing,
     this.padding = const EdgeInsets.fromLTRB(
-      WebTokens.s6,
-      WebTokens.s5,
-      WebTokens.s6,
-      WebTokens.s4,
+      ZebuSpacing.s6,
+      ZebuSpacing.s5,
+      ZebuSpacing.s6,
+      ZebuSpacing.s4,
     ),
   });
 
@@ -52,7 +53,6 @@ class PageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     // Title + optional subtitle column — same in both layouts, extracted
     // so the wide / stacked branches can compose it consistently.
     // Title stays at its natural `hero` size — `maxLines: 1 + softWrap:
@@ -68,7 +68,7 @@ class PageHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: t.hero,
+          style: ZebuTextStyles.hero(context),
           maxLines: 1,
           softWrap: false,
           overflow: TextOverflow.ellipsis,
@@ -77,7 +77,7 @@ class PageHeader extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             subtitle!,
-            style: t.bodySm,
+            style: ZebuTextStyles.small(context),
             maxLines: 1,
             softWrap: false,
             overflow: TextOverflow.ellipsis,
@@ -96,7 +96,7 @@ class PageHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               leading!,
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
               Flexible(child: titleColumn),
             ],
           );
@@ -113,7 +113,7 @@ class PageHeader extends StatelessWidget {
               children: [
                 Expanded(child: titleArea),
                 if (hasTrailing) ...[
-                  const SizedBox(width: WebTokens.s4),
+                  const SizedBox(width: ZebuSpacing.s4),
                   trailing!,
                 ],
               ],
@@ -127,7 +127,7 @@ class PageHeader extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               titleArea,
-              const SizedBox(height: WebTokens.s3),
+              const SizedBox(height: ZebuSpacing.s3),
               trailing!,
             ],
           );

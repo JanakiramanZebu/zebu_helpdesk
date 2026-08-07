@@ -8,8 +8,10 @@ import '../../../core/theme/theme_controller.dart';
 import '../../../providers.dart';
 import '../../../widgets/app_dialog.dart';
 import '../../../widgets/svg_icon.dart';
-import '../../dashboard/web/_tokens.dart';
 import '../../profile/web/profile_screen_web.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 /// Web-only More hub, styled to the Zebu Premium spec in `skill.md`.
 ///
@@ -22,25 +24,25 @@ class MoreScreenWeb extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final themeMode = ref.watch(themeModeProvider);
 
     return ColoredBox(
       color: t.bgPrimary,
       child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s8,
-          vertical: WebTokens.s6,
+          horizontal: ZebuSpacing.s8,
+          vertical: ZebuSpacing.s6,
         ),
         child: Center(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const _Hero(),
-                const SizedBox(height: WebTokens.s8),
+                const SizedBox(height: ZebuSpacing.s8),
 
                 _SectionTitle('WORKSPACE'),
-                const SizedBox(height: WebTokens.s3),
+                const SizedBox(height: ZebuSpacing.s3),
                 _CardGrid(cards: [
                   _NavCardData(
                     svg: Assets.menuUsers,
@@ -56,9 +58,9 @@ class MoreScreenWeb extends ConsumerWidget {
                   ),
                 ]),
 
-                const SizedBox(height: WebTokens.s8),
+                const SizedBox(height: ZebuSpacing.s8),
                 _SectionTitle('CONTENT'),
-                const SizedBox(height: WebTokens.s3),
+                const SizedBox(height: ZebuSpacing.s3),
                 _CardGrid(cards: [
                   _NavCardData(
                     svg: Assets.menuKnowledge,
@@ -86,9 +88,9 @@ class MoreScreenWeb extends ConsumerWidget {
                   ),
                 ]),
 
-                const SizedBox(height: WebTokens.s8),
+                const SizedBox(height: ZebuSpacing.s8),
                 _SectionTitle('ACCOUNT'),
-                const SizedBox(height: WebTokens.s3),
+                const SizedBox(height: ZebuSpacing.s3),
                 _CardGrid(cards: [
                   _NavCardData(
                     svg: Assets.profileEdit,
@@ -111,7 +113,7 @@ class MoreScreenWeb extends ConsumerWidget {
                   ),
                 ]),
 
-                const SizedBox(height: WebTokens.s10),
+                const SizedBox(height: ZebuSpacing.s10),
               ],
             ),
           ),
@@ -139,11 +141,11 @@ class MoreScreenWeb extends ConsumerWidget {
     final picked = await showDialog<ThemeMode>(
       context: context,
       builder: (ctx) {
-        final t = WebTokens.of(ctx);
+        final t = ZebuTheme.of(ctx);
         return Dialog(
           backgroundColor: t.bgElevated,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 380),
@@ -153,20 +155,20 @@ class MoreScreenWeb extends ConsumerWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    WebTokens.s5,
-                    WebTokens.s5,
-                    WebTokens.s5,
-                    WebTokens.s3,
+                    ZebuSpacing.s5,
+                    ZebuSpacing.s5,
+                    ZebuSpacing.s5,
+                    ZebuSpacing.s3,
                   ),
-                  child: Text('APPEARANCE', style: t.sectionTitle),
+                  child: Text('APPEARANCE', style: ZebuTextStyles.label(context)),
                 ),
                 for (final mode in ThemeMode.values)
                   InkWell(
                     onTap: () => Navigator.pop(ctx, mode),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: WebTokens.s5,
-                        vertical: WebTokens.s3,
+                        horizontal: ZebuSpacing.s5,
+                        vertical: ZebuSpacing.s3,
                       ),
                       child: Row(
                         children: [
@@ -175,11 +177,11 @@ class MoreScreenWeb extends ConsumerWidget {
                             size: 18,
                             color: t.textSecondary,
                           ),
-                          const SizedBox(width: WebTokens.s3),
+                          const SizedBox(width: ZebuSpacing.s3),
                           Expanded(
                             child: Text(
                               _themeLabel(mode),
-                              style: t.bodyBase.copyWith(
+                              style: ZebuTextStyles.body(context).copyWith(
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
@@ -194,7 +196,7 @@ class MoreScreenWeb extends ConsumerWidget {
                       ),
                     ),
                   ),
-                const SizedBox(height: WebTokens.s3),
+                const SizedBox(height: ZebuSpacing.s3),
               ],
             ),
           ),
@@ -230,7 +232,6 @@ class _Hero extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = WebTokens.of(context);
     final me = ref.watch(meProvider);
     final name = me.maybeWhen(
       data: (m) {
@@ -243,12 +244,12 @@ class _Hero extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Text('MORE', style: t.sectionTitle),
-        // const SizedBox(height: WebTokens.s2),
-        Text('Hello, $name', style: t.hero),
+        // Text('MORE', style: ZebuTextStyles.label(context)),
+        // const SizedBox(height: ZebuSpacing.s2),
+        Text('Hello, $name', style: ZebuTextStyles.hero(context)),
         if (email.isNotEmpty) ...[
-          const SizedBox(height: WebTokens.s2),
-          Text(email, style: t.bodySm),
+          const SizedBox(height: ZebuSpacing.s2),
+          Text(email, style: ZebuTextStyles.small(context)),
         ],
       ],
     );
@@ -265,10 +266,9 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: WebTokens.s1),
-      child: Text(label.toUpperCase(), style: t.sectionCaps),
+      padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s1),
+      child: Text(label.toUpperCase(), style: ZebuTextStyles.eyebrow(context)),
     );
   }
 }
@@ -289,8 +289,8 @@ class _CardGrid extends StatelessWidget {
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 320,
         mainAxisExtent: 96,
-        mainAxisSpacing: WebTokens.s3,
-        crossAxisSpacing: WebTokens.s3,
+        mainAxisSpacing: ZebuSpacing.s3,
+        crossAxisSpacing: ZebuSpacing.s3,
       ),
       children: [for (final c in cards) _NavCard(data: c)],
     );
@@ -334,7 +334,7 @@ class _NavCardState extends State<_NavCard> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final tone = widget.data.tone ?? t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -348,8 +348,8 @@ class _NavCardState extends State<_NavCard> {
           curve: Curves.easeOut,
           decoration: t.card(hover: _hover),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
-            vertical: WebTokens.s3,
+            horizontal: ZebuSpacing.s4,
+            vertical: ZebuSpacing.s3,
           ),
           child: Row(
             children: [
@@ -359,13 +359,13 @@ class _NavCardState extends State<_NavCard> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: tone.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(WebTokens.rSm),
+                  borderRadius: BorderRadius.circular(ZebuRadius.rSm),
                 ),
                 child: widget.data.svg != null
                     ? SvgIcon(widget.data.svg!, size: 20, color: tone)
                     : Icon(widget.data.icon, size: 20, color: tone),
               ),
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -375,7 +375,7 @@ class _NavCardState extends State<_NavCard> {
                       widget.data.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: t.cardNameLg.copyWith(
+                      style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold).copyWith(
                         color: widget.data.tone ?? t.textPrimary,
                       ),
                     ),
@@ -384,7 +384,7 @@ class _NavCardState extends State<_NavCard> {
                       widget.data.subtitle,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: t.bodySm,
+                      style: ZebuTextStyles.small(context),
                     ),
                   ],
                 ),

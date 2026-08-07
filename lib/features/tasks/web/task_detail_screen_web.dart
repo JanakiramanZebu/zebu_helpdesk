@@ -14,7 +14,9 @@ import '../../../models/task.dart';
 import '../../../providers.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/states.dart';
-import '../../dashboard/web/_tokens.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 /// Web-only task detail, styled to the Zebu Premium spec in `skill.md`.
 ///
@@ -288,11 +290,11 @@ class _TaskDetailScreenWebState extends ConsumerState<TaskDetailScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return ColoredBox(color: t.bgElevated, child: _buildBody(t));
   }
 
-  Widget _buildBody(WebTokens t) {
+  Widget _buildBody(ZebuTheme t) {
     if (_loading) return const LoadingView();
     if (_error != null || _task == null) {
       return ErrorView(error: _error ?? 'Not found', onRetry: _load);
@@ -308,10 +310,10 @@ class _TaskDetailScreenWebState extends ConsumerState<TaskDetailScreenWeb> {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(
-                  WebTokens.s8,
-                  WebTokens.s8,
-                  WebTokens.s8,
-                  WebTokens.s8,
+                  ZebuSpacing.s8,
+                  ZebuSpacing.s8,
+                  ZebuSpacing.s8,
+                  ZebuSpacing.s8,
                 ),
                 child: Center(
                   child: ConstrainedBox(
@@ -334,7 +336,7 @@ class _TaskDetailScreenWebState extends ConsumerState<TaskDetailScreenWeb> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: _mainColumn(task)),
-        const SizedBox(width: WebTokens.s6),
+        const SizedBox(width: ZebuSpacing.s6),
         SizedBox(width: _kSidebarWidth, child: _sidebar(task)),
       ],
     );
@@ -345,7 +347,7 @@ class _TaskDetailScreenWebState extends ConsumerState<TaskDetailScreenWeb> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _mainColumn(task),
-        const SizedBox(height: WebTokens.s6),
+        const SizedBox(height: ZebuSpacing.s6),
         _sidebar(task),
       ],
     );
@@ -356,17 +358,17 @@ class _TaskDetailScreenWebState extends ConsumerState<TaskDetailScreenWeb> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _HeroHeader(task: task, onMenu: _onMenu),
-        const SizedBox(height: WebTokens.s5),
+        const SizedBox(height: ZebuSpacing.s5),
         _ThreadCard(thread: _thread),
-        const SizedBox(height: WebTokens.s5),
+        const SizedBox(height: ZebuSpacing.s5),
         _ReplyCard(onSend: _sendReply, disabled: _acting),
-        const SizedBox(height: WebTokens.s5),
+        const SizedBox(height: ZebuSpacing.s5),
         _SubtasksCard(
           subtasks: _subtasks,
           onAdd: _addSubtask,
           onOpen: (st) => context.go(Routes.task(st.id)),
         ),
-        const SizedBox(height: WebTokens.s5),
+        const SizedBox(height: ZebuSpacing.s5),
         _DependenciesCard(
           dependencies: _dependencies,
           onAdd: _addDependency,
@@ -392,12 +394,12 @@ class _HeroHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _BackButton(),
-        const SizedBox(width: WebTokens.s3),
+        const SizedBox(width: ZebuSpacing.s3),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -406,35 +408,35 @@ class _HeroHeader extends StatelessWidget {
                 children: [
                   Text(
                     '#${task.number}',
-                    style: t.sectionTitle,
+                    style: ZebuTextStyles.label(context),
                   ),
-                  const SizedBox(width: WebTokens.s2),
+                  const SizedBox(width: ZebuSpacing.s2),
                   if (task.blocked) ...[
                     _Tag(label: 'BLOCKED', tone: t.danger),
-                    const SizedBox(width: WebTokens.s2),
+                    const SizedBox(width: ZebuSpacing.s2),
                   ],
                   if (task.overdue)
                     _Tag(label: 'OVERDUE', tone: t.danger),
                 ],
               ),
-              const SizedBox(height: WebTokens.s2),
-              Text(task.title, style: t.hero),
-              const SizedBox(height: WebTokens.s3),
+              const SizedBox(height: ZebuSpacing.s2),
+              Text(task.title, style: ZebuTextStyles.hero(context)),
+              const SizedBox(height: ZebuSpacing.s3),
               Row(
                 children: [
                   _Tag(
                     label: task.statusName.toUpperCase(),
-                    tone: task.isOpen ? WebTokens.success : t.textSecondary,
+                    tone: task.isOpen ? ZebuTheme.success : t.textSecondary,
                   ),
                   if (task.priority != null) ...[
-                    const SizedBox(width: WebTokens.s2),
+                    const SizedBox(width: ZebuSpacing.s2),
                     _Tag(
                       label: task.priority!.name.toUpperCase(),
                       tone: _priorityTone(task.priority!.name, t),
                     ),
                   ],
                   if (task.progress > 0) ...[
-                    const SizedBox(width: WebTokens.s4),
+                    const SizedBox(width: ZebuSpacing.s4),
                     Expanded(
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -454,10 +456,10 @@ class _HeroHeader extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: WebTokens.s2),
+                          const SizedBox(width: ZebuSpacing.s2),
                           Text(
                             '${task.progress}%',
-                            style: t.bodySm
+                            style: ZebuTextStyles.small(context)
                                 .copyWith(fontWeight: FontWeight.w600)
                                 .withTabularNums(),
                           ),
@@ -470,17 +472,17 @@ class _HeroHeader extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: WebTokens.s4),
+        const SizedBox(width: ZebuSpacing.s4),
         _ActionMenu(task: task, onSelected: onMenu),
       ],
     );
   }
 
-  static Color _priorityTone(String name, WebTokens t) {
+  static Color _priorityTone(String name, ZebuTheme t) {
     final n = name.toLowerCase();
     if (n.contains('emergency') || n.contains('high')) return t.danger;
-    if (n.contains('low')) return WebTokens.success;
-    return WebTokens.warning;
+    if (n.contains('low')) return ZebuTheme.success;
+    return ZebuTheme.warning;
   }
 }
 
@@ -494,7 +496,7 @@ class _BackButtonState extends State<_BackButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -545,12 +547,12 @@ class _ActionMenu extends StatelessWidget {
       ],
       child: Container(
         padding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s3,
+          horizontal: ZebuSpacing.s3,
           vertical: 8,
         ),
         decoration: BoxDecoration(
           // Filled Actions button keeps the Mynt brand blue in both modes.
-          color: WebTokens.accentLight,
+          color: ZebuTheme.accentLight,
           borderRadius: BorderRadius.circular(_kFlatRadius),
         ),
         child: Row(
@@ -585,15 +587,15 @@ class _ThreadCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return _SectionCard(
       title: 'CONVERSATION',
       trailing: '${thread.length} entries',
       child: thread.isEmpty
           ? Padding(
-              padding: const EdgeInsets.all(WebTokens.s5),
+              padding: const EdgeInsets.all(ZebuSpacing.s5),
               child: Center(
-                child: Text('No messages yet', style: t.bodySm),
+                child: Text('No messages yet', style: ZebuTextStyles.small(context)),
               ),
             )
           : Column(
@@ -615,11 +617,11 @@ class _ThreadEntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final isNote = entry.isNote;
     final isResponse = entry.isResponse;
     final tone = isNote
-        ? WebTokens.warning
+        ? ZebuTheme.warning
         : (isResponse ? t.accent : t.textSecondary);
     final typeLabel = isNote
         ? 'NOTE'
@@ -628,7 +630,7 @@ class _ThreadEntryRow extends StatelessWidget {
     final plain = Fmt.stripHtml(html);
 
     return Padding(
-      padding: const EdgeInsets.all(WebTokens.s4),
+      padding: const EdgeInsets.all(ZebuSpacing.s4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -651,7 +653,7 @@ class _ThreadEntryRow extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(width: WebTokens.s3),
+          const SizedBox(width: ZebuSpacing.s3),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -660,43 +662,43 @@ class _ThreadEntryRow extends StatelessWidget {
                   children: [
                     Text(
                       entry.poster,
-                      style: t.cardName,
+                      style: ZebuTextStyles.smallStrong(context),
                     ),
-                    const SizedBox(width: WebTokens.s2),
+                    const SizedBox(width: ZebuSpacing.s2),
                     _Tag(label: typeLabel, tone: tone),
                     const Spacer(),
                     if (entry.created != null)
-                      Text(Fmt.ago(entry.created), style: t.tinyLabel),
+                      Text(Fmt.ago(entry.created), style: ZebuTextStyles.label(context)),
                   ],
                 ),
                 if (entry.title != null && entry.title!.isNotEmpty) ...[
-                  const SizedBox(height: WebTokens.s2),
+                  const SizedBox(height: ZebuSpacing.s2),
                   Text(
                     entry.title!,
-                    style: t.bodyBase
+                    style: ZebuTextStyles.body(context)
                         .copyWith(fontWeight: FontWeight.w600),
                   ),
                 ],
-                const SizedBox(height: WebTokens.s2),
+                const SizedBox(height: ZebuSpacing.s2),
                 if (plain.trim().isEmpty)
-                  Text('(no content)', style: t.bodySm)
+                  Text('(no content)', style: ZebuTextStyles.small(context))
                 else if (html.contains('<'))
                   HtmlWidget(
                     html,
-                    textStyle: t.bodyBase.copyWith(height: 1.5),
+                    textStyle: ZebuTextStyles.body(context).copyWith(height: 1.5),
                   )
                 else
-                  Text(plain, style: t.bodyBase.copyWith(height: 1.5)),
+                  Text(plain, style: ZebuTextStyles.body(context).copyWith(height: 1.5)),
                 if (entry.attachments.isNotEmpty) ...[
-                  const SizedBox(height: WebTokens.s3),
+                  const SizedBox(height: ZebuSpacing.s3),
                   Wrap(
-                    spacing: WebTokens.s2,
-                    runSpacing: WebTokens.s2,
+                    spacing: ZebuSpacing.s2,
+                    runSpacing: ZebuSpacing.s2,
                     children: [
                       for (final a in entry.attachments)
                         Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: WebTokens.s3,
+                            horizontal: ZebuSpacing.s3,
                             vertical: 6,
                           ),
                           decoration: BoxDecoration(
@@ -713,7 +715,7 @@ class _ThreadEntryRow extends StatelessWidget {
                                 color: t.textSecondary,
                               ),
                               const SizedBox(width: 6),
-                              Text(a.name, style: t.bodySm),
+                              Text(a.name, style: ZebuTextStyles.small(context)),
                             ],
                           ),
                         ),
@@ -768,12 +770,12 @@ class _ReplyCardState extends State<_ReplyCard> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return _SectionCard(
       title: _asNote ? 'INTERNAL NOTE' : 'REPLY',
       trailing: null,
       child: Padding(
-        padding: const EdgeInsets.all(WebTokens.s4),
+        padding: const EdgeInsets.all(ZebuSpacing.s4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -784,16 +786,16 @@ class _ReplyCardState extends State<_ReplyCard> {
                   active: !_asNote,
                   onTap: () => setState(() => _asNote = false),
                 ),
-                const SizedBox(width: WebTokens.s2),
+                const SizedBox(width: ZebuSpacing.s2),
                 _ToggleChip(
                   label: 'Note',
                   active: _asNote,
-                  tone: WebTokens.warning,
+                  tone: ZebuTheme.warning,
                   onTap: () => setState(() => _asNote = true),
                 ),
               ],
             ),
-            const SizedBox(height: WebTokens.s2),
+            const SizedBox(height: ZebuSpacing.s2),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -803,14 +805,14 @@ class _ReplyCardState extends State<_ReplyCard> {
                     minLines: 1,
                     maxLines: 6,
                     enabled: !widget.disabled && !_sending,
-                    style: t.bodyBase,
+                    style: ZebuTextStyles.body(context),
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: t.bgElevated,
                       hintText: _asNote
                           ? 'Add an internal note (not visible to requester)…'
                           : 'Write a reply…',
-                      hintStyle: t.bodyBase.copyWith(color: t.textSecondary),
+                      hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(_kFlatRadius),
                         borderSide: BorderSide(color: t.borderSubtle),
@@ -818,26 +820,26 @@ class _ReplyCardState extends State<_ReplyCard> {
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(_kFlatRadius),
                         borderSide: BorderSide(
-                          color: _asNote ? WebTokens.warning : t.borderSubtle,
+                          color: _asNote ? ZebuTheme.warning : t.borderSubtle,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(_kFlatRadius),
                         borderSide: BorderSide(
-                          color: _asNote ? WebTokens.warning : t.accent,
+                          color: _asNote ? ZebuTheme.warning : t.accent,
                           width: 1.4,
                         ),
                       ),
-                      contentPadding: const EdgeInsets.all(WebTokens.s3),
+                      contentPadding: const EdgeInsets.all(ZebuSpacing.s3),
                     ),
                   ),
                 ),
-                const SizedBox(width: WebTokens.s2),
+                const SizedBox(width: ZebuSpacing.s2),
                 _PrimaryButton(
                   label: _asNote ? 'Save note' : 'Send reply',
                   icon: _asNote ? Icons.sticky_note_2_outlined : Icons.send,
                   disabled: widget.disabled || _sending,
-                  tone: _asNote ? WebTokens.warning : WebTokens.accentLight,
+                  tone: _asNote ? ZebuTheme.warning : ZebuTheme.accentLight,
                   onTap: _submit,
                 ),
               ],
@@ -863,7 +865,7 @@ class _ToggleChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final effective = tone ?? t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -871,7 +873,7 @@ class _ToggleChip extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
+            horizontal: ZebuSpacing.s3,
             vertical: 6,
           ),
           decoration: BoxDecoration(
@@ -884,7 +886,7 @@ class _ToggleChip extends StatelessWidget {
           ),
           child: Text(
             label,
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: active ? effective : t.textSecondary,
               fontWeight: FontWeight.w600,
             ),
@@ -932,7 +934,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
+            horizontal: ZebuSpacing.s4,
             vertical: 14,
           ),
           decoration: BoxDecoration(
@@ -978,15 +980,15 @@ class _SubtasksCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return _SectionCard(
       title: 'SUBTASKS',
       trailing: '${subtasks.length}',
       action: _AddButton(label: 'Add subtask', onTap: onAdd),
       child: subtasks.isEmpty
           ? Padding(
-              padding: const EdgeInsets.all(WebTokens.s5),
-              child: Center(child: Text('No subtasks', style: t.bodySm)),
+              padding: const EdgeInsets.all(ZebuSpacing.s5),
+              child: Center(child: Text('No subtasks', style: ZebuTextStyles.small(context))),
             )
           : Column(
               children: [
@@ -1014,7 +1016,7 @@ class _SubtaskRowState extends State<_SubtaskRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final task = widget.task;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -1025,36 +1027,36 @@ class _SubtaskRowState extends State<_SubtaskRow> {
         child: Container(
           color: _hover ? t.bgHover : Colors.transparent,
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
-            vertical: WebTokens.s3,
+            horizontal: ZebuSpacing.s4,
+            vertical: ZebuSpacing.s3,
           ),
           child: Row(
             children: [
               Text(
                 '#${task.number}',
-                style: t.bodySm
+                style: ZebuTextStyles.small(context)
                     .copyWith(fontWeight: FontWeight.w600)
                     .withTabularNums(),
               ),
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
               Expanded(
                 child: Text(
                   task.title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.bodyBase,
+                  style: ZebuTextStyles.body(context),
                 ),
               ),
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
               _Tag(
                 label: task.statusName.toUpperCase(),
-                tone: task.isOpen ? WebTokens.success : t.textSecondary,
+                tone: task.isOpen ? ZebuTheme.success : t.textSecondary,
               ),
               if (task.progress > 0) ...[
-                const SizedBox(width: WebTokens.s3),
+                const SizedBox(width: ZebuSpacing.s3),
                 Text(
                   '${task.progress}%',
-                  style: t.bodySm.withTabularNums(),
+                  style: ZebuTextStyles.small(context).withTabularNums(),
                 ),
               ],
             ],
@@ -1081,15 +1083,15 @@ class _DependenciesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return _SectionCard(
       title: 'DEPENDENCIES',
       trailing: '${dependencies.length}',
       action: _AddButton(label: 'Add dependency', onTap: onAdd),
       child: dependencies.isEmpty
           ? Padding(
-              padding: const EdgeInsets.all(WebTokens.s5),
-              child: Center(child: Text('No dependencies', style: t.bodySm)),
+              padding: const EdgeInsets.all(ZebuSpacing.s5),
+              child: Center(child: Text('No dependencies', style: ZebuTextStyles.small(context))),
             )
           : Column(
               children: [
@@ -1113,14 +1115,14 @@ class _DependencyRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final blocker = dep.blocker;
     final blocked = blocker != null && blocker.open;
-    final tone = blocked ? t.danger : WebTokens.success;
+    final tone = blocked ? t.danger : ZebuTheme.success;
     return Padding(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s4,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s4,
+        vertical: ZebuSpacing.s3,
       ),
       child: Row(
         children: [
@@ -1129,7 +1131,7 @@ class _DependencyRow extends StatelessWidget {
             color: tone,
             size: 18,
           ),
-          const SizedBox(width: WebTokens.s3),
+          const SizedBox(width: ZebuSpacing.s3),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1140,12 +1142,12 @@ class _DependencyRow extends StatelessWidget {
                       : '#${blocker.number} ${blocker.title}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
+                  style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   dep.required ? 'Required' : 'Optional',
-                  style: t.tinyLabel,
+                  style: ZebuTextStyles.label(context),
                 ),
               ],
             ),
@@ -1171,7 +1173,7 @@ class _MetadataCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final rows = <(String, String?)>[
       ('Status', task.statusName),
       ('Department', task.departmentName),
@@ -1188,21 +1190,21 @@ class _MetadataCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(_kFlatRadius),
         border: Border.all(color: t.borderSubtle),
       ),
-      padding: const EdgeInsets.all(WebTokens.s5),
+      padding: const EdgeInsets.all(ZebuSpacing.s5),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('DETAILS', style: t.sectionTitle),
-          const SizedBox(height: WebTokens.s3),
+          Text('DETAILS', style: ZebuTextStyles.label(context)),
+          const SizedBox(height: ZebuSpacing.s3),
           for (final (label, value) in rows)
             if (value != null && value.isNotEmpty && value != '—')
               _MetaRow(label: label, value: value),
           if (task.customFields.isNotEmpty) ...[
-            const SizedBox(height: WebTokens.s4),
+            const SizedBox(height: ZebuSpacing.s4),
             Divider(height: 1, color: t.borderSubtle),
-            const SizedBox(height: WebTokens.s3),
-            Text('CUSTOM FIELDS', style: t.sectionTitle),
-            const SizedBox(height: WebTokens.s3),
+            const SizedBox(height: ZebuSpacing.s3),
+            Text('CUSTOM FIELDS', style: ZebuTextStyles.label(context)),
+            const SizedBox(height: ZebuSpacing.s3),
             for (final e in task.customFields.entries)
               _MetaRow(label: e.key, value: e.value),
           ],
@@ -1219,7 +1221,6 @@ class _MetaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
@@ -1227,12 +1228,12 @@ class _MetaRow extends StatelessWidget {
         children: [
           Text(
             label,
-            style: t.tinyLabel,
+            style: ZebuTextStyles.label(context),
           ),
           const SizedBox(height: 2),
           Text(
             value,
-            style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
+            style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -1259,7 +1260,7 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -1271,19 +1272,19 @@ class _SectionCard extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              WebTokens.s4,
-              WebTokens.s3,
-              WebTokens.s3,
-              WebTokens.s3,
+              ZebuSpacing.s4,
+              ZebuSpacing.s3,
+              ZebuSpacing.s3,
+              ZebuSpacing.s3,
             ),
             child: Row(
               children: [
-                Text(title, style: t.sectionTitle),
+                Text(title, style: ZebuTextStyles.label(context)),
                 if (trailing != null) ...[
-                  const SizedBox(width: WebTokens.s2),
+                  const SizedBox(width: ZebuSpacing.s2),
                   Text(
                     trailing!,
-                    style: t.bodySm.withTabularNums(),
+                    style: ZebuTextStyles.small(context).withTabularNums(),
                   ),
                 ],
                 const Spacer(),
@@ -1313,7 +1314,7 @@ class _AddButtonState extends State<_AddButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -1334,7 +1335,7 @@ class _AddButtonState extends State<_AddButton> {
               const SizedBox(width: 4),
               Text(
                 widget.label,
-                style: t.bodySm.copyWith(
+                style: ZebuTextStyles.small(context).copyWith(
                   color: t.accent,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1362,8 +1363,7 @@ class _Tag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Text(label, style: t.tinyLabel.copyWith(color: tone));
+    return Text(label, style: ZebuTextStyles.label(context).copyWith(color: tone));
   }
 }
 

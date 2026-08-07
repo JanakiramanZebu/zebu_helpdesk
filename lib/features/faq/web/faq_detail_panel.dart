@@ -7,7 +7,9 @@ import '../../../providers.dart';
 import '../../../widgets/attachment_tile.dart';
 import '../../../widgets/states.dart';
 import '../../../widgets/web/status_pill.dart';
-import '../../dashboard/web/_tokens.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 /// Web-only KB-article detail panel — visual parity with
 /// [TicketDetailPanel]:
@@ -82,7 +84,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Material(
       // Warm-paper ground so the panel matches the list surface behind it.
       color: t.bgPrimary,
@@ -92,7 +94,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
     );
   }
 
-  Widget _buildBody(WebTokens t) {
+  Widget _buildBody(ZebuTheme t) {
     if (_loading) {
       return Column(
         children: [
@@ -146,47 +148,47 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
   /// Narrow single-column layout: fields card on top, then Answer / Notes /
   /// Attachments stacked below. Kept for the sub-780 px slot the panel gets
   /// when the list underneath is still visible on smaller viewports.
-  Widget _buildNarrow(WebTokens t, Faq f) {
+  Widget _buildNarrow(ZebuTheme t, Faq f) {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        const SizedBox(height: WebTokens.s3),
+        const SizedBox(height: ZebuSpacing.s3),
         _FieldsTable(faq: f, sidebar: false),
-        const SizedBox(height: WebTokens.s2),
+        const SizedBox(height: ZebuSpacing.s2),
         const _SectionSubheader('Answer'),
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            WebTokens.s4,
-            WebTokens.s3,
-            WebTokens.s4,
+            ZebuSpacing.s4,
+            ZebuSpacing.s3,
+            ZebuSpacing.s4,
             0,
           ),
           child: _BodyCard(text: Fmt.stripHtml(f.answer).trim()),
         ),
         if ((f.notes ?? '').trim().isNotEmpty) ...[
-          const SizedBox(height: WebTokens.s2),
+          const SizedBox(height: ZebuSpacing.s2),
           const _SectionSubheader('Internal notes'),
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              WebTokens.s4,
-              WebTokens.s3,
-              WebTokens.s4,
+              ZebuSpacing.s4,
+              ZebuSpacing.s3,
+              ZebuSpacing.s4,
               0,
             ),
             child: _BodyCard(text: f.notes!.trim(), muted: true),
           ),
         ],
         if (f.attachments.isNotEmpty) ...[
-          const SizedBox(height: WebTokens.s2),
+          const SizedBox(height: ZebuSpacing.s2),
           _SectionSubheader(
             'Attachments',
             trailing: '${f.attachments.length}',
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
-              WebTokens.s4,
-              WebTokens.s3,
-              WebTokens.s4,
+              ZebuSpacing.s4,
+              ZebuSpacing.s3,
+              ZebuSpacing.s4,
               0,
             ),
             child: Column(
@@ -197,7 +199,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
             ),
           ),
         ],
-        const SizedBox(height: WebTokens.s6),
+        const SizedBox(height: ZebuSpacing.s6),
       ],
     );
   }
@@ -207,7 +209,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
   /// on the right at [_kFieldsSidebarWidth]. A hairline seam separates the
   /// two columns — matches the reference layout where the details block
   /// sits as a fixed rail alongside the main content.
-  Widget _buildWide(WebTokens t, Faq f) {
+  Widget _buildWide(ZebuTheme t, Faq f) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -218,37 +220,37 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
               const _SectionSubheader('Answer'),
               Padding(
                 padding: const EdgeInsets.fromLTRB(
-                  WebTokens.s4,
-                  WebTokens.s3,
-                  WebTokens.s4,
+                  ZebuSpacing.s4,
+                  ZebuSpacing.s3,
+                  ZebuSpacing.s4,
                   0,
                 ),
                 child: _BodyCard(text: Fmt.stripHtml(f.answer).trim()),
               ),
               if ((f.notes ?? '').trim().isNotEmpty) ...[
-                const SizedBox(height: WebTokens.s2),
+                const SizedBox(height: ZebuSpacing.s2),
                 const _SectionSubheader('Internal notes'),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    WebTokens.s4,
-                    WebTokens.s3,
-                    WebTokens.s4,
+                    ZebuSpacing.s4,
+                    ZebuSpacing.s3,
+                    ZebuSpacing.s4,
                     0,
                   ),
                   child: _BodyCard(text: f.notes!.trim(), muted: true),
                 ),
               ],
               if (f.attachments.isNotEmpty) ...[
-                const SizedBox(height: WebTokens.s2),
+                const SizedBox(height: ZebuSpacing.s2),
                 _SectionSubheader(
                   'Attachments',
                   trailing: '${f.attachments.length}',
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
-                    WebTokens.s4,
-                    WebTokens.s3,
-                    WebTokens.s4,
+                    ZebuSpacing.s4,
+                    ZebuSpacing.s3,
+                    ZebuSpacing.s4,
                     0,
                   ),
                   child: Column(
@@ -259,7 +261,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
                   ),
                 ),
               ],
-              const SizedBox(height: WebTokens.s6),
+              const SizedBox(height: ZebuSpacing.s6),
             ],
           ),
         ),
@@ -272,7 +274,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
           child: SizedBox(
             width: _kFieldsSidebarWidth,
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: WebTokens.s4),
+              padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s4),
               children: [
                 _FieldsTable(faq: f, sidebar: true),
               ],
@@ -302,13 +304,13 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(
-        WebTokens.s4,
-        WebTokens.s3,
-        WebTokens.s4,
-        WebTokens.s3,
+        ZebuSpacing.s4,
+        ZebuSpacing.s3,
+        ZebuSpacing.s4,
+        ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -320,10 +322,10 @@ class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (faq == null)
-            Expanded(child: Text('Loading…', style: t.cardName))
+            Expanded(child: Text('Loading…', style: ZebuTextStyles.smallStrong(context)))
           else ...[
             _NumberChip(number: '${faq!.id}'),
-            const SizedBox(width: WebTokens.s3),
+            const SizedBox(width: ZebuSpacing.s3),
             Expanded(
               child: Text(
                 faq!.question.trim().isEmpty
@@ -331,11 +333,11 @@ class _Header extends StatelessWidget {
                     : faq!.question,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: t.pageTitle,
+                style: ZebuTextStyles.pageTitle(context),
               ),
             ),
           ],
-          const SizedBox(width: WebTokens.s3),
+          const SizedBox(width: ZebuSpacing.s3),
           if (onToggleFullscreen != null) ...[
             _IconBtn(
               icon: isFullscreen
@@ -344,7 +346,7 @@ class _Header extends StatelessWidget {
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
             ),
-            const SizedBox(width: WebTokens.s2),
+            const SizedBox(width: ZebuSpacing.s2),
           ],
           _IconBtn(
             icon: Icons.close_rounded,
@@ -364,16 +366,16 @@ class _NumberChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: t.bgTertiary,
-        borderRadius: BorderRadius.circular(WebTokens.rXs),
+        borderRadius: BorderRadius.circular(ZebuRadius.rXs),
       ),
       child: Text(
         '#$number',
-        style: t.bodySm
+        style: ZebuTextStyles.small(context)
             .copyWith(
               fontWeight: FontWeight.w600,
               color: t.textPrimary,
@@ -405,7 +407,7 @@ class _IconBtnState extends State<_IconBtn> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final bg = _hover
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
@@ -426,7 +428,7 @@ class _IconBtnState extends State<_IconBtn> {
           decoration: BoxDecoration(
             color: bg,
             border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Icon(widget.icon, size: 16, color: fg),
         ),
@@ -454,7 +456,7 @@ class _FieldsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final type = (faq.type ?? '').trim();
     final categoryName = faq.category?.name.trim() ?? '';
 
@@ -465,7 +467,7 @@ class _FieldsTable extends StatelessWidget {
         sidebar: sidebar,
         value: _StatusValuePill(
           label: faq.published ? 'Public' : 'Internal',
-          color: faq.published ? WebTokens.success : WebTokens.info,
+          color: faq.published ? ZebuTheme.success : ZebuTheme.info,
         ),
       ),
       if (type.isNotEmpty)
@@ -502,25 +504,25 @@ class _FieldsTable extends StatelessWidget {
     if (sidebar) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(
-          WebTokens.s3,
+          ZebuSpacing.s3,
           0,
-          WebTokens.s3,
-          WebTokens.s3,
+          ZebuSpacing.s3,
+          ZebuSpacing.s3,
         ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: t.bgElevated,
-            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
             border: Border.all(color: t.borderSubtle, width: 1),
-            boxShadow: WebTokens.shadowXs,
+            boxShadow: ZebuElevation.shadowXs,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: WebTokens.s3,
-              vertical: WebTokens.s2,
+              horizontal: ZebuSpacing.s3,
+              vertical: ZebuSpacing.s2,
             ),
             child: DefaultTextStyle.merge(
-              style: t.bodyBase.copyWith(color: t.textPrimary),
+              style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: rows,
@@ -532,19 +534,19 @@ class _FieldsTable extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: WebTokens.s4),
+      padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s4),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(WebTokens.rMd),
+          borderRadius: BorderRadius.circular(ZebuRadius.rMd),
           border: Border.all(color: t.borderSubtle, width: 1),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
-            vertical: WebTokens.s2,
+            horizontal: ZebuSpacing.s3,
+            vertical: ZebuSpacing.s2,
           ),
           child: DefaultTextStyle.merge(
-            style: t.bodySm.copyWith(color: t.textPrimary),
+            style: ZebuTextStyles.small(context).copyWith(color: t.textPrimary),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: rows,
@@ -575,14 +577,14 @@ class _FieldRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final rowHeight = sidebar ? _kSidebarRowHeight : 30.0;
     final labelStyle = sidebar
-        ? t.bodyBase.copyWith(
+        ? ZebuTextStyles.body(context).copyWith(
             color: t.textPrimary,
             fontWeight: FontWeight.w500,
           )
-        : t.bodySm.copyWith(
+        : ZebuTextStyles.small(context).copyWith(
             color: t.textPrimary,
             fontWeight: FontWeight.w500,
           );
@@ -591,7 +593,7 @@ class _FieldRow extends StatelessWidget {
     return SizedBox(
       height: rowHeight,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: WebTokens.s1),
+        padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s1),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -599,7 +601,7 @@ class _FieldRow extends StatelessWidget {
               width: _kFieldLabelWidth,
               child: Text(label, style: labelStyle),
             ),
-            const SizedBox(width: WebTokens.s3),
+            const SizedBox(width: ZebuSpacing.s3),
             Expanded(child: value),
           ],
         ),
@@ -614,7 +616,7 @@ class _TextValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final base = DefaultTextStyle.of(context).style;
     return Text(
       text,
@@ -653,11 +655,11 @@ class _SectionSubheader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s4,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s4,
+        vertical: ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -669,11 +671,11 @@ class _SectionSubheader extends StatelessWidget {
         children: [
           Text(
             label,
-            style: t.cardName.copyWith(color: t.textPrimary),
+            style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
           ),
           if (trailing != null) ...[
-            const SizedBox(width: WebTokens.s2),
-            Text(trailing!, style: t.tinyLabel.withTabularNums()),
+            const SizedBox(width: ZebuSpacing.s2),
+            Text(trailing!, style: ZebuTextStyles.label(context).withTabularNums()),
           ],
         ],
       ),
@@ -688,11 +690,11 @@ class _BodyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final empty = text.trim().isEmpty;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(WebTokens.s4),
+      padding: const EdgeInsets.all(ZebuSpacing.s4),
       decoration: BoxDecoration(
         color: muted ? t.bgTertiary : t.bgElevated,
         border: Border.all(color: t.borderSubtle, width: 1),
@@ -700,7 +702,7 @@ class _BodyCard extends StatelessWidget {
       ),
       child: SelectableText(
         empty ? '—' : text,
-        style: t.bodyBase.copyWith(
+        style: ZebuTextStyles.body(context).copyWith(
           color: empty ? t.textSecondary : t.textPrimary,
           height: 1.5,
         ),

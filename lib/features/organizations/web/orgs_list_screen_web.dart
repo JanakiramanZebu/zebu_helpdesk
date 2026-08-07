@@ -15,8 +15,10 @@ import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
-import '../../dashboard/web/_tokens.dart';
 import 'org_detail_panel.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 const _kFlatRadius = 8.0;
 
@@ -107,7 +109,7 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final repo = ref.watch(orgsRepositoryProvider);
 
     return SlideOverHost(
@@ -148,7 +150,7 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
                       onChanged: _onSearchChanged,
                     ),
                   ),
-                  const SizedBox(width: WebTokens.s3),
+                  const SizedBox(width: ZebuSpacing.s3),
                   _NewOrgButton(onTap: _openCreate),
                 ],
               ),
@@ -233,7 +235,7 @@ class _BackButtonState extends State<_BackButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Tooltip(
       message: 'Back',
       child: MouseRegion(
@@ -249,7 +251,7 @@ class _BackButtonState extends State<_BackButton> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
               border: Border.all(color: t.borderSubtle, width: 1),
             ),
             child: Icon(
@@ -282,7 +284,7 @@ class _NewOrgButtonState extends State<_NewOrgButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final bg = _hover ? t.accentHover : t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -296,7 +298,7 @@ class _NewOrgButtonState extends State<_NewOrgButton> {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             boxShadow: _hover
                 ? const [
                     BoxShadow(
@@ -313,13 +315,13 @@ class _NewOrgButtonState extends State<_NewOrgButton> {
               const Icon(
                 Icons.add_rounded,
                 size: 18,
-                color: WebTokens.textInverse,
+                color: ZebuTheme.textInverse,
               ),
               const SizedBox(width: 6),
               Text(
                 'New organization',
-                style: t.bodyBase.copyWith(
-                  color: WebTokens.textInverse,
+                style: ZebuTextStyles.body(context).copyWith(
+                  color: ZebuTheme.textInverse,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -344,7 +346,7 @@ class _TableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -394,11 +396,11 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         border: last
@@ -411,7 +413,7 @@ class _HeaderCell extends StatelessWidget {
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.ellipsis,
-        style: t.tableHeader,
+        style: ZebuTextStyles.tableHeader(context),
         textAlign: alignRight ? TextAlign.right : TextAlign.left,
       ),
     );
@@ -438,10 +440,10 @@ class _BodyCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
         vertical: 8,
       ),
       decoration: BoxDecoration(
@@ -483,7 +485,7 @@ class _OrgRowState extends State<_OrgRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final o = widget.org;
     final trimmed = o.name.trim();
     final domain = (o.domain ?? '').trim();
@@ -515,7 +517,7 @@ class _OrgRowState extends State<_OrgRow> {
                     trimmed.isEmpty ? '(unnamed)' : trimmed,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t.bodyBase.copyWith(
+                    style: ZebuTextStyles.body(context).copyWith(
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -530,7 +532,7 @@ class _OrgRowState extends State<_OrgRow> {
                   child: Text(
                     '${o.userCount}',
                     textAlign: TextAlign.right,
-                    style: t.bodySm
+                    style: ZebuTextStyles.small(context)
                         .copyWith(
                           color: t.textPrimary,
                           fontWeight: FontWeight.w500,
@@ -548,7 +550,7 @@ class _OrgRowState extends State<_OrgRow> {
                     softWrap: false,
                     overflow: TextOverflow.clip,
                     textAlign: TextAlign.right,
-                    style: t.bodySm
+                    style: ZebuTextStyles.small(context)
                         .copyWith(
                           color: t.textPrimary,
                           fontWeight: FontWeight.w500,
@@ -572,13 +574,13 @@ class _TextCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final empty = text.trim().isEmpty;
     return Text(
       empty ? '—' : text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: empty ? t.textSecondary : t.textPrimary,
         fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
       ),
@@ -636,37 +638,37 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return AlertDialog(
       backgroundColor: t.bgElevated,
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       insetPadding: const EdgeInsets.all(40),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
         side: BorderSide(color: t.borderSubtle, width: 1),
       ),
       titlePadding: const EdgeInsets.fromLTRB(
-        WebTokens.s5,
-        WebTokens.s5,
-        WebTokens.s5,
-        WebTokens.s3,
+        ZebuSpacing.s5,
+        ZebuSpacing.s5,
+        ZebuSpacing.s5,
+        ZebuSpacing.s3,
       ),
       contentPadding: const EdgeInsets.fromLTRB(
-        WebTokens.s5,
+        ZebuSpacing.s5,
         0,
-        WebTokens.s5,
-        WebTokens.s4,
+        ZebuSpacing.s5,
+        ZebuSpacing.s4,
       ),
       actionsPadding: const EdgeInsets.fromLTRB(
-        WebTokens.s5,
+        ZebuSpacing.s5,
         0,
-        WebTokens.s5,
-        WebTokens.s4,
+        ZebuSpacing.s5,
+        ZebuSpacing.s4,
       ),
       title: Row(
         children: [
-          Expanded(child: Text('New organization', style: t.pageTitle)),
+          Expanded(child: Text('New organization', style: ZebuTextStyles.pageTitle(context))),
           _DialogCloseButton(
             onTap: _saving ? null : () => Navigator.pop(context, false),
           ),
@@ -690,10 +692,10 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
               const SizedBox(height: 4),
               Text(
                 _fieldErrors['name']!,
-                style: t.bodySm.copyWith(color: t.danger),
+                style: ZebuTextStyles.small(context).copyWith(color: t.danger),
               ),
             ],
-            const SizedBox(height: WebTokens.s3),
+            const SizedBox(height: ZebuSpacing.s3),
             _FieldLabel(text: 'Domain (optional)'),
             const SizedBox(height: 6),
             _ThemedTextField(
@@ -705,11 +707,11 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
               const SizedBox(height: 4),
               Text(
                 _fieldErrors['domain']!,
-                style: t.bodySm.copyWith(color: t.danger),
+                style: ZebuTextStyles.small(context).copyWith(color: t.danger),
               ),
             ],
             if (_formError != null) ...[
-              const SizedBox(height: WebTokens.s3),
+              const SizedBox(height: ZebuSpacing.s3),
               _CreateErrorBanner(message: _formError!),
             ],
           ],
@@ -720,7 +722,7 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
           label: 'Cancel',
           onTap: _saving ? null : () => Navigator.pop(context, false),
         ),
-        const SizedBox(width: WebTokens.s2),
+        const SizedBox(width: ZebuSpacing.s2),
         _DialogPrimaryButton(
           label: 'Create organization',
           busy: _saving,
@@ -733,7 +735,7 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
 
 // ---------------------------------------------------------------------------
 // Dialog primitives — inlined so this file stays self-contained but visually
-// matches the [_EditProfileDialog] chrome (WebTokens colors, flat radius,
+// matches the [_EditProfileDialog] chrome (ZebuTheme colors, flat radius,
 // brand-blue primary).
 // ---------------------------------------------------------------------------
 
@@ -743,10 +745,10 @@ class _FieldLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Text(
       text,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: t.textPrimary,
         fontWeight: FontWeight.w600,
       ),
@@ -771,7 +773,7 @@ class _ThemedTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final border = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
       borderSide: BorderSide(
@@ -790,7 +792,7 @@ class _ThemedTextField extends StatelessWidget {
       controller: controller,
       autofocus: autofocus,
       textCapitalization: textCapitalization,
-      style: t.bodyBase,
+      style: ZebuTextStyles.body(context),
       decoration: InputDecoration(
         filled: true,
         fillColor: t.bgElevated,
@@ -800,11 +802,11 @@ class _ThemedTextField extends StatelessWidget {
         focusedBorder: focusedBorder,
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s3,
+          horizontal: ZebuSpacing.s3,
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: t.bodyBase.copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -816,11 +818,11 @@ class _CreateErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s2,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s2,
       ),
       decoration: BoxDecoration(
         color: t.dangerLight,
@@ -830,11 +832,11 @@ class _CreateErrorBanner extends StatelessWidget {
       child: Row(
         children: [
           Icon(Icons.error_outline, size: 16, color: t.danger),
-          const SizedBox(width: WebTokens.s2),
+          const SizedBox(width: ZebuSpacing.s2),
           Expanded(
             child: Text(
               message,
-              style: t.bodySm.copyWith(color: t.danger),
+              style: ZebuTextStyles.small(context).copyWith(color: t.danger),
             ),
           ),
         ],
@@ -856,7 +858,7 @@ class _DialogCloseButtonState extends State<_DialogCloseButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return Tooltip(
       message: 'Close',
@@ -875,7 +877,7 @@ class _DialogCloseButtonState extends State<_DialogCloseButton> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hover && !disabled ? t.bgHover : t.bgTertiary,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             ),
             child: Icon(Icons.close, size: 16, color: t.textSecondary),
           ),
@@ -899,7 +901,7 @@ class _DialogSecondaryButtonState extends State<_DialogSecondaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return MouseRegion(
       cursor: disabled
@@ -912,7 +914,7 @@ class _DialogSecondaryButtonState extends State<_DialogSecondaryButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
+            horizontal: ZebuSpacing.s4,
             vertical: 10,
           ),
           decoration: BoxDecoration(
@@ -922,7 +924,7 @@ class _DialogSecondaryButtonState extends State<_DialogSecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: t.textPrimary,
               fontWeight: FontWeight.w600,
             ),
@@ -952,7 +954,7 @@ class _DialogPrimaryButtonState extends State<_DialogPrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     final base = disabled
         ? t.accent.withValues(alpha: 0.4)
@@ -971,7 +973,7 @@ class _DialogPrimaryButtonState extends State<_DialogPrimaryButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
+            horizontal: ZebuSpacing.s4,
             vertical: 10,
           ),
           decoration: BoxDecoration(

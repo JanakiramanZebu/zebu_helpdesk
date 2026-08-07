@@ -17,7 +17,9 @@ import '../../../widgets/app_toast.dart';
 import '../../../widgets/comment_composer.dart';
 import '../../../widgets/states.dart';
 import '../../../widgets/web/status_pill.dart';
-import '../../dashboard/web/_tokens.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 /// Web-only ticket-detail slide-over panel.
 ///
@@ -447,7 +449,7 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // The left seam (border + shadow) is drawn by [SlideOverHost] so every
     // panel gets an identical divider from the list underneath.
     return Material(
@@ -461,7 +463,7 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
     );
   }
 
-  Widget _buildBody(WebTokens t) {
+  Widget _buildBody(ZebuTheme t) {
     if (_loading) {
       return Column(
         children: [
@@ -538,11 +540,11 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   /// composer at the bottom. Same layout the panel shipped with before the
   /// two-column split, kept for the sub-780 px slot the panel gets when the
   /// list underneath is still visible on smaller viewports.
-  Widget _buildNarrow(WebTokens t, Ticket ticket, _TicketCaps caps) {
+  Widget _buildNarrow(ZebuTheme t, Ticket ticket, _TicketCaps caps) {
     return ListView(
       padding: EdgeInsets.zero,
       children: [
-        const SizedBox(height: WebTokens.s3),
+        const SizedBox(height: ZebuSpacing.s3),
         _FieldsTable(
           ticket: ticket,
           sidebar: false,
@@ -555,18 +557,18 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
           onAssigneeTap: caps.canAssign ? _pickTicketAssignee : null,
           onDepartmentTap: caps.canTransfer ? _pickTicketDepartment : null,
         ),
-        const SizedBox(height: WebTokens.s2),
+        const SizedBox(height: ZebuSpacing.s2),
         const _ActivityHeader(),
         if (_thread.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: WebTokens.s6),
+            padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s6),
             child: Center(
-              child: Text('No messages yet', style: t.bodySm),
+              child: Text('No messages yet', style: ZebuTextStyles.small(context)),
             ),
           )
         else ...[
           for (final e in _thread) _ThreadRow(entry: e),
-          const SizedBox(height: WebTokens.s3),
+          const SizedBox(height: ZebuSpacing.s3),
         ],
       ],
     );
@@ -577,7 +579,7 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   /// [_kFieldsSidebarWidth]. A hairline seam separates the two columns —
   /// matches the reference layout where the details block sits as a fixed
   /// rail alongside the message thread.
-  Widget _buildWide(WebTokens t, Ticket ticket, _TicketCaps caps) {
+  Widget _buildWide(ZebuTheme t, Ticket ticket, _TicketCaps caps) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -587,15 +589,15 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
             children: [
               if (_thread.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: WebTokens.s8),
+                  padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s8),
                   child: Center(
-                    child: Text('No messages yet', style: t.bodySm),
+                    child: Text('No messages yet', style: ZebuTextStyles.small(context)),
                   ),
                 )
               else ...[
-                const SizedBox(height: WebTokens.s3),
+                const SizedBox(height: ZebuSpacing.s3),
                 for (final e in _thread) _ThreadRow(entry: e),
-                const SizedBox(height: WebTokens.s3),
+                const SizedBox(height: ZebuSpacing.s3),
               ],
             ],
           ),
@@ -609,7 +611,7 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
           child: SizedBox(
             width: _kFieldsSidebarWidth,
             child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: WebTokens.s4),
+              padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s4),
               children: [
                 _FieldsTable(
                   ticket: ticket,
@@ -655,13 +657,13 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(
-        WebTokens.s4,
-        WebTokens.s3,
-        WebTokens.s4,
-        WebTokens.s3,
+        ZebuSpacing.s4,
+        ZebuSpacing.s3,
+        ZebuSpacing.s4,
+        ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -677,20 +679,20 @@ class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (ticket == null)
-            Expanded(child: Text('Loading…', style: t.cardName))
+            Expanded(child: Text('Loading…', style: ZebuTextStyles.smallStrong(context)))
           else ...[
             _NumberChip(number: ticket!.number),
-            const SizedBox(width: WebTokens.s3),
+            const SizedBox(width: ZebuSpacing.s3),
             Expanded(
               child: Text(
                 ticket!.subject,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: t.pageTitle,
+                style: ZebuTextStyles.pageTitle(context),
               ),
             ),
           ],
-          const SizedBox(width: WebTokens.s3),
+          const SizedBox(width: ZebuSpacing.s3),
           // Claim needs assign perm (only when unassigned); Release needs
           // release perm (only when assigned). Show the Actions button when the
           // agent has at least one action available for this ticket's state.
@@ -700,7 +702,7 @@ class _Header extends StatelessWidget {
                 assigned: (ticket!.assignee ?? '').isNotEmpty,
               )) ...[
             _ActionsBtn(ticket: ticket!, caps: caps, onSelected: onMenu!),
-            const SizedBox(width: WebTokens.s2),
+            const SizedBox(width: ZebuSpacing.s2),
           ],
           if (onToggleFullscreen != null) ...[
             _IconBtn(
@@ -710,7 +712,7 @@ class _Header extends StatelessWidget {
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
             ),
-            const SizedBox(width: WebTokens.s2),
+            const SizedBox(width: ZebuSpacing.s2),
           ],
           _IconBtn(
             icon: Icons.close_rounded,
@@ -732,16 +734,16 @@ class _NumberChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: t.bgTertiary,
-        borderRadius: BorderRadius.circular(WebTokens.rXs),
+        borderRadius: BorderRadius.circular(ZebuRadius.rXs),
       ),
       child: Text(
         '#$number',
-        style: t.bodySm
+        style: ZebuTextStyles.small(context)
             .copyWith(
               fontWeight: FontWeight.w600,
               color: t.textPrimary,
@@ -833,7 +835,7 @@ class _ActionsBtnState extends State<_ActionsBtn> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Tooltip(
       message: 'Actions',
       child: MouseRegion(
@@ -850,14 +852,14 @@ class _ActionsBtnState extends State<_ActionsBtn> {
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
               border: Border.all(color: t.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
                   'Actions',
-                  style: t.bodySm.copyWith(
+                  style: ZebuTextStyles.small(context).copyWith(
                     color: t.textPrimary,
                     fontWeight: FontWeight.w600,
                   ),
@@ -897,7 +899,7 @@ class _IconBtnState extends State<_IconBtn> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final bg = _hover
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
@@ -918,7 +920,7 @@ class _IconBtnState extends State<_IconBtn> {
           decoration: BoxDecoration(
             color: bg,
             border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Icon(widget.icon, size: 16, color: fg),
         ),
@@ -973,7 +975,7 @@ class _FieldsTable extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final priority = (ticket.priority ?? '').trim();
     final assignee = (ticket.assignee ?? '').trim();
     final department = (ticket.departmentName ?? '').trim();
@@ -1072,7 +1074,7 @@ class _FieldsTable extends StatelessWidget {
           sidebar: sidebar,
           value: _StatusValuePill(
             label: slaLabel,
-            color: sla.isOverdue ? t.danger : WebTokens.warning,
+            color: sla.isOverdue ? t.danger : ZebuTheme.warning,
           ),
         ),
       _FieldRow(
@@ -1096,25 +1098,25 @@ class _FieldsTable extends StatelessWidget {
     if (sidebar) {
       return Padding(
         padding: const EdgeInsets.fromLTRB(
-          WebTokens.s3,
+          ZebuSpacing.s3,
           0,
-          WebTokens.s3,
-          WebTokens.s3,
+          ZebuSpacing.s3,
+          ZebuSpacing.s3,
         ),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: t.bgElevated,
-            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
             border: Border.all(color: t.borderSubtle, width: 1),
-            boxShadow: WebTokens.shadowXs,
+            boxShadow: ZebuElevation.shadowXs,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(
-              horizontal: WebTokens.s3,
-              vertical: WebTokens.s2,
+              horizontal: ZebuSpacing.s3,
+              vertical: ZebuSpacing.s2,
             ),
             child: DefaultTextStyle.merge(
-              style: t.bodyBase.copyWith(color: t.textPrimary),
+              style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: cells,
@@ -1132,20 +1134,20 @@ class _FieldsTable extends StatelessWidget {
     // [_TextValue] rows read at 13 px — matching the tighter single-column
     // rhythm.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: WebTokens.s4),
+      padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s4),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: t.bgElevated,
-          borderRadius: BorderRadius.circular(WebTokens.rMd),
+          borderRadius: BorderRadius.circular(ZebuRadius.rMd),
           border: Border.all(color: t.borderSubtle, width: 1),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
-            vertical: WebTokens.s2,
+            horizontal: ZebuSpacing.s3,
+            vertical: ZebuSpacing.s2,
           ),
           child: DefaultTextStyle.merge(
-            style: t.bodySm.copyWith(color: t.textPrimary),
+            style: ZebuTextStyles.small(context).copyWith(color: t.textPrimary),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: cells,
@@ -1156,19 +1158,19 @@ class _FieldsTable extends StatelessWidget {
     );
   }
 
-  static Color _statusTone(Ticket ticket, WebTokens t) {
+  static Color _statusTone(Ticket ticket, ZebuTheme t) {
     if (ticket.isOverdue) return t.danger;
     if (ticket.isClosed) return t.textSecondary;
-    return WebTokens.success;
+    return ZebuTheme.success;
   }
 
-  static Color _priorityTone(String name, WebTokens t) {
+  static Color _priorityTone(String name, ZebuTheme t) {
     final n = name.toLowerCase();
     if (n.contains('emergency') || n.contains('urgent')) return t.danger;
-    if (n.contains('high')) return WebTokens.warning;
-    if (n.contains('low')) return WebTokens.success;
-    if (n.contains('normal')) return WebTokens.info;
-    return WebTokens.info;
+    if (n.contains('high')) return ZebuTheme.warning;
+    if (n.contains('low')) return ZebuTheme.success;
+    if (n.contains('normal')) return ZebuTheme.info;
+    return ZebuTheme.info;
   }
 
   static String _titleCase(String s) {
@@ -1218,7 +1220,7 @@ class _FieldRowState extends State<_FieldRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final clickable = widget.onTap != null;
     // Same hover treatment the tickets-list rows use: single outer
     // AnimatedContainer with an 80 ms fade between `bgElevated` (default)
@@ -1264,11 +1266,11 @@ class _FieldRowState extends State<_FieldRow> {
     // its own scannable column, not a squeezed footnote.
     final rowHeight = widget.sidebar ? _kSidebarRowHeight : 30.0;
     final labelStyle = widget.sidebar
-        ? t.bodyBase.copyWith(
+        ? ZebuTextStyles.body(context).copyWith(
             color: t.textPrimary,
             fontWeight: FontWeight.w500,
           )
-        : t.bodySm.copyWith(
+        : ZebuTextStyles.small(context).copyWith(
             color: t.textPrimary,
             fontWeight: FontWeight.w500,
           );
@@ -1278,7 +1280,7 @@ class _FieldRowState extends State<_FieldRow> {
     final row = SizedBox(
       height: rowHeight,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: WebTokens.s1),
+        padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s1),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
@@ -1289,7 +1291,7 @@ class _FieldRowState extends State<_FieldRow> {
             // Breathing room between the label column and the value.
             // Without it the outlined pill sits flush against the label
             // text, which reads as crowded.
-            const SizedBox(width: WebTokens.s3),
+            const SizedBox(width: ZebuSpacing.s3),
             valueSlot,
           ],
         ),
@@ -1343,7 +1345,7 @@ class _TextValueState extends State<_TextValue> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final color = widget.tone ?? t.textPrimary;
     // Inherit the ambient DefaultTextStyle base so the sidebar's bumped
     // 14 px wrap propagates into value text — the surrounding column
@@ -1402,12 +1404,12 @@ class _EmptyValue extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Text(
       label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: t.textSecondary,
         fontWeight: FontWeight.w400,
       ),
@@ -1425,15 +1427,15 @@ class _ActivityHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     // No divider under the label — each thread entry below sits inside
     // its own card, so a hairline here would double up as visual noise
     // between the header and the first card. Top hairline stays to
     // separate the activity block from the fields grid above.
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s4,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s4,
+        vertical: ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -1443,7 +1445,7 @@ class _ActivityHeader extends StatelessWidget {
       ),
       child: Text(
         'Activity',
-        style: t.cardName.copyWith(color: t.textPrimary),
+        style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
       ),
     );
   }
@@ -1467,12 +1469,12 @@ class _ThreadRowState extends State<_ThreadRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final entry = widget.entry;
     final isNote = entry.isNote;
     final isResponse = entry.isResponse;
     final tone = isNote
-        ? WebTokens.warning
+        ? ZebuTheme.warning
         : (isResponse ? t.accent : t.textSecondary);
     final typeLabel = isNote
         ? 'NOTE'
@@ -1487,9 +1489,9 @@ class _ThreadRowState extends State<_ThreadRow> {
     // lift so the click affordance stays discoverable.
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        WebTokens.s4,
-        WebTokens.s3,
-        WebTokens.s4,
+        ZebuSpacing.s4,
+        ZebuSpacing.s3,
+        ZebuSpacing.s4,
         0,
       ),
       child: MouseRegion(
@@ -1500,16 +1502,16 @@ class _ThreadRowState extends State<_ThreadRow> {
           curve: Curves.easeOut,
           decoration: BoxDecoration(
             color: t.bgElevated,
-            borderRadius: BorderRadius.circular(WebTokens.rMd),
+            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
             border: Border.all(
               color: _hover ? t.borderDefault : t.borderSubtle,
               width: 1,
             ),
-            boxShadow: _hover ? WebTokens.shadowSm : WebTokens.shadowXs,
+            boxShadow: _hover ? ZebuElevation.shadowSm : ZebuElevation.shadowXs,
           ),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s4,
-            vertical: WebTokens.s3,
+            horizontal: ZebuSpacing.s4,
+            vertical: ZebuSpacing.s3,
           ),
           // Stack lets the timestamp float in the card's top-right corner
           // regardless of the body content beneath it, matching the
@@ -1520,7 +1522,7 @@ class _ThreadRowState extends State<_ThreadRow> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _ActorAvatar(name: entry.poster),
-                  const SizedBox(width: WebTokens.s3),
+                  const SizedBox(width: ZebuSpacing.s3),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1533,32 +1535,32 @@ class _ThreadRowState extends State<_ThreadRow> {
                                 entry.poster,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: t.cardName
+                                style: ZebuTextStyles.smallStrong(context)
                                     .copyWith(color: t.textPrimary),
                               ),
                             ),
-                            const SizedBox(width: WebTokens.s2),
+                            const SizedBox(width: ZebuSpacing.s2),
                             _TypeTag(label: typeLabel, tone: tone),
                             // Reserve room for the pinned timestamp so
                             // poster/type never overlap it on long names.
                             const SizedBox(width: 96),
                           ],
                         ),
-                        const SizedBox(height: WebTokens.s2),
+                        const SizedBox(height: ZebuSpacing.s2),
                         if (plain.trim().isEmpty)
-                          Text('(no content)', style: t.bodySm)
+                          Text('(no content)', style: ZebuTextStyles.small(context))
                         else if (html.contains('<'))
                           _HtmlBody(html: html)
                         else
                           Text(
                             plain,
-                            style: t.bodyBase.copyWith(height: 1.5),
+                            style: ZebuTextStyles.body(context).copyWith(height: 1.5),
                           ),
                         if (entry.attachments.isNotEmpty) ...[
-                          const SizedBox(height: WebTokens.s3),
+                          const SizedBox(height: ZebuSpacing.s3),
                           Wrap(
-                            spacing: WebTokens.s2,
-                            runSpacing: WebTokens.s2,
+                            spacing: ZebuSpacing.s2,
+                            runSpacing: ZebuSpacing.s2,
                             children: [
                               for (final a in entry.attachments)
                                 _AttachmentChip(attachment: a),
@@ -1574,7 +1576,7 @@ class _ThreadRowState extends State<_ThreadRow> {
                 Positioned(
                   top: 0,
                   right: 0,
-                  child: Text(Fmt.ago(entry.created), style: t.tinyLabel),
+                  child: Text(Fmt.ago(entry.created), style: ZebuTextStyles.label(context)),
                 ),
             ],
           ),
@@ -1653,8 +1655,7 @@ class _TypeTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    return Text(label, style: t.tinyLabel.copyWith(color: tone));
+    return Text(label, style: ZebuTextStyles.label(context).copyWith(color: tone));
   }
 }
 
@@ -1698,7 +1699,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final a = widget.attachment;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -1710,7 +1711,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
+            horizontal: ZebuSpacing.s3,
             vertical: 6,
           ),
           decoration: BoxDecoration(
@@ -1736,7 +1737,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
                   a.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.bodySm.copyWith(
+                  style: ZebuTextStyles.small(context).copyWith(
                     color: _hover ? t.accent : t.textPrimary,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1746,7 +1747,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
                 const SizedBox(width: 6),
                 Text(
                   Fmt.fileSize(a.size),
-                  style: t.tinyLabel.withTabularNums(),
+                  style: ZebuTextStyles.label(context).withTabularNums(),
                 ),
               ],
               const SizedBox(width: 6),
@@ -1771,11 +1772,10 @@ class _HtmlBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return ClipRect(
       child: HtmlWidget(
         html,
-        textStyle: t.bodyBase.copyWith(height: 1.5),
+        textStyle: ZebuTextStyles.body(context).copyWith(height: 1.5),
         // Anchor taps aren't clickable by default — HtmlWidget hands the
         // URL to us so we can launch it. `mode: externalApplication` on
         // web opens a new browser tab.
@@ -1797,7 +1797,7 @@ class _HtmlBody extends StatelessWidget {
               // Match the composer's link styling so a link reads the
               // same before and after send.
               return {
-                'color': '#0037B7', // WebTokens.accent
+                'color': '#0037B7', // ZebuTheme.accent
                 'text-decoration': 'underline',
               };
             default:

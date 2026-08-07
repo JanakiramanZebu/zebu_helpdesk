@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
+import '../../res/zebu_spacing.dart';
+import '../../res/zebu_text_styles.dart';
 
 /// Contextual bulk-action bar shown above a list table while one or more rows
 /// are selected. Renders "{n} selected", the caller-supplied [actions], and a
@@ -20,11 +22,11 @@ class WebBulkBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s4,
-        vertical: WebTokens.s2,
+        horizontal: ZebuSpacing.s4,
+        vertical: ZebuSpacing.s2,
       ),
       decoration: BoxDecoration(
         color: t.accentSoft,
@@ -34,21 +36,21 @@ class WebBulkBar extends StatelessWidget {
         children: [
           Text(
             '$count selected',
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: t.accent,
               fontWeight: FontWeight.w600,
             ),
           ),
-          const SizedBox(width: WebTokens.s3),
+          const SizedBox(width: ZebuSpacing.s3),
           Expanded(
             child: Wrap(
-              spacing: WebTokens.s2,
-              runSpacing: WebTokens.s2,
+              spacing: ZebuSpacing.s2,
+              runSpacing: ZebuSpacing.s2,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: actions,
             ),
           ),
-          const SizedBox(width: WebTokens.s2),
+          const SizedBox(width: ZebuSpacing.s2),
           WebBulkButton(
             icon: Icons.close_rounded,
             label: 'Clear',
@@ -93,7 +95,7 @@ class _WebBulkButtonState extends State<WebBulkButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final fg = widget.tone ?? t.textPrimary;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -106,11 +108,11 @@ class _WebBulkButtonState extends State<WebBulkButton> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 100),
             height: 30,
-            padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
+            padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
               border: Border.all(color: t.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -119,7 +121,7 @@ class _WebBulkButtonState extends State<WebBulkButton> {
                 const SizedBox(width: 6),
                 Text(
                   widget.label,
-                  style: t.bodySm.copyWith(
+                  style: ZebuTextStyles.small(context).copyWith(
                     color: fg,
                     fontWeight: FontWeight.w600,
                   ),

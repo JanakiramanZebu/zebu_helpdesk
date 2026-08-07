@@ -1,22 +1,34 @@
 import 'package:flutter/material.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
+import '../../res/zebu_spacing.dart';
+import '../../res/zebu_text_styles.dart';
 
-/// A single tab entry consumed by [SegmentedTabBar]. The [count], when
-/// non-null, renders inline after the label — brand-tinted on the active
-/// tab, muted on inactive tabs. The optional [dot] colors the 6×6 status
-/// dot before the label (mobile `FilterChipTabs` language); falls back to
-/// the accent when omitted.
+/// A single tab entry consumed by [SegmentedTabBar].
+///
+/// The [count], when non-null, renders as a small raised **superscript**
+/// after the label (`Open⁴`) rather than a separate chip — it reads as an
+/// annotation on the view rather than a second element competing with it.
+///
+/// [icon] is the leading glyph. [dot] is the older 6×6 status dot, kept for
+/// callers that haven't been given an icon set; when both are absent the tab
+/// is label-only.
 class SegmentedTabItem<T> {
   const SegmentedTabItem({
     required this.value,
     required this.label,
     this.count,
+    this.icon,
     this.dot,
   });
   final T value;
   final String label;
   final int? count;
+
+  /// Leading glyph. Takes precedence over [dot].
+  final IconData? icon;
+
+  /// Legacy status dot, used only when [icon] is null.
   final Color? dot;
 }
 
@@ -39,7 +51,7 @@ class SegmentedTabBar<T> extends StatefulWidget {
     required this.selected,
     required this.onSelect,
     this.showBaseline = true,
-    this.padding = const EdgeInsets.symmetric(horizontal: WebTokens.s6),
+    this.padding = const EdgeInsets.symmetric(horizontal: ZebuSpacing.s6),
   });
 
   final List<SegmentedTabItem<T>> items;
@@ -187,7 +199,7 @@ class _ScrollChevronState extends State<_ScrollChevron> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final child = AnimatedOpacity(
       opacity: widget.visible ? 1 : 0,
       duration: const Duration(milliseconds: 140),
@@ -242,20 +254,34 @@ class _Tab<T> extends StatefulWidget {
 class _TabState<T> extends State<_Tab<T>> {
   bool _hover = false;
 
+  /// Selected fill. The strip sits on `bgPrimary` (a light grey), so the
+  /// active pill has to be a step *darker* than the page rather than the
+  /// near-white a tab bar on a white page would use — otherwise it
+  /// disappears into its own background.
+  Color _activeFill(ZebuTheme t) =>
+      t.isLight ? const Color(0xFFE7EAEF) : const Color(0xFF21262D);
+
+  /// Hover preview — the same family, one step lighter than [_activeFill]
+  /// so hovering never looks like selecting.
+  Color _hoverFill(ZebuTheme t) =>
+      t.isLight ? const Color(0xFFEFF1F4) : const Color(0xFF161B22);
+
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
-    final dot = widget.item.dot ?? t.accent;
-    // Mobile FilterChipTabs states: selected = brand-tinted fill + brand
-    // border + brand label; unselected = flat surface chip with hairline.
-    // Desktop adds a quiet hover fill on unselected chips.
+    final t = ZebuTheme.of(context);
+    final item = widget.item;
+
+    // No borders and no brand tint: the selected tab is distinguished by a
+    // soft filled pill and a stronger label, so a row of six views reads as
+    // one quiet strip instead of six competing boxes.
+    final fg = widget.active ? t.textPrimary : t.textSecondary;
     final bg = widget.active
-        ? t.accent.withValues(alpha: 0.08)
-        : (_hover ? t.bgHover : t.bgElevated);
-    final border = widget.active
-        ? t.accent.withValues(alpha: 0.5)
-        : (_hover ? t.borderDefault : t.borderDefault);
-    final fg = widget.active ? t.accent : t.textPrimary;
+        ? _activeFill(t)
+        // Idle is the hover tone at zero alpha, never `Colors.transparent` —
+        // that is transparent *black*, and lerping from it drags the fill
+        // through a grey flash on the way in.
+        : (_hover ? _hoverFill(t) : _hoverFill(t).withValues(alpha: 0));
+
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -264,53 +290,67 @@ class _TabState<T> extends State<_Tab<T>> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: Padding(
-          padding:
-              const EdgeInsets.only(right: WebTokens.s2, top: 2, bottom: WebTokens.s2),
+          padding: const EdgeInsets.only(right: ZebuSpacing.s1, bottom: 6),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
             curve: Curves.easeOut,
-            height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
             decoration: BoxDecoration(
               color: bg,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
-              border: Border.all(color: border, width: 1),
+              borderRadius: BorderRadius.circular(ZebuRadius.rXs),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 6×6 status dot in the view's semantic color.
-                Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: dot,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  widget.item.label,
-                  style: t.tabLabel.copyWith(
-                    fontSize: 13,
-                    fontWeight:
-                        widget.active ? FontWeight.w700 : FontWeight.w600,
-                    color: fg,
-                  ),
-                ),
-                if (widget.item.count != null) ...[
+                if (item.icon != null) ...[
+                  Icon(item.icon, size: 15, color: fg),
                   const SizedBox(width: 6),
-                  Text(
-                    '${widget.item.count}',
-                    style: t.tabLabel
-                        .copyWith(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: widget.active ? t.accent : t.textSecondary,
-                        )
-                        .withTabularNums(),
+                ] else if (item.dot != null) ...[
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: item.dot,
+                      shape: BoxShape.circle,
+                    ),
                   ),
+                  const SizedBox(width: 6),
                 ],
+                // Label and count are one text run so the count rides the
+                // label's baseline as a true superscript, rather than being
+                // a separately-centred sibling in the Row.
+                Text.rich(
+                  TextSpan(
+                    text: item.label,
+                    style: ZebuTextStyles.small(context, fontWeight: ZebuFonts.medium).copyWith(
+                      fontSize: 13,
+                      fontWeight:
+                          widget.active ? FontWeight.w600 : FontWeight.w500,
+                      color: fg,
+                    ),
+                    children: [
+                      if (item.count != null)
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.top,
+                          child: Transform.translate(
+                            offset: const Offset(2, -1),
+                            child: Text(
+                              '${item.count}',
+                              style: ZebuTextStyles.small(context, fontWeight: ZebuFonts.medium)
+                                  .copyWith(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: t.textSecondary,
+                                    height: 1,
+                                  )
+                                  .withTabularNums(),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),

@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/assets.dart';
-import '../features/dashboard/web/_tokens.dart';
+import '../res/zebu_theme.dart';
+import '../res/zebu_spacing.dart';
 import 'svg_icon.dart';
+import '../res/zebu_text_styles.dart';
 
 /// Reusable dropdown menu styled to match the Zebu Premium spec — an
 /// Asana-style rounded card of items with icons, optional keyboard
@@ -209,7 +211,7 @@ class AppDropdownButton<T> extends StatefulWidget {
   final List<AppDropdownEntry<T>> entries;
   final ValueChanged<T> onSelected;
 
-  /// Trigger background color. Defaults to `WebTokens.accent`.
+  /// Trigger background color. Defaults to `ZebuTheme.accent`.
   final Color? tone;
 
   final String? tooltip;
@@ -231,7 +233,7 @@ class _AppDropdownButtonState<T> extends State<AppDropdownButton<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final tone = widget.tone ?? t.accent;
     final trigger = MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -242,7 +244,7 @@ class _AppDropdownButtonState<T> extends State<AppDropdownButton<T>> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           padding: const EdgeInsets.symmetric(
-            horizontal: WebTokens.s3,
+            horizontal: ZebuSpacing.s3,
             vertical: 8,
           ),
           decoration: BoxDecoration(
@@ -349,7 +351,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final visible = _visibleEntries();
     final hasAnyItem = visible.any((e) => e is AppDropdownItem<T>);
 
@@ -360,7 +362,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: t.bgElevated,
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
         border: Border.all(color: t.borderSubtle, width: 1),
         boxShadow: const [
           BoxShadow(
@@ -378,7 +380,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
       child: Material(
         color: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -418,11 +420,11 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                     )
                   : Padding(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: WebTokens.s4,
+                        horizontal: ZebuSpacing.s4,
                         vertical: 20,
                       ),
                       child: Center(
-                        child: Text('No results', style: t.bodySm),
+                        child: Text('No results', style: ZebuTextStyles.small(context)),
                       ),
                     ),
             ),
@@ -437,7 +439,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
   /// [InputDecoration] border slot is overridden so the global
   /// `inputDecorationTheme` (which paints grey fill + enabled border on
   /// every TextField) can't bleed through the popover chrome.
-  Widget _buildSearchField(WebTokens t) {
+  Widget _buildSearchField(ZebuTheme t) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
       child: MouseRegion(
@@ -445,7 +447,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: t.bgElevated,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
             // Same hairline outline `ListSearchInput` uses at the top of
             // every list screen — reads as one continuous search-input
             // language across the app.
@@ -458,7 +460,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
           child: SizedBox(
             height: 40,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: WebTokens.s3),
+              padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
@@ -470,7 +472,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                       autofocus: true,
                       textAlign: TextAlign.start,
                       textAlignVertical: TextAlignVertical.center,
-                      style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
+                      style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
                       cursorColor: t.accent,
                       decoration: InputDecoration(
                         isCollapsed: true,
@@ -484,7 +486,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                         fillColor: Colors.transparent,
                         hoverColor: Colors.transparent,
                         hintText: 'Search…',
-                        hintStyle: t.bodyBase.copyWith(
+                        hintStyle: ZebuTextStyles.body(context).copyWith(
                           color: t.textSecondary,
                           letterSpacing: -0.1,
                         ),
@@ -525,7 +527,7 @@ class _DropdownClearButtonState extends State<_DropdownClearButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -538,7 +540,7 @@ class _DropdownClearButtonState extends State<_DropdownClearButton> {
           height: 22,
           decoration: BoxDecoration(
             color: _hover ? t.bgHover : Colors.transparent,
-            borderRadius: BorderRadius.circular(WebTokens.rFull),
+            borderRadius: BorderRadius.circular(ZebuRadius.rFull),
           ),
           child: Icon(Icons.close_rounded, size: 14, color: t.textSecondary),
         ),
@@ -568,7 +570,7 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final effective = item.disabled
         ? t.textSecondary.withValues(alpha: 0.5)
         : (item.tone ?? t.textPrimary);
@@ -583,7 +585,7 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
       hoverColor: t.bgHover,
       child: Padding(
         padding: const EdgeInsets.symmetric(
-          horizontal: WebTokens.s4,
+          horizontal: ZebuSpacing.s4,
           vertical: 6,
         ),
         child: Row(
@@ -597,7 +599,7 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
                     ? Icon(Icons.check, size: 16, color: effective)
                     : const SizedBox.shrink(),
               ),
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
             ] else if (item.svgAsset != null || item.icon != null) ...[
               Container(
                 width: 28,
@@ -605,13 +607,13 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: chipTone.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(WebTokens.rSm),
+                  borderRadius: BorderRadius.circular(ZebuRadius.rSm),
                 ),
                 child: item.svgAsset != null
                     ? SvgIcon(item.svgAsset!, size: 15, color: chipTone)
                     : Icon(item.icon, size: 15, color: chipTone),
               ),
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
             ],
             Expanded(
               child: Text(
@@ -625,7 +627,7 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
               ),
             ),
             if (item.shortcut != null) ...[
-              const SizedBox(width: WebTokens.s3),
+              const SizedBox(width: ZebuSpacing.s3),
               _ShortcutChip(text: item.shortcut!),
             ],
           ],
@@ -644,15 +646,14 @@ class _AppDropdownHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        WebTokens.s4,
-        WebTokens.s2,
-        WebTokens.s4,
+        ZebuSpacing.s4,
+        ZebuSpacing.s2,
+        ZebuSpacing.s4,
         6,
       ),
-      child: Text(label, style: t.tinyLabel),
+      child: Text(label, style: ZebuTextStyles.label(context)),
     );
   }
 }
@@ -665,7 +666,7 @@ class _ShortcutChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(

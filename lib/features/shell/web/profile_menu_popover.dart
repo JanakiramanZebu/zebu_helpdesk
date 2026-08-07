@@ -13,13 +13,14 @@ import '../../../widgets/app_dialog.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/user_avatar.dart';
 import '../../../widgets/web/menu_section.dart';
-import '../../dashboard/web/_tokens.dart';
 import '../../profile/web/profile_screen_web.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 const _kMenuWidth = 288.0;
 
-/// Opens a ClickUp-style categorized profile popover anchored under
-/// [anchorContext].
+/// Opens a ClickUp-style categorized profile popover beside [anchorContext].
 ///
 /// Layout:
 ///   * Header block — avatar + name + email + a subtle "Available/Away" dot;
@@ -29,10 +30,12 @@ const _kMenuWidth = 288.0;
 ///   * "Session" section — Log out (destructive).
 ///
 /// Positioning:
-///   * Right-aligned to the anchor's right edge (so it sits under the avatar
-///     button in the top bar without spilling off-screen);
-///   * Vertically clamped inside the viewport with an 8 px margin so the
-///     popover never crosses the bottom edge.
+///   * Right-aligned to the anchor's right edge, clamped 8 px inside the
+///     viewport horizontally;
+///   * Opens on whichever side of the anchor has more vertical room, and is
+///     capped to that space (scrolling if it somehow outgrows it). The rail's
+///     footer row sits at the bottom of the viewport, so a fixed "below the
+///     anchor" placement would put the whole popover past the fold.
 ///
 /// Dismisses on outside tap or Escape (via the Overlay barrier).
 Future<void> showProfileMenu(BuildContext anchorContext) async {
@@ -46,7 +49,18 @@ Future<void> showProfileMenu(BuildContext anchorContext) async {
 
   final menuLeft = (anchorTopLeft.dx + anchorSize.width - _kMenuWidth)
       .clamp(8.0, (viewport.width - _kMenuWidth - 8.0).clamp(8.0, viewport.width));
-  final menuTop = anchorTopLeft.dy + anchorSize.height + 8;
+
+  // Open on whichever side of the anchor has more room, and cap the menu to
+  // that space so it can never run off an edge. The anchor used to be the
+  // top-bar avatar, where "always below" was safe; it is now the rail's
+  // footer row, which sits at the bottom of the viewport — anchoring below
+  // there put the entire popover past the fold.
+  final belowTop = anchorTopLeft.dy + anchorSize.height + 8;
+  final spaceBelow = viewport.height - belowTop - 8;
+  final spaceAbove = anchorTopLeft.dy - 8;
+  final openUp = spaceAbove > spaceBelow;
+  final maxHeight = (openUp ? spaceAbove : spaceBelow)
+      .clamp(120.0, (viewport.height - 16).clamp(120.0, viewport.height));
 
   final completer = Completer<void>();
   late OverlayEntry entry;
@@ -59,7 +73,7 @@ Future<void> showProfileMenu(BuildContext anchorContext) async {
 
   entry = OverlayEntry(
     builder: (ctx) {
-      final t = WebTokens.of(ctx);
+      final t = ZebuTheme.of(ctx);
       return Stack(
         children: [
           Positioned.fill(
@@ -71,15 +85,24 @@ Future<void> showProfileMenu(BuildContext anchorContext) async {
           ),
           Positioned(
             left: menuLeft,
-            top: menuTop,
+            top: openUp ? null : belowTop,
+            // Pin the menu's bottom edge 8 px clear of the anchor's top.
+            bottom: openUp ? viewport.height - anchorTopLeft.dy + 8 : null,
             width: _kMenuWidth,
-            child: Container(
-              decoration: t.cardElevated(),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(WebTokens.rLg),
-                child: Material(
-                  color: Colors.transparent,
-                  child: _ProfileMenuContent(onDismiss: dismiss),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: Container(
+                decoration: t.cardElevated(),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(ZebuRadius.rLg),
+                  child: Material(
+                    color: Colors.transparent,
+                    // Scrolls only if the content outgrows the space on the
+                    // chosen side — normally it fits and this is inert.
+                    child: SingleChildScrollView(
+                      child: _ProfileMenuContent(onDismiss: dismiss),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -223,13 +246,13 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       child: Row(
         children: [
           UserAvatar(name: me.name, radius: 20),
-          const SizedBox(width: WebTokens.s3),
+          const SizedBox(width: ZebuSpacing.s3),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,7 +265,7 @@ class _Header extends StatelessWidget {
                         me.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: t.cardNameLg,
+                        style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -251,7 +274,7 @@ class _Header extends StatelessWidget {
                       height: 8,
                       decoration: BoxDecoration(
                         color:
-                            me.available ? WebTokens.success : t.textSecondary,
+                            me.available ? ZebuTheme.success : t.textSecondary,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -262,7 +285,7 @@ class _Header extends StatelessWidget {
                   me.email,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: t.bodySm,
+                  style: ZebuTextStyles.small(context),
                 ),
               ],
             ),
@@ -287,7 +310,7 @@ class _AvailabilityRowState extends State<_AvailabilityRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final disabled = widget.onChanged == null;
     return MouseRegion(
       cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
@@ -303,7 +326,7 @@ class _AvailabilityRowState extends State<_AvailabilityRow> {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: (_hover && !disabled) ? t.bgHover : Colors.transparent,
-            borderRadius: BorderRadius.circular(WebTokens.rSm),
+            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
           child: Row(
             children: [
@@ -312,13 +335,13 @@ class _AvailabilityRowState extends State<_AvailabilityRow> {
                     ? Icons.radio_button_checked
                     : Icons.do_not_disturb_on_outlined,
                 size: 16,
-                color: widget.value ? WebTokens.success : t.textSecondary,
+                color: widget.value ? ZebuTheme.success : t.textSecondary,
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   widget.value ? 'Available' : 'Away',
-                  style: t.bodyBase.copyWith(fontWeight: FontWeight.w500),
+                  style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
                 ),
               ),
               // Compact Switch: sized down so it fits the 36 px row cleanly.
@@ -343,7 +366,7 @@ class _AvailabilityRowState extends State<_AvailabilityRow> {
 class _SectionDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Container(height: 1, color: t.borderSubtle),

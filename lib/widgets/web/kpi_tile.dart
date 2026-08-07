@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../features/dashboard/web/_tokens.dart';
+import '../../res/zebu_theme.dart';
+import '../../res/zebu_spacing.dart';
+import '../../res/zebu_text_styles.dart';
 
 /// Premium KPI card — the primary read across the top of the web dashboard.
 ///
@@ -72,7 +74,7 @@ class _KpiTileState extends State<KpiTile> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final interactive = widget.onTap != null;
     final lifted = _hover && interactive;
 
@@ -96,18 +98,18 @@ class _KpiTileState extends State<KpiTile> {
         child: AnimatedContainer(
           duration: _dur,
           curve: _curve,
-          padding: const EdgeInsets.all(WebTokens.s4),
+          padding: const EdgeInsets.all(ZebuSpacing.s4),
           decoration: BoxDecoration(
             color: t.bgElevated,
             // 16px — unified card-surface radius (see [PremiumCard]).
-            borderRadius: BorderRadius.circular(WebTokens.r2xl),
+            borderRadius: BorderRadius.circular(ZebuRadius.r2xl),
             // Hover deepens the hairline border and steps the whisper shadow
             // up a notch — a quiet, in-place cue with no positional jump.
             border: Border.all(
               color: lifted ? t.borderStrong : t.borderSubtle,
               width: 1,
             ),
-            boxShadow: lifted ? WebTokens.shadowMd : WebTokens.shadowXs,
+            boxShadow: lifted ? ZebuElevation.shadowMd : ZebuElevation.shadowXs,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -126,7 +128,7 @@ class _KpiTileState extends State<KpiTile> {
                       color: widget.tone.withValues(
                         alpha: lifted ? 0.18 : 0.12,
                       ),
-                      borderRadius: BorderRadius.circular(WebTokens.rLg),
+                      borderRadius: BorderRadius.circular(ZebuRadius.rLg),
                       border: Border.all(
                         color: widget.tone.withValues(alpha: 0.16),
                         width: 1,
@@ -165,7 +167,7 @@ class _KpiTileState extends State<KpiTile> {
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: t.bgTertiary,
-                        borderRadius: BorderRadius.circular(WebTokens.rSm),
+                        borderRadius: BorderRadius.circular(ZebuRadius.rSm),
                       ),
                       child: Icon(
                         Icons.arrow_outward_rounded,
@@ -176,26 +178,26 @@ class _KpiTileState extends State<KpiTile> {
                   ),
                 ],
               ),
-              const SizedBox(height: WebTokens.s3),
+              const SizedBox(height: ZebuSpacing.s3),
 
               // --- Value + label ------------------------------------------
               Text(
                 widget.value,
-                style: t
-                    .valueLarge(t.textPrimary)
+                style: ZebuTextStyles.hero(context)
+                    .withTabularNums()
                     .copyWith(fontSize: 30, letterSpacing: -0.8),
               ),
               const SizedBox(height: 2),
               Text(
                 widget.label,
-                style: t.bodyBase.copyWith(
+                style: ZebuTextStyles.body(context).copyWith(
                   color: t.textSecondary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
 
               if (showRatio) ...[
-                const SizedBox(height: WebTokens.s3),
+                const SizedBox(height: ZebuSpacing.s3),
                 _RatioStrip(
                   fraction: fraction,
                   pct: pct,
@@ -231,7 +233,6 @@ class _RatioStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -239,7 +240,7 @@ class _RatioStrip extends StatelessWidget {
         // Track + proportional fill in the card's tone. The fill animates its
         // width so the bar "draws in" when data arrives / the card rebuilds.
         ClipRRect(
-          borderRadius: BorderRadius.circular(WebTokens.rFull),
+          borderRadius: BorderRadius.circular(ZebuRadius.rFull),
           child: Container(
             height: 6,
             color: tone.withValues(alpha: 0.12),
@@ -256,7 +257,7 @@ class _RatioStrip extends StatelessWidget {
                     child: Container(
                       decoration: BoxDecoration(
                         color: tone,
-                        borderRadius: BorderRadius.circular(WebTokens.rFull),
+                        borderRadius: BorderRadius.circular(ZebuRadius.rFull),
                       ),
                     ),
                   ),
@@ -273,13 +274,13 @@ class _RatioStrip extends StatelessWidget {
                 caption,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: t.caption,
+                style: ZebuTextStyles.caption(context),
               ),
             ),
             const SizedBox(width: 8),
             Text(
               '$pct%',
-              style: t.caption.copyWith(
+              style: ZebuTextStyles.caption(context).copyWith(
                 color: tone,
                 fontWeight: FontWeight.w600,
               ),

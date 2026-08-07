@@ -15,8 +15,10 @@ import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
-import '../../dashboard/web/_tokens.dart';
 import 'queue_editor_dialog.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 const _kFlatRadius = 8.0;
 
@@ -150,7 +152,7 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final all = _queues ?? const [];
     final rows = _filtered(all);
 
@@ -184,7 +186,7 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _NewButton(onTap: _openCreate),
-                    const SizedBox(width: WebTokens.s3),
+                    const SizedBox(width: ZebuSpacing.s3),
                     SizedBox(
                       width: searchWidth,
                       child: ListSearchInput(
@@ -198,23 +200,23 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
             ),
           ),
           SegmentedTabBar<String>(
-            // Dot colors mirror the mobile queue-type mapping: tickets →
-            // indigo, tasks → green, all → neutral grey.
+            // Glyphs match the rail's destination language: a ticket stub
+            // for ticket queues, a task tick for task queues.
             items: const [
               SegmentedTabItem(
                 value: 'all',
                 label: 'All',
-                dot: Color(0xFF737373),
+                icon: Icons.all_inbox_outlined,
               ),
               SegmentedTabItem(
                 value: 'ticket',
                 label: 'Tickets',
-                dot: WebTokens.indigo,
+                icon: Icons.confirmation_number_outlined,
               ),
               SegmentedTabItem(
                 value: 'task',
                 label: 'Tasks',
-                dot: WebTokens.success,
+                icon: Icons.check_circle_outline,
               ),
             ],
             selected: selectedTab,
@@ -293,7 +295,7 @@ class _BackButtonState extends State<_BackButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Tooltip(
       message: 'Back',
       child: MouseRegion(
@@ -309,7 +311,7 @@ class _BackButtonState extends State<_BackButton> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
               border: Border.all(color: t.borderSubtle, width: 1),
             ),
             child: Icon(
@@ -337,7 +339,7 @@ class _NewButtonState extends State<_NewButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final bg = _hover ? t.accentHover : t.accent;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -348,7 +350,7 @@ class _NewButtonState extends State<_NewButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
           height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: WebTokens.s4),
+          padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s4),
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(_kFlatRadius),
@@ -359,13 +361,13 @@ class _NewButtonState extends State<_NewButton> {
               const Icon(
                 Icons.add,
                 size: 16,
-                color: WebTokens.textInverse,
+                color: ZebuTheme.textInverse,
               ),
-              const SizedBox(width: WebTokens.s2),
+              const SizedBox(width: ZebuSpacing.s2),
               Text(
                 'New queue',
-                style: t.bodyBase.copyWith(
-                  color: WebTokens.textInverse,
+                style: ZebuTextStyles.body(context).copyWith(
+                  color: ZebuTheme.textInverse,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -390,7 +392,7 @@ class _TableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -440,11 +442,11 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         border: last
@@ -457,7 +459,7 @@ class _HeaderCell extends StatelessWidget {
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.ellipsis,
-        style: t.tableHeader,
+        style: ZebuTextStyles.tableHeader(context),
         textAlign: alignRight ? TextAlign.right : TextAlign.left,
       ),
     );
@@ -484,10 +486,10 @@ class _BodyCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
         vertical: 8,
       ),
       decoration: BoxDecoration(
@@ -525,7 +527,7 @@ class _RowState extends State<_Row> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final q = widget.queue;
     final scopes = <String>[
       if (q.public) 'Public',
@@ -558,7 +560,7 @@ class _RowState extends State<_Row> {
                     q.fullName.isEmpty ? '(unnamed)' : q.fullName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t.bodyBase.copyWith(
+                    style: ZebuTextStyles.body(context).copyWith(
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -567,7 +569,7 @@ class _RowState extends State<_Row> {
                   width: _kColTypeWidth,
                   child: _Pill(
                     label: q.type == 'task' ? 'Task' : 'Ticket',
-                    tone: WebTokens.info,
+                    tone: ZebuTheme.info,
                   ),
                 ),
                 _BodyCell(
@@ -576,7 +578,7 @@ class _RowState extends State<_Row> {
                     scopeLabel,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: t.bodySm.copyWith(
+                    style: ZebuTextStyles.small(context).copyWith(
                       color: t.textPrimary,
                       fontWeight: FontWeight.w500,
                     ),
@@ -588,7 +590,7 @@ class _RowState extends State<_Row> {
                   child: Text(
                     '${q.criteria.length}',
                     textAlign: TextAlign.right,
-                    style: t.bodySm
+                    style: ZebuTextStyles.small(context)
                         .copyWith(
                           color: t.textPrimary,
                           fontWeight: FontWeight.w500,
@@ -640,18 +642,17 @@ class _Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: tone.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(WebTokens.rXs),
+          borderRadius: BorderRadius.circular(ZebuRadius.rXs),
         ),
         child: Text(
           label,
-          style: t.bodySm.copyWith(
+          style: ZebuTextStyles.small(context).copyWith(
             color: tone,
             fontWeight: FontWeight.w600,
             fontSize: 12,

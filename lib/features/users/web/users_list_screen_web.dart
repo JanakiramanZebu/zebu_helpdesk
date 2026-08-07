@@ -13,8 +13,10 @@ import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
-import '../../dashboard/web/_tokens.dart';
 import 'user_detail_panel.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 
 // Column layout — header and every row share these so the vertical grid
 // lines up pixel-for-pixel. Mirrors the tickets table cell API.
@@ -80,7 +82,7 @@ class _UsersListScreenWebState extends ConsumerState<UsersListScreenWeb> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final repo = ref.watch(usersRepositoryProvider);
 
     return SlideOverHost(
@@ -199,7 +201,7 @@ class _BackButtonState extends State<_BackButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Tooltip(
       message: 'Back',
       child: MouseRegion(
@@ -215,7 +217,7 @@ class _BackButtonState extends State<_BackButton> {
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: _hover ? t.bgHover : t.bgElevated,
-              borderRadius: BorderRadius.circular(WebTokens.rSm),
+              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
               border: Border.all(color: t.borderSubtle, width: 1),
             ),
             child: Icon(
@@ -245,7 +247,7 @@ class _TableHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
@@ -293,11 +295,11 @@ class _HeaderCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
-        vertical: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s3,
       ),
       decoration: BoxDecoration(
         border: last
@@ -310,7 +312,7 @@ class _HeaderCell extends StatelessWidget {
         maxLines: 1,
         softWrap: false,
         overflow: TextOverflow.ellipsis,
-        style: t.tableHeader,
+        style: ZebuTextStyles.tableHeader(context),
         textAlign: alignRight ? TextAlign.right : TextAlign.left,
       ),
     );
@@ -338,10 +340,10 @@ class _BodyCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final content = Container(
       padding: const EdgeInsets.symmetric(
-        horizontal: WebTokens.s3,
+        horizontal: ZebuSpacing.s3,
         vertical: 8,
       ),
       decoration: BoxDecoration(
@@ -381,7 +383,7 @@ class _UserRowState extends State<_UserRow> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final u = widget.user;
     final trimmed = u.name.trim();
     final orgName = u.org?.name.trim() ?? '';
@@ -421,19 +423,19 @@ class _UserRowState extends State<_UserRow> {
                           u.email,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: t.bodySm.copyWith(
+                          style: ZebuTextStyles.small(context).copyWith(
                             fontWeight: FontWeight.w600,
                             color: t.accent,
                           ),
                         ),
                       ),
-                      const SizedBox(width: WebTokens.s2),
+                      const SizedBox(width: ZebuSpacing.s2),
                       Flexible(
                         child: Text(
                           trimmed.isEmpty ? '(unnamed)' : trimmed,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: t.bodyBase.copyWith(
+                          style: ZebuTextStyles.body(context).copyWith(
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -459,7 +461,7 @@ class _UserRowState extends State<_UserRow> {
                     softWrap: false,
                     overflow: TextOverflow.clip,
                     textAlign: TextAlign.right,
-                    style: t.bodySm
+                    style: ZebuTextStyles.small(context)
                         .copyWith(
                           color: t.textPrimary,
                           fontWeight: FontWeight.w500,
@@ -483,13 +485,13 @@ class _TextCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final empty = text.trim().isEmpty;
     return Text(
       empty ? '—' : text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: t.bodySm.copyWith(
+      style: ZebuTextStyles.small(context).copyWith(
         color: empty ? t.textSecondary : t.textPrimary,
         fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
       ),

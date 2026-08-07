@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/assets.dart';
 import '../../../providers.dart';
 import '../../../widgets/app_dialog.dart';
-import '../../dashboard/web/_tokens.dart';
+import '../../../res/zebu_text_styles.dart';
+import '../../../res/zebu_theme.dart';
+import '../../../res/zebu_spacing.dart';
 import '../login_screen.dart' show UpperCaseTextFormatter;
 
 /// Web-only login screen, styled to the Zebu Premium spec in `skill.md`.
@@ -82,17 +83,17 @@ class _LoginScreenWebState extends ConsumerState<LoginScreenWeb> {
     // shell, so we re-apply the typeface here instead of inheriting from
     // HomeShellWeb.
     final base = Theme.of(context);
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Theme(
       data: base.copyWith(
-        textTheme: GoogleFonts.interTextTheme(base.textTheme),
+        textTheme: ZebuFonts.textTheme(base.textTheme),
       ),
       child: Scaffold(
         backgroundColor: t.bgPrimary,
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(WebTokens.s6),
+              padding: const EdgeInsets.all(ZebuSpacing.s6),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 440),
                 child: _LoginCard(
@@ -144,33 +145,33 @@ class _LoginCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
       decoration: BoxDecoration(
         color: t.bgElevated,
-        borderRadius: BorderRadius.circular(WebTokens.rLg),
+        borderRadius: BorderRadius.circular(ZebuRadius.rLg),
         border: Border.all(color: t.borderSubtle, width: 1),
-        boxShadow: WebTokens.popoverShadow,
+        boxShadow: ZebuElevation.popoverShadow,
       ),
-      padding: const EdgeInsets.all(WebTokens.s8),
+      padding: const EdgeInsets.all(ZebuSpacing.s8),
       child: Form(
         key: formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Center(child: SvgPicture.asset(Assets.zebuLogo, height: 38)),
-            const SizedBox(height: WebTokens.s8),
-            Text('Sign in to Helpdesk', style: t.hero),
-            const SizedBox(height: WebTokens.s2),
+            const SizedBox(height: ZebuSpacing.s8),
+            Text('Sign in to Helpdesk', style: ZebuTextStyles.hero(context)),
+            const SizedBox(height: ZebuSpacing.s2),
             Text(
               'Use your Zebu staff credentials',
-              style: t.bodyBase.copyWith(color: t.textSecondary),
+              style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
             ),
-            const SizedBox(height: WebTokens.s8),
+            const SizedBox(height: ZebuSpacing.s8),
 
             if (error != null) ...[
               _ErrorBanner(message: error!),
-              const SizedBox(height: WebTokens.s6),
+              const SizedBox(height: ZebuSpacing.s6),
             ],
 
             _TextField(
@@ -185,7 +186,7 @@ class _LoginCard extends StatelessWidget {
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
-            const SizedBox(height: WebTokens.s5),
+            const SizedBox(height: ZebuSpacing.s5),
 
             _TextField(
               controller: password,
@@ -202,14 +203,14 @@ class _LoginCard extends StatelessWidget {
                 onTap: onToggleObscure,
               ),
             ),
-            const SizedBox(height: WebTokens.s8),
+            const SizedBox(height: ZebuSpacing.s8),
 
             _PrimaryButton(
               label: 'Sign in',
               busy: busy,
               onPressed: busy ? null : onSubmit,
             ),
-            const SizedBox(height: WebTokens.s3),
+            const SizedBox(height: ZebuSpacing.s3),
 
             Align(
               alignment: Alignment.centerRight,
@@ -265,7 +266,7 @@ class _TextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final hasError = errorText != null;
     // Underline-only inputs: idle uses the soft `borderDefault` line;
     // focus/hover swap to accent; error switches to danger. No fill, no
@@ -297,7 +298,7 @@ class _TextField extends StatelessWidget {
           inputFormatters: inputFormatters,
           onFieldSubmitted: onFieldSubmitted,
           validator: validator,
-          style: t.bodyBase.copyWith(
+          style: ZebuTextStyles.body(context).copyWith(
             color: t.textPrimary,
             fontWeight: FontWeight.w500,
           ),
@@ -319,8 +320,8 @@ class _TextField extends StatelessWidget {
             // Idle label = placeholder-sized, secondary text. Floats up
             // to the smaller `bodySm` size in accent color on focus /
             // when a value is entered.
-            labelStyle: t.bodyBase.copyWith(color: t.textSecondary),
-            floatingLabelStyle: t.bodySm.copyWith(
+            labelStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+            floatingLabelStyle: ZebuTextStyles.small(context).copyWith(
               color: hasError ? t.danger : t.accent,
               fontWeight: FontWeight.w500,
             ),
@@ -334,10 +335,10 @@ class _TextField extends StatelessWidget {
           ),
         ),
         if (hasError) ...[
-          const SizedBox(height: WebTokens.s2),
+          const SizedBox(height: ZebuSpacing.s2),
           Text(
             errorText!,
-            style: t.bodySm.copyWith(
+            style: ZebuTextStyles.small(context).copyWith(
               color: t.danger,
               fontWeight: FontWeight.w500,
             ),
@@ -371,7 +372,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final enabled = widget.onPressed != null && !widget.busy;
     return MouseRegion(
       cursor: enabled
@@ -395,8 +396,8 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
                 : null,
             color: enabled
                 ? null
-                : WebTokens.accentLight.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(WebTokens.rFull),
+                : ZebuTheme.accentLight.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(ZebuRadius.rFull),
           ),
           child: Center(
             child: widget.busy
@@ -410,7 +411,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
                   )
                 : Text(
                     widget.label,
-                    style: t.bodyBase.copyWith(
+                    style: ZebuTextStyles.body(context).copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w600,
                     ),
@@ -436,7 +437,7 @@ class _IconButtonState extends State<_IconButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -471,7 +472,7 @@ class _LinkButtonState extends State<_LinkButton> {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     final enabled = widget.onTap != null;
     return MouseRegion(
       cursor: enabled
@@ -483,7 +484,7 @@ class _LinkButtonState extends State<_LinkButton> {
         onTap: widget.onTap,
         child: Text(
           widget.label,
-          style: t.bodySm.copyWith(
+          style: ZebuTextStyles.small(context).copyWith(
             color: enabled ? t.accent : t.textSecondary,
             fontWeight: FontWeight.w600,
             decoration: _hover ? TextDecoration.underline : null,
@@ -505,12 +506,12 @@ class _ErrorBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = WebTokens.of(context);
+    final t = ZebuTheme.of(context);
     return Container(
-      padding: const EdgeInsets.all(WebTokens.s3),
+      padding: const EdgeInsets.all(ZebuSpacing.s3),
       decoration: BoxDecoration(
         color: t.dangerLight,
-        borderRadius: BorderRadius.circular(WebTokens.rMd),
+        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -520,11 +521,11 @@ class _ErrorBanner extends StatelessWidget {
             color: t.danger,
             size: 18,
           ),
-          const SizedBox(width: WebTokens.s2),
+          const SizedBox(width: ZebuSpacing.s2),
           Expanded(
             child: Text(
               message,
-              style: t.bodySm.copyWith(
+              style: ZebuTextStyles.small(context).copyWith(
                 color: t.danger,
                 fontWeight: FontWeight.w500,
               ),
