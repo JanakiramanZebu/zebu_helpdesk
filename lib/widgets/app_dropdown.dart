@@ -68,9 +68,8 @@ class AppDropdownItem<T> extends AppDropdownEntry<T> {
   final bool disabled;
 
   /// True on the row that reflects the current value in a single-select
-  /// menu. Renders a leading checkmark; when any item in the list is
-  /// [selected], every row reserves the check slot so labels stay
-  /// vertically aligned (Asana-style).
+  /// menu. Renders the label brand blue and semibold rather than adding a
+  /// tick, so no leading slot has to be reserved across the whole list.
   final bool selected;
 }
 
@@ -171,13 +170,10 @@ Future<T?> showAppDropdown<T>(
                   }
                   return KeyEventResult.ignored;
                 },
-                // When any item is `selected`, every row reserves a leading
-                // check slot so labels align on a shared column — matches
-                // Asana's single-select menu treatment. Action menus with
-                // no selection pass this whole flag through as false and
-                // keep the compact icon-then-label layout. Search field is
-                // shown when there are enough items to justify it (≥ 6)
-                // and filters the list live.
+                // The selected row is marked by a blue semibold label, so
+                // rows need no leading slot reserved. Search appears when
+                // there are enough items to justify it (≥ 6) and filters
+                // the list live.
                 child: _AppDropdownContent<T>(
                   entries: entries,
                   onPick: dismiss,
@@ -305,9 +301,6 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
 
   bool get _showSearch => _itemCount >= _kSearchThreshold;
 
-  bool get _hasSelectionColumn =>
-      widget.entries.any((e) => e is AppDropdownItem<T> && e.selected);
-
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -362,7 +355,11 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: t.bgElevated,
-        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
+        // 5, matching the search field inside it and the app's other
+        // surfaces. This used to be `rMd` (10) while the Material clipping
+        // its contents was already 5, so the card's outline and its clip
+        // disagreed by 5 px at every corner.
+        borderRadius: BorderRadius.circular(5),
         border: Border.all(color: t.borderSubtle, width: 1),
         boxShadow: const [
           BoxShadow(
@@ -380,7 +377,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
       child: Material(
         color: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
+        borderRadius: BorderRadius.circular(5),
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -400,7 +397,6 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                               _AppDropdownInkRow<T>(
                                 item: e,
                                 onTap: () => widget.onPick(e.value),
-                                hasSelectionColumn: _hasSelectionColumn,
                               )
                             // else if (e is AppDropdownHeader<T>)
                             //   _AppDropdownHeaderRow(label: e.label)
@@ -447,7 +443,9 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: t.bgElevated,
-            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+            // 5, not `rSm` (8) — matches `ListSearchInput` exactly so the
+            // two search fields read as the same control.
+            borderRadius: BorderRadius.circular(5),
             // Same hairline outline `ListSearchInput` uses at the top of
             // every list screen — reads as one continuous search-input
             // language across the app.
@@ -464,8 +462,10 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
+                  // No gap after the glyph — `ListSearchInput` sits the text
+                  // straight against it, and the field's own left padding is
+                  // what separates them.
                   SvgIcon(Assets.search, size: 16, color: t.textSecondary),
-                  const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _searchCtrl,
@@ -473,7 +473,6 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                       textAlign: TextAlign.start,
                       textAlignVertical: TextAlignVertical.center,
                       style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
-                      cursorColor: t.accent,
                       decoration: InputDecoration(
                         isCollapsed: true,
                         border: InputBorder.none,
@@ -558,15 +557,9 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
   const _AppDropdownInkRow({
     required this.item,
     required this.onTap,
-    required this.hasSelectionColumn,
   });
   final AppDropdownItem<T> item;
   final VoidCallback onTap;
-
-  /// True when any item in the parent list is [AppDropdownItem.selected].
-  /// In that mode every row reserves a 22 px leading slot so labels align
-  /// on a shared column (Asana-style single-select).
-  final bool hasSelectionColumn;
 
   @override
   Widget build(BuildContext context) {
@@ -583,45 +576,42 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
     return InkWell(
       onTap: item.disabled ? null : onTap,
       hoverColor: t.bgHover,
-      child: Padding(
+      child: Container(
+        // Selected rows take a brand wash at 8 % alpha, matching the strike
+        // dropdown in Mynt Plus Web's options module. Low enough that a long
+        // list doesn't read as banded, strong enough to find at a glance —
+        // and it survives scrolling past the label, which colour alone does
+        // not once the row is half off-screen.
+        color: item.selected && !item.disabled
+            ? (item.tone ?? t.accent).withValues(alpha: 0.08)
+            : null,
         padding: const EdgeInsets.symmetric(
           horizontal: ZebuSpacing.s4,
           vertical: 6,
         ),
         child: Row(
           children: [
-            // Leading slot — check (selected) / icon chip / blank. Fixed
-            // width in single-select mode so labels line up across rows.
-            if (hasSelectionColumn) ...[
-              SizedBox(
-                width: 16,
-                child: item.selected
-                    ? Icon(Icons.check, size: 16, color: effective)
-                    : const SizedBox.shrink(),
-              ),
-              const SizedBox(width: ZebuSpacing.s3),
-            ] else if (item.svgAsset != null || item.icon != null) ...[
-              Container(
-                width: 28,
-                height: 28,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: chipTone.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(ZebuRadius.rSm),
-                ),
-                child: item.svgAsset != null
-                    ? SvgIcon(item.svgAsset!, size: 15, color: chipTone)
-                    : Icon(item.icon, size: 15, color: chipTone),
-              ),
-              const SizedBox(width: ZebuSpacing.s3),
-            ],
+            // No leading check column. The selected row is marked by the
+            // wash above plus a brand-blue semibold label — the treatment
+            // the Mynt Plus Web dropdowns use. A tick needed a reserved
+            // 16 px slot on *every* row to keep labels aligned, which
+            // indented the whole list to mark one item.
+            // if (item.svgAsset != null || item.icon != null) ...[
+            //   item.svgAsset != null
+            //       ? SvgIcon(item.svgAsset!, size: 15, color: chipTone)
+            //       : Icon(item.icon, size: 15, color: chipTone),
+            //   const SizedBox(width: ZebuSpacing.s3),
+            // ],
             Expanded(
               child: Text(
                 item.label,
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: effective,
+                  fontWeight:
+                      item.selected ? FontWeight.w600 : FontWeight.w500,
+                  color: item.selected && !item.disabled
+                      ? (item.tone ?? t.accent)
+                      : effective,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),

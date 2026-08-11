@@ -254,17 +254,15 @@ class _Tab<T> extends StatefulWidget {
 class _TabState<T> extends State<_Tab<T>> {
   bool _hover = false;
 
-  /// Selected fill. The strip sits on `bgPrimary` (a light grey), so the
-  /// active pill has to be a step *darker* than the page rather than the
-  /// near-white a tab bar on a white page would use — otherwise it
-  /// disappears into its own background.
-  Color _activeFill(ZebuTheme t) =>
-      t.isLight ? const Color(0xFFE7EAEF) : const Color(0xFF21262D);
+  /// Selected fill — the slate family's stronger step, matching the field
+  /// glyph tiles in the ticket panel. Neutral rather than brand-blue: the
+  /// label already carries the state, and a blue chip beside blue status
+  /// values read as two different meanings for one colour.
+  Color _activeFill(ZebuTheme t) => t.surfaceMutedStrong;
 
-  /// Hover preview — the same family, one step lighter than [_activeFill]
-  /// so hovering never looks like selecting.
-  Color _hoverFill(ZebuTheme t) =>
-      t.isLight ? const Color(0xFFEFF1F4) : const Color(0xFF161B22);
+  /// Hover preview — one step lighter than [_activeFill], so hovering never
+  /// looks like selecting.
+  Color _hoverFill(ZebuTheme t) => t.surfaceMuted;
 
   @override
   Widget build(BuildContext context) {
@@ -274,7 +272,11 @@ class _TabState<T> extends State<_Tab<T>> {
     // No borders and no brand tint: the selected tab is distinguished by a
     // soft filled pill and a stronger label, so a row of six views reads as
     // one quiet strip instead of six competing boxes.
-    final fg = widget.active ? t.textPrimary : t.textSecondary;
+    // Slate tones, matching the ticket panel's field rows: muted glyph-grey
+    // when idle, the darker value tone when selected.
+    final fg = widget.active ? t.textSlate : t.iconMuted;
+    // Shared by the label and its badge count so the two never disagree.
+    final weight = widget.active ? ZebuFonts.semiBold : ZebuFonts.medium;
     final bg = widget.active
         ? _activeFill(t)
         // Idle is the hover tone at zero alpha, never `Colors.transparent` —
@@ -304,7 +306,7 @@ class _TabState<T> extends State<_Tab<T>> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (item.icon != null) ...[
-                  Icon(item.icon, size: 15, color: fg),
+                  Icon(item.icon, size: 18, color: fg),
                   const SizedBox(width: 6),
                 ] else if (item.dot != null) ...[
                   Container(
@@ -320,37 +322,36 @@ class _TabState<T> extends State<_Tab<T>> {
                 // Label and count are one text run so the count rides the
                 // label's baseline as a true superscript, rather than being
                 // a separately-centred sibling in the Row.
-                Text.rich(
-                  TextSpan(
-                    text: item.label,
-                    style: ZebuTextStyles.small(context, fontWeight: ZebuFonts.medium).copyWith(
-                      fontSize: 13,
-                      fontWeight:
-                          widget.active ? FontWeight.w600 : FontWeight.w500,
-                      color: fg,
-                    ),
-                    children: [
-                      if (item.count != null)
-                        WidgetSpan(
-                          alignment: PlaceholderAlignment.top,
-                          child: Transform.translate(
-                            offset: const Offset(2, -1),
-                            child: Text(
-                              '${item.count}',
-                              style: ZebuTextStyles.small(context, fontWeight: ZebuFonts.medium)
-                                  .copyWith(
-                                    fontSize: 9.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: t.textSecondary,
-                                    height: 1,
-                                  )
-                                  .withTabularNums(),
-                            ),
-                          ),
-                        ),
-                    ],
+                // Size is constant across both states — only the weight
+                // shifts, so switching tabs never nudges the strip's layout.
+                // Label 14, badge 13; semiBold when active, medium when not.
+                Text(
+                  item.label,
+                  style: ZebuTextStyles.body(
+                    context,
+                    color: fg,
+                    fontWeight: weight,
                   ),
                 ),
+                if (item.count != null) ...[
+                  const SizedBox(width: 4),
+                  // Raised as a sibling rather than a WidgetSpan inside the
+                  // label: `Transform.translate` doesn't affect layout, so the
+                  // count floats clear of the baseline without changing the
+                  // row's height or the label's line box. Matches the ordersbook
+                  // tabs in Mynt Plus Web.
+                  Transform.translate(
+                    offset: const Offset(0, -6),
+                    child: Text(
+                      '${item.count}',
+                      style: ZebuTextStyles.body(
+                        context,
+                        color: fg,
+                        fontWeight: weight,
+                      ).copyWith(fontSize: 13).withTabularNums(),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

@@ -3,10 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/assets.dart';
 import '../res/zebu_theme.dart';
 import '../res/zebu_spacing.dart';
 import '../res/zebu_text_styles.dart';
 import 'list_controls.dart' show DateRange;
+import 'svg_icon.dart';
 
 /// One selectable quick-filter chip shown inside the [WebFilterButton]'s
 /// popover.
@@ -153,50 +155,42 @@ class _WebFilterButtonState extends State<WebFilterButton> {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // Active state is a **solid brand-blue tile** with a white
-              // glyph — the button reads as "on" at a glance, distinct from
-              // the outline-only inactive state. Inactive keeps the
-              // hairline-outlined chip so it sits quietly alongside the
-              // search input.
+              // Circular icon button, matching the tradebook filter in Mynt
+              // Plus Web: 36×36, an 18 px tune glyph, and no border. At rest
+              // it is effectively a bare glyph — the idle fill is the card
+              // tone, which is the same white as the page — and the active
+              // state fills the circle solid brand blue with a white glyph.
               AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
                 curve: Curves.easeOut,
-                width: 40,
-                height: 40,
+                width: 36,
+                height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  // Active filter chip reads as a filled primary button —
-                  // keep Mynt brand blue in both modes.
+                  shape: BoxShape.circle,
                   color: active
-                      ? ZebuTheme.accentLight
-                      : (_hover ? t.bgHover : t.bgElevated),
-                  border: Border.all(
-                    color: active ? ZebuTheme.accentLight : t.borderSubtle,
-                    width: 1,
-                  ),
-                  borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+                      ? t.accent
+                      : (_hover ? t.bgHover : t.bgHover.withValues(alpha: 0)),
                 ),
-                child: Icon(
-                  Icons.tune,
-                  size: 17,
-                  color: active
-                      ? ZebuTheme.textInverse
-                      : t.textSecondary,
+                child: SvgIcon(
+                  Assets.searchFilter,
+                  size: 20,
+                  color: active ? ZebuTheme.textInverse : t.textSecondary,
                 ),
               ),
-              // Count badge on the top-right corner: red danger dot with
-              // white text so it reads against the blue tile. The
-              // hairline ring uses the surrounding page bg so the badge
-              // looks like a proper "notification" on top of the tile
-              // rather than a chip glued to its border.
+              // Count badge on the circle's top-right edge. The tradebook
+              // button it copies has no count, but ours is worth keeping —
+              // "filtered" alone doesn't say how much is being hidden. The
+              // ring is the page bg so it reads as a notification sitting on
+              // the circle rather than a chip glued to it.
               if (active)
                 Positioned(
-                  top: -5,
-                  right: -5,
+                  top: -2,
+                  right: -2,
                   child: Container(
-                    constraints: const BoxConstraints(minWidth: 18),
-                    height: 18,
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    constraints: const BoxConstraints(minWidth: 16),
+                    height: 16,
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: t.danger,

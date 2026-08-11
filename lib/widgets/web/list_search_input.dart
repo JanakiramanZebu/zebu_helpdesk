@@ -52,7 +52,7 @@ class _ListSearchInputState extends State<ListSearchInput> {
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: t.bgElevated,
-          borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+          borderRadius: BorderRadius.circular(5),
           border: Border.all(color: t.borderSubtle, width: 1),
         ),
         child: SizedBox(
@@ -63,7 +63,7 @@ class _ListSearchInputState extends State<ListSearchInput> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             SvgIcon(Assets.search, size: 16, color: t.textSecondary),
-            const SizedBox(width: 8),
+            // const SizedBox(width: 4),
             Expanded(
               child: TextField(
                 controller: _controller,

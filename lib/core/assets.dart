@@ -3,6 +3,11 @@ class Assets {
   Assets._();
 
   static const search = 'assets/icon/search.svg';
+
+  /// Filter glyph — the "tune-variant" sliders mark, shared with Mynt Plus
+  /// Web (`assets/icon/search-filter.svg` there) so the filter control looks
+  /// the same in both products.
+  static const searchFilter = 'assets/icon/search_filter.svg';
   static const bell = 'assets/icon/bell.svg';
   static const download = 'assets/icon/download.svg';
   static const claim = 'assets/icon/claim.svg';

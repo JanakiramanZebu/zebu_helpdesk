@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'zebu_web_color_styles.dart';
+import 'zebu_theme.dart';
 
 /// Typography for the Zebu Helpdesk web target.
 ///
@@ -15,6 +15,12 @@ import 'zebu_web_color_styles.dart';
 /// Grown as screens are converted. If a screen needs a style that isn't
 /// here, add it here rather than inlining a `TextStyle` at the call site —
 /// that is how the old token file accumulated seventeen near-duplicates.
+///
+/// Sizes are **fixed**. Mynt Plus Web multiplies every size by a viewport
+/// scale factor (0.8× under 1000 px, 0.9× under 1300 px); that was ported
+/// and then removed, because it dropped table cells to 10.4 px and captions
+/// to 8.8 px on a small laptop — below what is comfortable to read in a grid
+/// an agent stares at all day. A size here is the size that renders.
 
 /// ===============================================================
 /// FONT SYSTEM – single source of truth
@@ -27,11 +33,13 @@ class ZebuFonts {
 
   // BODY
   static const double body = 14;
-  static const double small = 13;
+  static const double small = 12;
 
   // TABLE
-  static const double tableHeader = 12.5;
-  static const double tableCell = 13;
+  // Both at body size, matching the Mynt Plus Web position table: the header
+  // is set apart by weight and tone, not by being smaller than its column.
+  static const double tableHeader = 14;
+  static const double tableCell = 14;
 
   // SMALL
   static const double caption = 10;
@@ -61,15 +69,11 @@ class ZebuFonts {
     double? fontSize,
     FontWeight? fontWeight,
     Color? color,
-    double? height,
-    double? letterSpacing,
   }) =>
       GoogleFonts.inter(
         fontSize: fontSize,
         fontWeight: fontWeight,
         color: color,
-        height: height,
-        letterSpacing: letterSpacing,
       ).copyWith(fontFamilyFallback: _kEmojiFallbacks);
 
   /// A whole [TextTheme] in the app typeface, for `ThemeData.textTheme`.
@@ -86,20 +90,6 @@ const _kEmojiFallbacks = <String>[
   'Segoe UI Symbol',
   'Noto Color Emoji',
 ];
-
-/// ===============================================================
-/// RESPONSIVE FONT SCALING
-/// ===============================================================
-/// Ported from Mynt Plus Web so both apps render the same size at the same
-/// viewport. Narrower screens shrink type to fit more rows on a laptop.
-extension ResponsiveFontContext on BuildContext {
-  double get fontScaleFactor {
-    final width = MediaQuery.sizeOf(this).width;
-    if (width < 1000) return 0.8;
-    if (width < 1300) return 0.9;
-    return 1.0;
-  }
-}
 
 /// ===============================================================
 /// THEME HELPERS
@@ -134,8 +124,6 @@ TextStyle _text(
   Color? color,
   Color? darkColor,
   Color? lightColor,
-  double? height,
-  double? letterSpacing,
 }) {
   final resolved = color ??
       resolveThemeColor(
@@ -145,11 +133,9 @@ TextStyle _text(
       );
 
   return ZebuFonts.face(
-    fontSize: size * context.fontScaleFactor,
+    fontSize: size,
     fontWeight: weight,
     color: resolved,
-    height: height,
-    letterSpacing: letterSpacing,
   );
 }
 
@@ -171,13 +157,11 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.hero,
         weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuColors.textPrimary,
-        defaultDark: ZebuColors.textPrimaryDark,
+        defaultLight: ZebuTheme.textPrimaryLight,
+        defaultDark: ZebuTheme.textPrimaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
-        letterSpacing: -0.4,
-        height: 1.2,
       );
 
   /// `PageHeader` title — "Tickets", "Saved queues".
@@ -192,12 +176,11 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.pageTitle,
         weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuColors.textPrimary,
-        defaultDark: ZebuColors.textPrimaryDark,
+        defaultLight: ZebuTheme.textPrimaryLight,
+        defaultDark: ZebuTheme.textPrimaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
-        letterSpacing: -0.2,
       );
 
   /// Heading inside a card, panel, or dialog.
@@ -212,15 +195,14 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.sectionTitle,
         weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuColors.textPrimary,
-        defaultDark: ZebuColors.textPrimaryDark,
+        defaultLight: ZebuTheme.textPrimaryLight,
+        defaultDark: ZebuTheme.textPrimaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
       );
 
   /// Small-caps group label above a run of rows ("VIEWS", "WORKSPACE").
-  /// Wider tracking gives it an eyebrow feel without going to display size.
   static TextStyle eyebrow(
     BuildContext c, {
     Color? color,
@@ -230,14 +212,13 @@ class ZebuTextStyles {
   }) =>
       _text(
         c,
-        size: ZebuFonts.eyebrow,
+        size: ZebuFonts.small,
         weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuColors.textSecondary,
-        defaultDark: ZebuColors.textSecondaryDark,
+        defaultLight: ZebuTheme.textSecondaryLight,
+        defaultDark: ZebuTheme.textSecondaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
-        letterSpacing: 0.8,
       );
 
   // ---------------- BODY ----------------
@@ -254,8 +235,8 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.body,
         weight: fontWeight ?? ZebuFonts.regular,
-        defaultLight: ZebuColors.textPrimary,
-        defaultDark: ZebuColors.textPrimaryDark,
+        defaultLight: ZebuTheme.textPrimaryLight,
+        defaultDark: ZebuTheme.textPrimaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
@@ -273,8 +254,8 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.body,
         weight: fontWeight ?? ZebuFonts.medium,
-        defaultLight: ZebuColors.textPrimary,
-        defaultDark: ZebuColors.textPrimaryDark,
+        defaultLight: ZebuTheme.textPrimaryLight,
+        defaultDark: ZebuTheme.textPrimaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
@@ -292,8 +273,8 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.small,
         weight: fontWeight ?? ZebuFonts.regular,
-        defaultLight: ZebuColors.textSecondary,
-        defaultDark: ZebuColors.textSecondaryDark,
+        defaultLight: ZebuTheme.textSecondaryLight,
+        defaultDark: ZebuTheme.textSecondaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
@@ -313,12 +294,11 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.small,
         weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuColors.textSecondary,
-        defaultDark: ZebuColors.textSecondaryDark,
+        defaultLight: ZebuTheme.textSecondaryLight,
+        defaultDark: ZebuTheme.textSecondaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
-        letterSpacing: 0.2,
       );
 
   /// Small text carrying weight — labels, list-row titles.
@@ -333,8 +313,8 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.small,
         weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuColors.textPrimary,
-        defaultDark: ZebuColors.textPrimaryDark,
+        defaultLight: ZebuTheme.textPrimaryLight,
+        defaultDark: ZebuTheme.textPrimaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
@@ -342,8 +322,7 @@ class ZebuTextStyles {
 
   // ---------------- TABLE ----------------
 
-  /// Column header. Muted and medium — the grid's structure should come
-  /// from the header strip's fill, not from heavy type.
+  /// Column header — muted, semibold, at body size.
   static TextStyle tableHeader(
     BuildContext c, {
     Color? color,
@@ -354,9 +333,9 @@ class ZebuTextStyles {
       _text(
         c,
         size: ZebuFonts.tableHeader,
-        weight: fontWeight ?? ZebuFonts.medium,
-        defaultLight: ZebuColors.textSecondary,
-        defaultDark: ZebuColors.textSecondaryDark,
+        weight: fontWeight ?? ZebuFonts.semiBold,
+        defaultLight: ZebuTheme.textSecondaryLight,
+        defaultDark: ZebuTheme.textSecondaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
@@ -374,8 +353,8 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.tableCell,
         weight: fontWeight ?? ZebuFonts.medium,
-        defaultLight: ZebuColors.textPrimary,
-        defaultDark: ZebuColors.textPrimaryDark,
+        defaultLight: ZebuTheme.textPrimaryLight,
+        defaultDark: ZebuTheme.textPrimaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
@@ -395,13 +374,12 @@ class ZebuTextStyles {
         c,
         size: ZebuFonts.caption,
         weight: fontWeight ?? ZebuFonts.medium,
-        defaultLight: ZebuColors.textSecondary,
-        defaultDark: ZebuColors.textSecondaryDark,
+        defaultLight: ZebuTheme.textSecondaryLight,
+        defaultDark: ZebuTheme.textSecondaryDark,
         color: color,
         darkColor: darkColor,
         lightColor: lightColor,
-        height: 1.2,
-      );
+      ).withTabularNums();
 }
 
 /// Tabular figures — fixed-width digits so numbers in a column line up and

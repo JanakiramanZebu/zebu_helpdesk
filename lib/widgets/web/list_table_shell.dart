@@ -39,18 +39,25 @@ class ListTableShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    final radius = BorderRadius.circular(ZebuRadius.rLg);
+    // Square corners, and `borderDefault` rather than `borderSubtle`: the
+    // page, the card, and the rows are all white now, so the subtle hairline
+    // was too close to the background to register.
+    //
+    // The border is painted as a **foreground** decoration. `DecoratedBox`
+    // draws its decoration behind the child, and the grid fills the whole box
+    // with an opaque header strip and body — which buried the border
+    // entirely. Painting it in front puts the outline back on top of the
+    // content, the same trick the shell's workspace card uses.
     return Padding(
       padding: padding,
       child: DecoratedBox(
+        position: DecorationPosition.foreground,
         decoration: BoxDecoration(
-          color: t.bgElevated,
-          borderRadius: radius,
-          border: Border.all(color: t.borderSubtle, width: 1),
+          border: Border.all(color: t.borderDefault, width: 1),
         ),
-        child: ClipRRect(
-          borderRadius: radius,
-          child: child,
+        child: ColoredBox(
+          color: t.bgElevated,
+          child: ClipRect(child: child),
         ),
       ),
     );

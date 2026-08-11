@@ -208,6 +208,14 @@ class AppTheme {
       listTileTheme: const ListTileThemeData(
         contentPadding: EdgeInsets.symmetric(horizontal: 16),
       ),
+      // Caret and selection follow the text, not the brand. Flutter defaults
+      // the cursor to `colorScheme.primary`, which put a brand-blue insertion
+      // line in every field in the app.
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: scheme.onSurface,
+        selectionColor: scheme.onSurface.withValues(alpha: 0.18),
+        selectionHandleColor: scheme.onSurface,
+      ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant,
         space: 1,

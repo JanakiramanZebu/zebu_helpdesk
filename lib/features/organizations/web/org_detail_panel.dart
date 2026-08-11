@@ -22,6 +22,7 @@ import '../../../widgets/web/status_pill.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
+import '../../../widgets/web/zebu_avatar.dart';
 
 /// Web-only organization-detail slide-over panel — visual parity with
 /// [TicketDetailPanel]:
@@ -31,7 +32,6 @@ import '../../../res/zebu_spacing.dart';
 ///   - members / tickets / notes rendered as card-per-item rows.
 const double _kFieldLabelWidth = 88;
 const double _kSidebarRowHeight = 40;
-const double _kAvatarSize = 32;
 
 /// Panel-body width at (or above) which the panel switches to a two-column
 /// layout: activity feed on the left, fields sidebar on the right. Below
@@ -1171,7 +1171,7 @@ class _MemberRowState extends State<_MemberRow> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _ActorAvatar(name: trimmed.isEmpty ? '?' : trimmed),
+                ZebuAvatar(name: trimmed.isEmpty ? '?' : trimmed),
                 const SizedBox(width: ZebuSpacing.s3),
                 Expanded(
                   child: Column(
@@ -1419,7 +1419,7 @@ class _NoteRowState extends State<_NoteRow> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _ActorAvatar(name: poster),
+                  ZebuAvatar(name: poster),
                   const SizedBox(width: ZebuSpacing.s3),
                   Expanded(
                     child: Column(
@@ -1567,59 +1567,7 @@ class _NoteBody extends StatelessWidget {
 // Shared primitives — actor avatar mirrors ticket panel.
 // ---------------------------------------------------------------------------
 
-const _kAvatarPalette = <Color>[
-  Color(0xFFF6B93B),
-  Color(0xFF5DADE2),
-  Color(0xFF58D68D),
-  Color(0xFFAF7AC5),
-  Color(0xFFF5A623),
-  Color(0xFF48C9B0),
-  Color(0xFFEC7063),
-  Color(0xFF5D6D7E),
-];
 
-class _ActorAvatar extends StatelessWidget {
-  const _ActorAvatar({required this.name});
-  final String name;
-
-  static String _initials(String s) {
-    final parts = s.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '·';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
-        .toUpperCase();
-  }
-
-  static Color _color(String s) {
-    if (s.isEmpty) return _kAvatarPalette[0];
-    var hash = 0;
-    for (final c in s.codeUnits) {
-      hash = (hash * 31 + c) & 0x7fffffff;
-    }
-    return _kAvatarPalette[hash % _kAvatarPalette.length];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = _color(name);
-    return Container(
-      width: _kAvatarSize,
-      height: _kAvatarSize,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Text(
-        _initials(name),
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-          height: 1.0,
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
-  }
-}
 
 class _TypeTag extends StatelessWidget {
   const _TypeTag({required this.label, required this.tone});

@@ -52,6 +52,17 @@ class ZebuTheme {
   /// Secondary identity tint — the "mine" view dot, matching mobile.
   static const indigo = Color(0xFF6366F1);
 
+  /// Internal-only content: notes in the composer and the thread.
+  ///
+  /// A note never leaves the team, while a reply is emailed to the customer,
+  /// so the two must not look alike. Purple because it is the one hue not
+  /// already spoken for — amber means High priority, indigo means Answered,
+  /// green Resolved, red Escalated — and "private / internal" reads as
+  /// purple across most tools.
+  static const noteLight = Color(0xFF7C3AED);
+  static const noteDark = Color(0xFFA78BFA);
+  Color get note => isLight ? noteLight : noteDark;
+
   LinearGradient get brandGradient => LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
@@ -69,6 +80,12 @@ class ZebuTheme {
   );
 
   // --- Backgrounds ----------------------------------------------------------
+  /// The screen surface every routed page paints — the area inside the
+  /// workspace card.
+  ///
+  /// White in light mode. That means [bgElevated] cards sitting on it are
+  /// also white, so they separate by hairline and `shadowXs` rather than by
+  /// fill. Dark mode still layers by fill (`#0D0F11` page vs `#161B22` card).
   Color get bgPrimary =>
       isLight ? ZebuColors.backgroundColor : ZebuColors.backgroundColorDark;
   Color get bgSecondary => isLight ? ZebuColors.card : ZebuColors.cardDark;
@@ -90,11 +107,60 @@ class ZebuTheme {
       isLight ? const Color(0xFFC7CDD4) : const Color(0xFF3D444D);
 
   // --- Text -----------------------------------------------------------------
-  Color get textPrimary =>
-      isLight ? ZebuColors.textPrimary : ZebuColors.textPrimaryDark;
-  Color get textSecondary =>
-      isLight ? ZebuColors.textSecondary : ZebuColors.textSecondaryDark;
+  //
+  // These four are deliberately *not* taken from [ZebuColors]. The palette's
+  // tones (`#121212` / `#4A4A4A`, and dimmer darks) made secondary text —
+  // which is most of a table row: requester, department, dates, column
+  // headers — read noticeably darker and warmer than this app had it, and
+  // the whole page got heavier. These are the values the helpdesk was built
+  // and tuned against: a cooler, lighter grey-blue for muted text.
+  static const textPrimaryLight = Color(0xFF141414);
+  static const textPrimaryDark = Color(0xFFF0F6FC);
+  static const textSecondaryLight = Color(0xFF565C68);
+  static const textSecondaryDark = Color(0xFFC9D1D9);
+
+  Color get textPrimary => isLight ? textPrimaryLight : textPrimaryDark;
+  Color get textSecondary => isLight ? textSecondaryLight : textSecondaryDark;
   static const textInverse = ZebuColors.textWhite;
+
+  // --- Slate surfaces & tones -----------------------------------------------
+  //
+  // A cooler, quieter family than the neutral greys above, taken from the
+  // approved ticket-panel design and now shared: the field-glyph tiles, the
+  // view tabs, and anything else that should recede behind its content.
+  //
+  // These are deliberately separate from [bgTertiary] / [textSecondary] —
+  // those are the app's neutral greys, these carry a blue cast.
+
+  /// Muted chip / tile fill — field-glyph tiles, idle tab hover.
+  Color get surfaceMuted =>
+      isLight ? const Color(0xFFF5F6F9) : const Color(0xFF21262D);
+
+  /// One step up from [surfaceMuted], for the same element when its row is
+  /// hovered or it is the selected tab. Without the step, a tile sitting on
+  /// a hovered row dissolves into it — they are a unit apart per channel.
+  Color get surfaceMutedStrong =>
+      isLight ? const Color(0xFFE8EBF0) : const Color(0xFF30363D);
+
+  /// Glyph tint on [surfaceMuted].
+  Color get iconMuted =>
+      isLight ? const Color(0xFF64708A) : const Color(0xFF8B949E);
+
+  /// Label text in the slate family.
+  Color get textSlateMuted =>
+      isLight ? const Color(0xFF596278) : const Color(0xFF8B949E);
+
+  /// Value text in the slate family.
+  Color get textSlate =>
+      isLight ? const Color(0xFF34465E) : const Color(0xFFC9D1D9);
+
+  /// Values that open a picker or link out.
+  Color get linkSlate =>
+      isLight ? const Color(0xFF1554C7) : const Color(0xFF58A6FF);
+
+  /// Hairline in the slate family.
+  Color get dividerSlate =>
+      isLight ? const Color(0xFFE8EBF0) : const Color(0xFF21262D);
 
   // --- Semantic -------------------------------------------------------------
   static const success = ZebuColors.profit;

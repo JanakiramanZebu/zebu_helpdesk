@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../res/zebu_spacing.dart';
+import '../../res/zebu_status_colors.dart';
+import '../../res/zebu_theme.dart';
 
 /// Status / priority / tag chip, matching the mobile app's `StatusChip`
 /// language: a **filled tinted pill** — the chip color at 12 % alpha as the
@@ -36,22 +37,24 @@ class StatusPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fontSize = dense ? 11.0 : 12.0;
-    final iconSize = dense ? 12.0 : 14.0;
+    // The fill keeps the vivid hue; the label drops to its deeper, lower
+    // chroma counterpart. See [zebuOnTint].
+    final labelColor = zebuOnTint(color, ZebuTheme.of(context));
     return Container(
       padding: dense
           ? const EdgeInsets.symmetric(horizontal: 8, vertical: 3)
           : const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+        borderRadius: BorderRadius.circular(5),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (icon != null) ...[
-            Icon(icon, size: iconSize, color: color),
-            const SizedBox(width: 4),
-          ],
+          // if (icon != null) ...[
+          //   Icon(icon, size: iconSize, color: color),
+          //   const SizedBox(width: 4),
+          // ],
           Flexible(
             child: Text(
               label,
@@ -60,9 +63,7 @@ class StatusPill extends StatelessWidget {
               style: TextStyle(
                 fontSize: fontSize,
                 fontWeight: fontWeight,
-                color: color,
-                height: 1.25,
-                letterSpacing: 0.05,
+                color: labelColor,
               ),
             ),
           ),

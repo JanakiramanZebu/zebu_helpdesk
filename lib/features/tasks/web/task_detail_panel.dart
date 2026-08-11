@@ -20,6 +20,7 @@ import '../../../widgets/web/status_pill.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
+import '../../../widgets/web/zebu_avatar.dart';
 
 /// Web-only task-detail slide-over panel — visual parity with
 /// [TicketDetailPanel]:
@@ -34,7 +35,6 @@ const _kFlatRadius = 8.0;
 const double _kFieldLabelWidth = 88;
 const double _kFieldValueWidth = 280;
 const double _kSidebarRowHeight = 40;
-const double _kAvatarSize = 32;
 
 /// Panel-body width at (or above) which the panel switches to a two-column
 /// layout: activity feed on the left, fields sidebar on the right. Below
@@ -1300,19 +1300,16 @@ class _ThreadRow extends StatelessWidget {
     final html = entry.bodyHtml ?? entry.body ?? '';
     final plain = Fmt.stripHtml(html);
 
-    // Per-poster name color (matches the avatar) so each participant's
-    // messages are distinguishable at a glance. Nudge the raw swatch toward
-    // the surface's contrast so light swatches (amber/teal) stay legible on
-    // white and don't glow on the near-black dark canvas.
-    final posterColor = _posterColor(entry.poster);
-    final nameColor = t.isLight
-        ? Color.lerp(posterColor, Colors.black, 0.30)!
-        : Color.lerp(posterColor, Colors.white, 0.12)!;
+    // Per-poster name color, matching the avatar, so each participant's
+    // messages are distinguishable at a glance. No contrast fudging needed:
+    // the avatar palette's label tone is already the deep, on-surface step of
+    // the hue — it was the old saturated swatches that had to be darkened.
+    final nameColor = zebuAvatarTone(entry.poster, t);
 
     final content = Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ActorAvatar(name: entry.poster),
+        ZebuAvatar(name: entry.poster),
         const SizedBox(width: ZebuSpacing.s3),
         Expanded(
           child: Column(
@@ -1339,7 +1336,7 @@ class _ThreadRow extends StatelessWidget {
                     Text(
                       'Internal note',
                       style: ZebuTextStyles.label(context).copyWith(
-                        color: ZebuTheme.warning,
+                        color: t.note,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -1406,63 +1403,8 @@ class _ThreadRow extends StatelessWidget {
   }
 }
 
-const _kAvatarPalette = <Color>[
-  Color(0xFFF6B93B),
-  Color(0xFF5DADE2),
-  Color(0xFF58D68D),
-  Color(0xFFAF7AC5),
-  Color(0xFFF5A623),
-  Color(0xFF48C9B0),
-  Color(0xFFEC7063),
-  Color(0xFF5D6D7E),
-];
 
-/// Stable per-poster color, hashed off the name so the same author always maps
-/// to the same swatch. Shared by the avatar fill and the author-name text so a
-/// message stream is colour-coded by participant (each user's messages read as
-/// visually distinct at a glance).
-Color _posterColor(String s) {
-  if (s.isEmpty) return _kAvatarPalette[0];
-  var hash = 0;
-  for (final c in s.codeUnits) {
-    hash = (hash * 31 + c) & 0x7fffffff;
-  }
-  return _kAvatarPalette[hash % _kAvatarPalette.length];
-}
 
-class _ActorAvatar extends StatelessWidget {
-  const _ActorAvatar({required this.name});
-  final String name;
-
-  static String _initials(String s) {
-    final parts = s.trim().split(RegExp(r'\s+'));
-    if (parts.isEmpty || parts.first.isEmpty) return '·';
-    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
-    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
-        .toUpperCase();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bg = _posterColor(name);
-    return Container(
-      width: _kAvatarSize,
-      height: _kAvatarSize,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-      child: Text(
-        _initials(name),
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-          fontSize: 13,
-          height: 1.0,
-          letterSpacing: 0.2,
-        ),
-      ),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Attachment chip

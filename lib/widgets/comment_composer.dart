@@ -11,7 +11,7 @@ import '../res/zebu_theme.dart';
 import '../res/zebu_spacing.dart';
 import '../res/zebu_text_styles.dart';
 
-const _kFlatRadius = 8.0;
+const _kFlatRadius = 5.0;
 
 /// Reply / Note scope. `replyAndNote` shows the mode pills and starts on
 /// Reply; `noteOnly` hides the pills and always submits as a note.
@@ -222,7 +222,7 @@ class _CommentComposerState extends State<CommentComposer> {
     // Filled Send button keeps the Mynt brand blue in both modes — the
     // dark-mode cyan accent is reserved for text/borders. Notes swap to
     // warning amber as before.
-    final tone = _asNote ? ZebuTheme.warning : ZebuTheme.accentLight;
+    final tone = _asNote ? t.note : t.accent;
     final showToggle = widget.scope == ComposerScope.replyAndNote;
     final hint = _asNote ? widget.noteHint : widget.replyHint;
     final sendLabel = _asNote ? widget.noteLabel : widget.replyLabel;
@@ -244,21 +244,12 @@ class _CommentComposerState extends State<CommentComposer> {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (showToggle) ...[
-            Row(
-              children: [
-                _ToggleChip(
-                  label: 'Reply',
-                  active: !_asNote,
-                  onTap: locked ? null : () => setState(() => _asNote = false),
-                ),
-                const SizedBox(width: ZebuSpacing.s2),
-                _ToggleChip(
-                  label: 'Note',
-                  active: _asNote,
-                  tone: ZebuTheme.warning,
-                  onTap: locked ? null : () => setState(() => _asNote = true),
-                ),
-              ],
+            Align(
+              alignment: Alignment.centerLeft,
+              child: _ModeSegmented(
+                asNote: _asNote,
+                onChanged: locked ? null : (v) => setState(() => _asNote = v),
+              ),
             ),
             const SizedBox(height: ZebuSpacing.s2),
           ],
@@ -593,7 +584,7 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
             color: bg,
             borderRadius: BorderRadius.circular(ZebuRadius.rSm),
           ),
-          child: Icon(widget.icon, size: 15, color: fg),
+          child: Icon(widget.icon, size: 20, color: fg),
         ),
       ),
     );
@@ -614,65 +605,105 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
 // Reply / Note pill.
 // ---------------------------------------------------------------------------
 
-class _ToggleChip extends StatefulWidget {
-  const _ToggleChip({
-    required this.label,
-    required this.active,
-    required this.onTap,
-    this.tone,
-  });
-  final String label;
-  final bool active;
-  final VoidCallback? onTap;
-  final Color? tone;
+/// Reply / Note switch, as a segmented control.
+///
+/// Previously two separate outlined chips, which read as two independent
+/// actions rather than one either-or choice — nothing about the shape said
+/// that picking one unpicked the other. A single track split in two says it
+/// structurally.
+///
+/// The distinction is worth the care: a **reply is emailed to the customer**
+/// and a **note never leaves the team**. Note therefore carries the warning
+/// tone rather than the brand accent, so the selected half looks materially
+/// different depending on where a submission is going.
+class _ModeSegmented extends StatelessWidget {
+  const _ModeSegmented({required this.asNote, required this.onChanged});
 
-  @override
-  State<_ToggleChip> createState() => _ToggleChipState();
-}
+  final bool asNote;
 
-class _ToggleChipState extends State<_ToggleChip> {
-  bool _hover = false;
+  /// Null while a submission is in flight — the whole control locks.
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    final effective = widget.tone ?? t.accent;
-    // On-theme active state: same hairline `borderSubtle` outline the
-    // other ghost controls in the panel use (Actions button, field
-    // pills), with a soft `accentSoft` fill and accent-coloured label —
-    // no heavy full-accent border, no filled solid pill. Reads as a
-    // "quiet selected" toggle rather than a primary CTA.
-    final Color bg;
-    if (widget.active) {
-      bg = t.accentSoft;
-    } else if (_hover && widget.onTap != null) {
-      bg = t.bgHover;
-    } else {
-      bg = t.bgElevated;
-    }
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: t.isLight ? const Color(0xFFF5F6F9 ) : t.surfaceMuted,
+        border: Border.all(color: t.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(_kFlatRadius),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ModeSegment(
+            label: 'Reply',
+            active: !asNote,
+            tone: t.accent,
+            onTap: onChanged == null ? null : () => onChanged!(false),
+          ),
+          _ModeSegment(
+            label: 'Note',
+            active: asNote,
+            tone: t.note,
+            onTap: onChanged == null ? null : () => onChanged!(true),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ModeSegment extends StatefulWidget {
+  const _ModeSegment({
+    required this.label,
+    required this.active,
+    required this.tone,
+    required this.onTap,
+  });
+  final String label;
+  final bool active;
+  final Color tone;
+  final VoidCallback? onTap;
+
+  @override
+  State<_ModeSegment> createState() => _ModeSegmentState();
+}
+
+class _ModeSegmentState extends State<_ModeSegment> {
+  @override
+  Widget build(BuildContext context) {
+    final t = ZebuTheme.of(context);
     return MouseRegion(
       cursor: widget.onTap == null
           ? SystemMouseCursors.forbidden
           : SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(
-            horizontal: ZebuSpacing.s3,
+            horizontal: ZebuSpacing.s4,
             vertical: 6,
           ),
           decoration: BoxDecoration(
-            color: bg,
-            border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(_kFlatRadius),
+            // The selected half lifts to an elevated surface inside the
+            // recessed track — the standard segmented-control read. Idle
+            // halves show the track through, with no hover fill: both halves
+            // are always visible and one is always selected, so a hover state
+            // added motion without adding information.
+            color: widget.active
+                ? t.bgElevated
+                : t.bgElevated.withValues(alpha: 0),
+            borderRadius: BorderRadius.circular(_kFlatRadius - 2),
+            boxShadow: widget.active ? ZebuElevation.shadowXs : null,
           ),
           child: Text(
             widget.label,
             style: ZebuTextStyles.small(context).copyWith(
-              color: widget.active ? effective : t.textSecondary,
+              color: widget.active ? widget.tone : t.textSlateMuted,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -681,10 +712,6 @@ class _ToggleChipState extends State<_ToggleChip> {
     );
   }
 }
-
-// ---------------------------------------------------------------------------
-// File chip — picked attachment with a remove (×) affordance.
-// ---------------------------------------------------------------------------
 
 class _FileChip extends StatefulWidget {
   const _FileChip({required this.name, required this.onRemove});

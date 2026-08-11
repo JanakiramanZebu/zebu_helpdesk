@@ -215,18 +215,29 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
     }
 
     final body = (items.isEmpty)
-        ? ListView(
-            children: [
-              if (widget.header != null) widget.header!,
-              SizedBox(
-                height: 360,
-                child: EmptyView(
-                  icon: widget.emptyIcon,
-                  message: widget.emptyMessage,
-                  hint: widget.emptyHint,
+        // The empty view fills whatever height is left rather than a fixed
+        // 360 px block — inside a tall table that block sat at the top, so
+        // the message centred about a third of the way down instead of in
+        // the middle of the empty area. `minHeight` (not a fixed height)
+        // keeps it scrollable when a tall [header] pushes it past the fold.
+        ? LayoutBuilder(
+            builder: (context, constraints) => ListView(
+              children: [
+                if (widget.header != null) widget.header!,
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight.isFinite
+                        ? constraints.maxHeight
+                        : 360,
+                  ),
+                  child: EmptyView(
+                    icon: widget.emptyIcon,
+                    message: widget.emptyMessage,
+                    hint: widget.emptyHint,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           )
         : ListView.builder(
             controller: _scroll,

@@ -22,6 +22,7 @@ import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../widgets/web_filter_button.dart';
 import 'task_detail_panel.dart';
+import '../../../res/zebu_status_colors.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
@@ -73,7 +74,7 @@ class TasksListScreenWeb extends ConsumerStatefulWidget {
 /// Ordered saved views, each with the glyph its tab wears. Open and Closed
 /// share the tickets pairing — the same ring with opposite centres.
 const _views = <({String key, String label, IconData icon})>[
-  (key: 'open', label: 'Open', icon: Icons.radio_button_checked),
+  (key: 'open', label: 'Open', icon: Icons.pending_outlined),
   (key: 'mine', label: 'Mine', icon: Icons.person_outline),
   (key: 'overdue', label: 'Overdue', icon: Icons.schedule_outlined),
   (key: 'collaborator', label: 'Collaborator', icon: Icons.people_outline),
@@ -869,28 +870,6 @@ class _TaskRowState extends State<_TaskRow> {
   // Color maps mirror the tickets list so both tables read as one product:
   // Normal priority = info-blue (not dead grey), High = warning amber,
   // Emergency = red, Low = success green.
-  Color _statusColor(ZebuTheme t) {
-    final task = widget.task;
-    if (task.overdue) return t.danger;
-    final s = task.statusName.toLowerCase();
-    if (s.contains('closed') ||
-        s.contains('resolved') ||
-        s.contains('complete')) {
-      return t.textSecondary;
-    }
-    if (s.contains('open') || s.contains('new')) return ZebuTheme.success;
-    return ZebuTheme.info;
-  }
-
-  Color _priorityColor(ZebuTheme t) {
-    final p = (widget.task.priority?.name ?? '').toLowerCase();
-    if (p.contains('emergency') || p.contains('urgent')) return t.danger;
-    if (p.contains('high')) return ZebuTheme.warning;
-    if (p.contains('low')) return ZebuTheme.success;
-    if (p.contains('normal')) return ZebuTheme.info;
-    return ZebuTheme.info;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
@@ -982,7 +961,7 @@ class _TaskRowState extends State<_TaskRow> {
                             ? Text('—', style: ZebuTextStyles.small(context))
                             : StatusPill(
                                 label: _titleCase(task.priority!.name),
-                                color: _priorityColor(t),
+                                color: zebuPriorityColor(widget.task.priority?.name, t),
                                 icon: Icons.flag_rounded,
                               ),
                       ),
@@ -992,7 +971,11 @@ class _TaskRowState extends State<_TaskRow> {
                           label: task.overdue
                               ? 'Overdue'
                               : _titleCase(task.statusName),
-                          color: _statusColor(t),
+                          color: zebuStatusColor(
+                            widget.task.statusName,
+                            t,
+                            overdue: widget.task.overdue,
+                          ),
                         ),
                       ),
                       _BodyCell(

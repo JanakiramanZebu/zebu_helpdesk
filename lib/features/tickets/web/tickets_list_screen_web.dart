@@ -15,14 +15,16 @@ import '../../../widgets/list_controls.dart' show DateRange;
 import '../../../widgets/paged_list_view.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/web/bulk_action_bar.dart';
+import '../../../widgets/web/dots_loader.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
-import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
+import '../../../widgets/web/zebu_data_grid.dart';
 import '../../../widgets/web_filter_button.dart';
 import '../../../res/zebu_web_color_styles.dart';
+import '../../../res/zebu_status_colors.dart';
 import '../../../res/zebu_text_styles.dart';
 import 'ticket_detail_panel.dart';
 import '../../../res/zebu_theme.dart';
@@ -43,8 +45,6 @@ import '../../../res/zebu_spacing.dart';
 /// ticket like `#020817` at `bodySm` w600 plus the shared `s3` cell
 /// padding. Split out of the "Ticket" column so the number reads as its
 /// own sortable value.
-/// Leading select-checkbox column, shared by header + rows + skeleton.
-const double _kColSelectWidth = 44;
 const double _kColNumberWidth = 90;
 const int _kColTicketFlex = 5;
 const int _kColRequesterFlex = 2;
@@ -58,10 +58,9 @@ const double _kColStatusWidth = 130;
 // size — the previous 100 px forced the year to wrap onto a second row.
 const double _kColCreatedWidth = 120;
 
-/// Fixed table row height — uniform, Asana-style rows. Replaces the previous
-/// `IntrinsicHeight` sizing so every row is the same height and the layout
-/// skips an extra measure pass.
-const double _kRowHeight = 44;
+/// Fixed table row height, matching the Mynt Plus Web position table's
+/// `defaultRowHeight`. Uniform rows also let the layout skip a measure pass.
+const double _kRowHeight = 40;
 
 /// Minimum table width — accounts for the fixed-width columns
 /// (90 + 130 + 130 + 120 = 470), the 3 px leading accent-stripe rail, and
@@ -91,7 +90,7 @@ class TicketsListScreenWeb extends ConsumerStatefulWidget {
 /// tick — and Mine/Unassigned are a person against a struck-through person.
 /// Same shape, opposite state, readable without reading the label.
 const _views = <({String key, String label, IconData icon})>[
-  (key: 'open', label: 'Open', icon: Icons.radio_button_checked),
+  (key: 'open', label: 'Open', icon: Icons.pending_outlined),
   (key: 'mine', label: 'Mine', icon: Icons.person_outline),
   (key: 'unassigned', label: 'Unassigned', icon: Icons.person_off_outlined),
   (key: 'overdue', label: 'Overdue', icon: Icons.schedule_outlined),
@@ -504,6 +503,92 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     return a.compareTo(b);
   }
 
+
+  /// The grid's single column definition — the header and every row are both
+  /// rendered from this list, so the two can no longer drift apart the way
+  /// the old hand-written `_TableHeader` / `_TicketRow` pair could.
+  ///
+  /// Assignee is deliberately absent: the `/tickets` list endpoint doesn't
+  /// return it, so every row would read "Unassigned" regardless of the real
+  /// state. It is available, and editable, in the detail panel where
+  /// `/tickets/{id}` carries it.
+  List<ZebuGridColumn<Ticket>> _columns(BuildContext context) {
+    final t = ZebuTheme.of(context);
+    return [
+      ZebuGridColumn(
+        width: _kColNumberWidth,
+        label: '#',
+        cell: (ticket) => Text(
+          '#${ticket.number}',
+          style: ZebuTextStyles.tableCell(
+            context,
+            lightColor: ZebuColors.primary,
+            darkColor: ZebuColors.primaryDark,
+            fontWeight: ZebuFonts.semiBold,
+          ).withTabularNums(),
+        ),
+      ),
+      ZebuGridColumn(
+        flex: _kColTicketFlex,
+        label: 'Ticket',
+        cell: (ticket) => Text(
+          ticket.subject,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: ZebuTextStyles.tableCell(context),
+        ),
+      ),
+      ZebuGridColumn(
+        flex: _kColRequesterFlex,
+        label: 'Requester',
+        cell: (ticket) => _TextCell(text: ticket.requester ?? ''),
+      ),
+      ZebuGridColumn(
+        flex: _kColDeptFlex,
+        label: 'Department',
+        cell: (ticket) => _TextCell(text: ticket.departmentName ?? ''),
+      ),
+      ZebuGridColumn(
+        width: _kColPriorityWidth,
+        label: 'Priority',
+        cell: (ticket) => (ticket.priority ?? '').isEmpty
+            ? Text('\u2014', style: ZebuTextStyles.small(context))
+            : StatusPill(
+                label: _titleCase(ticket.priority!),
+                color: zebuPriorityColor(ticket.priority, t),
+                icon: Icons.flag_rounded,
+              ),
+      ),
+      ZebuGridColumn(
+        width: _kColStatusWidth,
+        label: 'Status',
+        cell: (ticket) => StatusPill(
+          label: ticket.isOverdue
+              ? 'Overdue'
+              : _titleCase(ticket.statusName),
+          color: zebuStatusColor(
+            ticket.statusName,
+            t,
+            overdue: ticket.isOverdue,
+          ),
+        ),
+      ),
+      ZebuGridColumn(
+        width: _kColCreatedWidth,
+        label: 'Created',
+        alignRight: true,
+        cell: (ticket) => Text(
+          Fmt.date(ticket.created),
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.clip,
+          textAlign: TextAlign.right,
+          style: ZebuTextStyles.tableCell(context).withTabularNums(),
+        ),
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<String?>(ticketsViewRequestProvider, (_, next) {
@@ -588,7 +673,17 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      WebFilterButton(
+                     
+                      SizedBox(
+                        width: searchWidth,
+                        child: ListSearchInput(
+                          hintText: 'Search',
+                          onChanged: _onSearchChanged,
+                        ),
+                      ),
+                      const SizedBox(width: ZebuSpacing.s3),
+
+                       WebFilterButton(
                         filters: _quickFilters(),
                         sort: WebSortControl(
                           options: _sortItems,
@@ -608,14 +703,6 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                         // open-time, so a filter selected after opening
                         // never revealed "Clear all" until reopen.
                         onClear: _clearAllFilters,
-                      ),
-                      const SizedBox(width: ZebuSpacing.s3),
-                      SizedBox(
-                        width: searchWidth,
-                        child: ListSearchInput(
-                          hintText: 'Search',
-                          onChanged: _onSearchChanged,
-                        ),
                       ),
                     ],
                   );
@@ -670,74 +757,41 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
               ),
             Expanded(
               child: ListTableShell(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final horizontalScroll =
-                        constraints.maxWidth <= _kTableMinWidth;
-                    final tableWidth = horizontalScroll
-                        ? _kTableMinWidth
-                        : constraints.maxWidth;
-                    return Scrollbar(
-                    controller: _tableHScroll,
-                    scrollbarOrientation: ScrollbarOrientation.bottom,
-                    child: SingleChildScrollView(
-                      controller: _tableHScroll,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _TableHeader(
-                              scrollGutter: horizontalScroll,
-                              allChecked: _allChecked,
-                              someChecked: _someChecked,
-                              onToggleAll: _toggleCheckAll,
-                            ),
-                            Expanded(
-                              child: ColoredBox(
-                                color: t.bgElevated,
-                                child: PagedListView<Ticket>(
-                                  padding: EdgeInsets.zero,
-                                  refreshKey:
-                                      '$_view|$_search|$_panelChangeSeq',
-                                  filterKey: filterKey,
-                                  itemFilter: (ticket) => _matches(
-                                    ticket,
-                                    meNameLower: meNameLower,
-                                    bounds: dateBounds,
-                                    needle: searchNeedle,
-                                    facetNeedles: facetNeedles,
-                                  ),
-                                  itemSort: _compare,
-                                  emptyMessage: 'No tickets',
-                                  emptyHint:
-                                      'Try a different filter or search.',
-                                  fetch: (page) =>
-                                      repo.list(query.copyWith(page: page)),
-                                  loadingBuilder: (_) =>
-                                      const _TicketTableSkeleton(),
-                                  onItems: _onVisibleTickets,
-                                  itemBuilder: (context, ticket) =>
-                                      _TicketRow(
-                                    ticket: ticket,
-                                    selected: _openTicketId == ticket.id,
-                                    checked:
-                                        _selectedIds.contains(ticket.id),
-                                    onToggleChecked: () =>
-                                        _toggleChecked(ticket.id),
-                                    onTap: () => _openTicket(ticket.id),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                child: ZebuDataGrid<Ticket>(
+                  columns: _columns(context),
+                  minWidth: _kTableMinWidth,
+                  rowHeight: _kRowHeight,
+                  selection: ZebuGridSelection(
+                    allChecked: _allChecked,
+                    someChecked: _someChecked,
+                    onToggleAll: _toggleCheckAll,
+                  ),
+                  body: (context, row) => PagedListView<Ticket>(
+                    padding: EdgeInsets.zero,
+                    refreshKey: '$_view|$_search|$_panelChangeSeq',
+                    filterKey: filterKey,
+                    itemFilter: (ticket) => _matches(
+                      ticket,
+                      meNameLower: meNameLower,
+                      bounds: dateBounds,
+                      needle: searchNeedle,
+                      facetNeedles: facetNeedles,
                     ),
-                  );
-                },
-              ),
+                    itemSort: _compare,
+                    emptyMessage: 'No tickets',
+                    emptyHint: 'Try a different filter or search.',
+                    fetch: (page) => repo.list(query.copyWith(page: page)),
+                    loadingBuilder: (_) => const DotsLoader(),
+                    onItems: _onVisibleTickets,
+                    itemBuilder: (context, ticket) => row(
+                      ticket,
+                      selected: _openTicketId == ticket.id,
+                      checked: _selectedIds.contains(ticket.id),
+                      onToggleChecked: () => _toggleChecked(ticket.id),
+                      onTap: () => _openTicket(ticket.id),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
@@ -754,152 +808,8 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
 // so the grid aligns pixel-for-pixel.
 // ---------------------------------------------------------------------------
 
-class _TableHeader extends StatelessWidget {
-  const _TableHeader({
-    this.scrollGutter = false,
-    required this.allChecked,
-    required this.someChecked,
-    required this.onToggleAll,
-  });
 
-  /// When true, reserves 10 px of trailing space at the right edge of
-  /// the header to line up with the horizontal scrollbar sitting under
-  /// the body. Off when the table isn't horizontally scrolling — the
-  /// gutter would otherwise create a dead strip past "Created".
-  final bool scrollGutter;
 
-  /// Header select-all tri-state (`allChecked`/`someChecked`) + its toggle.
-  final bool allChecked;
-  final bool someChecked;
-  final VoidCallback onToggleAll;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    // Same structure the Recent Tickets card on the dashboard uses: an
-    // IntrinsicHeight Row of `_HeaderCell` boxes whose right-border
-    // creates the vertical grid line. Removing the outer horizontal
-    // padding keeps the vertical hairlines flush with the last cell's
-    // outer edge — same rhythm as the dashboard card.
-    return Container(
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        border: Border(
-          top: BorderSide(color: t.borderSubtle, width: 1),
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
-      ),
-      child: IntrinsicHeight(
-        // No leading spacer here — the body row's accent-stripe rail was
-        // removed, so a 3 px offset in the header would shift every
-        // column 3 px right of its corresponding body cell. Both header
-        // and body now start at x = 0.
-        child: Row(
-          children: [
-            SizedBox(
-              width: _kColSelectWidth,
-              child: Center(
-                child: SelectCheckbox(
-                  value: allChecked ? true : (someChecked ? null : false),
-                  onChanged: (_) => onToggleAll(),
-                  tooltip: allChecked ? 'Deselect all' : 'Select all',
-                ),
-              ),
-            ),
-            const _HeaderCell(width: _kColNumberWidth, label: '#'),
-            const _HeaderCell(flex: _kColTicketFlex, label: 'Ticket'),
-            const _HeaderCell(flex: _kColRequesterFlex, label: 'Requester'),
-            const _HeaderCell(flex: _kColDeptFlex, label: 'Department'),
-            const _HeaderCell(width: _kColPriorityWidth, label: 'Priority'),
-            const _HeaderCell(width: _kColStatusWidth, label: 'Status'),
-            const _HeaderCell(
-              width: _kColCreatedWidth,
-              label: 'Created',
-              alignRight: true,
-            ),
-            if (scrollGutter) const SizedBox(width: 10),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Column header cell — mirrors the Recent Tickets `_HeaderCell` exactly
-/// so both tables read as one grid: hairline right border (except on the
-/// last cell), `s3` horizontal padding, `tableHeader` typography.
-class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({
-    required this.label,
-    this.flex,
-    this.width,
-    this.alignRight = false,
-  });
-  final String label;
-  final int? flex;
-  final double? width;
-  final bool alignRight;
-
-  @override
-  Widget build(BuildContext context) {
-    final content = Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: ZebuSpacing.s3,
-        vertical: ZebuSpacing.s3,
-      ),
-      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
-      // Header labels must stay on one line — "Department" was
-      // wrapping to "Depart\nment" when the column got narrow. Ellipsis
-      // keeps the row height fixed instead of the header stretching
-      // taller than the body rows below.
-      child: Text(
-        label,
-        maxLines: 1,
-        softWrap: false,
-        overflow: TextOverflow.ellipsis,
-        textAlign: alignRight ? TextAlign.right : TextAlign.left,
-        style: ZebuTextStyles.tableHeader(context),
-      ),
-    );
-    if (flex != null) return Expanded(flex: flex!, child: content);
-    if (width != null) return SizedBox(width: width!, child: content);
-    return content;
-  }
-}
-
-/// Body cell — mirrors the Recent Tickets `_BodyCell` exactly.
-/// Right-border creates the vertical grid line; 10 px vertical padding
-/// gives a tighter table rhythm than the header's `s3`.
-class _BodyCell extends StatelessWidget {
-  const _BodyCell({
-    required this.child,
-    this.flex,
-    this.width,
-    this.alignRight = false,
-  });
-  final Widget child;
-  final int? flex;
-  final double? width;
-  final bool alignRight;
-
-  @override
-  Widget build(BuildContext context) {
-    final content = Container(
-      // Tighter vertical rhythm (6 px) than the previous 10 px so more
-      // rows fit on-screen without feeling squeezed — matches the row
-      // heights users typically expect from a data-dense table.
-      padding: const EdgeInsets.symmetric(
-        horizontal: ZebuSpacing.s3,
-        vertical: 8,
-      ),
-      alignment: alignRight ? Alignment.centerRight : Alignment.centerLeft,
-      child: child,
-    );
-    if (flex != null) return Expanded(flex: flex!, child: content);
-    if (width != null) return SizedBox(width: width!, child: content);
-    return content;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Ticket row — one single-line row per ticket, columns aligned with
@@ -907,169 +817,11 @@ class _BodyCell extends StatelessWidget {
 // treatment (subtle bg fill, no border shift).
 // ---------------------------------------------------------------------------
 
-class _TicketRow extends StatefulWidget {
-  const _TicketRow({
-    required this.ticket,
-    required this.onTap,
-    required this.checked,
-    required this.onToggleChecked,
-    this.selected = false,
-  });
-  final Ticket ticket;
-  final VoidCallback onTap;
 
-  /// Row selection (bulk-action checkbox) — distinct from [selected], which
-  /// flags the row whose detail panel is open.
-  final bool checked;
-  final VoidCallback onToggleChecked;
-  final bool selected;
 
-  @override
-  State<_TicketRow> createState() => _TicketRowState();
-}
 
-class _TicketRowState extends State<_TicketRow> {
-  bool _hover = false;
-
-  // Color maps mirror the Recent Tickets card on the dashboard so both
-  // tables read as one product: Unassigned = calm info-blue (not alarming
-  // amber), Normal priority = info-blue (not dead grey), High = warning
-  // amber (Emergency stays red).
-  Color _statusColor(ZebuTheme t) {
-    final ticket = widget.ticket;
-    if (ticket.isOverdue) return t.danger;
-    final s = ticket.statusName.toLowerCase();
-    if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
-    if (s.contains('unassigned')) return ZebuTheme.info;
-    if (s.contains('open') || s.contains('new')) return ZebuTheme.success;
-    return ZebuTheme.info;
-  }
-
-  Color _priorityColor(ZebuTheme t) {
-    final p = (widget.ticket.priority ?? '').toLowerCase();
-    if (p.contains('emergency') || p.contains('urgent')) return t.danger;
-    if (p.contains('high')) return ZebuTheme.warning;
-    if (p.contains('low')) return ZebuTheme.success;
-    if (p.contains('normal')) return ZebuTheme.info;
-    return ZebuTheme.info;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final ticket = widget.ticket;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
-          decoration: BoxDecoration(
-            color: widget.selected
-                ? t.accentMuted
-                : (_hover ? t.bgHover : t.bgElevated),
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
-          ),
-          child: SizedBox(
-            height: _kRowHeight,
-            child: Row(
-              children: [
-                      SizedBox(
-                        width: _kColSelectWidth,
-                        child: Center(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: widget.onToggleChecked,
-                            child: SelectCheckbox(
-                              value: widget.checked,
-                              onChanged: (_) => widget.onToggleChecked(),
-                            ),
-                          ),
-                        ),
-                      ),
-                      _BodyCell(
-                        width: _kColNumberWidth,
-                        child: Text(
-                          '#${ticket.number}',
-                          style: ZebuTextStyles.tableCell(
-                            context,
-                            lightColor: ZebuColors.primary,
-                            darkColor: ZebuColors.primaryDark,
-                            fontWeight: ZebuFonts.semiBold,
-                          ).withTabularNums(),
-                        ),
-                      ),
-                      _BodyCell(
-                        flex: _kColTicketFlex,
-                        child: Text(
-                          ticket.subject,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: ZebuTextStyles.tableCell(context),
-                        ),
-                      ),
-                      _BodyCell(
-                        flex: _kColRequesterFlex,
-                        child: _TextCell(text: ticket.requester ?? ''),
-                      ),
-                      _BodyCell(
-                        flex: _kColDeptFlex,
-                        child: _TextCell(text: ticket.departmentName ?? ''),
-                      ),
-                      _BodyCell(
-                        width: _kColPriorityWidth,
-                        child: (ticket.priority ?? '').isEmpty
-                            ? Text(
-                                '—',
-                                style: ZebuTextStyles.small(context),
-                              )
-                            : StatusPill(
-                                label: _titleCase(ticket.priority!),
-                                color: _priorityColor(t),
-                                icon: Icons.flag_rounded,
-                              ),
-                      ),
-                      _BodyCell(
-                        width: _kColStatusWidth,
-                        child: StatusPill(
-                          label: ticket.isOverdue
-                              ? 'Overdue'
-                              : _titleCase(ticket.statusName),
-                          color: _statusColor(t),
-                        ),
-                      ),
-                      _BodyCell(
-                        width: _kColCreatedWidth,
-                        alignRight: true,
-                        child: Text(
-                          Fmt.date(ticket.created),
-                          maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.clip,
-                          textAlign: TextAlign.right,
-                          style: ZebuTextStyles.tableCell(
-                            context,
-                          ).withTabularNums(),
-                        ),
-                      ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _titleCase(String s) {
-    if (s.isEmpty) return s;
-    return s[0].toUpperCase() + s.substring(1).toLowerCase();
-  }
-}
+String _titleCase(String s) =>
+    s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
 
 class _TextCell extends StatelessWidget {
   const _TextCell({required this.text});
@@ -1092,156 +844,8 @@ class _TextCell extends StatelessWidget {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Skeleton loader — rendered by [PagedListView.loadingBuilder] on the first
-// paint before ticket rows arrive. Mirrors the real row's column grid
-// (same `_kCol*` widths and `_ColDivider` spacers) so the transition to
-// live data is a swap-in-place rather than a layout jump.
-// A single shared pulse controller drives the greyscale opacity across
-// every placeholder block for a synchronised "one heartbeat" feel.
-// ---------------------------------------------------------------------------
 
-class _TicketTableSkeleton extends StatefulWidget {
-  const _TicketTableSkeleton();
 
-  @override
-  State<_TicketTableSkeleton> createState() => _TicketTableSkeletonState();
-}
 
-class _TicketTableSkeletonState extends State<_TicketTableSkeleton>
-    with SingleTickerProviderStateMixin {
-  // Approximate row height (`_BodyCell` vertical padding × 2 + content
-  // height + hairline border) — used only to decide how many skeleton
-  // rows to render so the placeholder fills the viewport instead of
-  // stopping halfway down.
-  static const double _kApproxRowHeight = 32;
 
-  late final AnimationController _pulse;
-
-  @override
-  void initState() {
-    super.initState();
-    // Standard controller lifecycle — created in initState, disposed in
-    // dispose. Using the constructor-side `..repeat()` on a `late final`
-    // field ran the risk of ticking after the widget was unmounted when
-    // the parent swapped this skeleton for the loaded rows, which was
-    // surfacing as "Trying to render a disposed EngineFlutterView".
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // Fill the full available height with skeleton rows rather than
-        // rendering a fixed eight — otherwise short screens look OK but
-        // tall viewports show blank space below the loader.
-        final rowCount = constraints.maxHeight.isFinite
-            ? (constraints.maxHeight / _kApproxRowHeight).ceil().clamp(6, 40)
-            : 12;
-        return AnimatedBuilder(
-          animation: _pulse,
-          builder: (context, _) {
-            final color = Color.lerp(t.bgTertiary, t.bgHover, _pulse.value)!;
-            return ColoredBox(
-              color: t.bgElevated,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (int i = 0; i < rowCount; i++)
-                    _SkeletonRow(shade: color),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _SkeletonRow extends StatelessWidget {
-  const _SkeletonRow({required this.shade});
-  final Color shade;
-
-  Widget _block(double width) => _SkeletonBlock(width: width, color: shade);
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
-      ),
-      child: IntrinsicHeight(
-        // No leading spacer — matches the header and live rows which
-        // both start at x = 0 now that the accent stripe rail is gone.
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(width: _kColSelectWidth),
-            _BodyCell(
-              width: _kColNumberWidth,
-              child: _block(56),
-            ),
-            _BodyCell(
-              flex: _kColTicketFlex,
-              child: _block(260),
-            ),
-            _BodyCell(
-              flex: _kColRequesterFlex,
-              child: _block(110),
-            ),
-            _BodyCell(
-              flex: _kColDeptFlex,
-              child: _block(60),
-            ),
-            _BodyCell(
-              width: _kColPriorityWidth,
-              child: _block(70),
-            ),
-            _BodyCell(
-              width: _kColStatusWidth,
-              child: _block(80),
-            ),
-            _BodyCell(
-              width: _kColCreatedWidth,
-              alignRight: true,
-              child: _block(66),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SkeletonBlock extends StatelessWidget {
-  const _SkeletonBlock({required this.width, required this.color});
-  final double width;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: 12,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(4),
-      ),
-    );
-  }
-}
 
