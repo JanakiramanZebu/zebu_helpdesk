@@ -1,8 +1,6 @@
 import 'package:dio/dio.dart' show MultipartFile;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/api/api_exception.dart';
 import '../../../core/assets.dart';
@@ -16,11 +14,14 @@ import '../../../widgets/app_dropdown.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/comment_composer.dart';
 import '../../../widgets/states.dart';
-import '../../../widgets/web/status_pill.dart';
+import '../../../widgets/web/detail_fields.dart';
+import '../../../widgets/web/panel_header.dart';
+import '../../../widgets/web/status_badge.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
-import '../../../widgets/web/zebu_avatar.dart';
+import '../../../widgets/web/thread_view.dart';
+import 'task_relations.dart';
 
 /// Web-only task-detail slide-over panel — visual parity with
 /// [TicketDetailPanel]:
@@ -29,12 +30,6 @@ import '../../../widgets/web/zebu_avatar.dart';
 ///   - fields expressed as a left-labeled table inside one rounded card;
 ///   - thread rows as individual cards with actor-avatar column.
 ///
-/// Data comes from [tasksRepositoryProvider] — same source the mobile
-/// detail screen uses.
-const _kFlatRadius = 8.0;
-const double _kFieldLabelWidth = 88;
-const double _kFieldValueWidth = 280;
-const double _kSidebarRowHeight = 40;
 
 /// Panel-body width at (or above) which the panel switches to a two-column
 /// layout: activity feed on the left, fields sidebar on the right. Below
@@ -90,12 +85,26 @@ class TaskDetailPanel extends ConsumerStatefulWidget {
     super.key,
     required this.taskId,
     required this.onClose,
+    this.initialTask,
+    this.onOpenTask,
     this.isFullscreen = false,
     this.onToggleFullscreen,
     this.onChanged,
   });
   final int taskId;
   final VoidCallback onClose;
+
+  /// The list row's summary of this task, when the host has one.
+  ///
+  /// Purely a first-paint optimisation: the panel still fetches the full
+  /// task, but with this the header can show the number and title
+  /// immediately rather than the word "Loading…". Every field it carries is
+  /// replaced the moment the real fetch lands.
+  final Task? initialTask;
+
+  /// Asks the host to swap the panel to another task — used by the subtask
+  /// and dependency rows. Null makes those rows inert.
+  final ValueChanged<int>? onOpenTask;
 
   /// See [TicketDetailPanel.isFullscreen].
   final bool isFullscreen;
@@ -114,7 +123,14 @@ class TaskDetailPanel extends ConsumerStatefulWidget {
 
 class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   Task? _task;
+
+  /// Whether the right-hand details pane is collapsed. Panel state, not
+  /// persisted: an agent who collapses it for one wide task usually wants it
+  /// back on the next one.
+  bool _detailsCollapsed = false;
   List<ThreadEntry> _thread = const [];
+  List<Task> _subtasks = const [];
+  List<TaskDependency> _dependencies = const [];
   Object? _error;
   bool _loading = true;
   bool _acting = false;
@@ -134,17 +150,35 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
 
   Future<void> _load() async {
     setState(() {
+      // Seed from the row's summary so the header has something to draw on
+      // the first frame. Null on hosts that don't pass one, which behave
+      // exactly as before.
+      _task ??= widget.initialTask;
       _loading = true;
       _error = null;
     });
     final repo = ref.read(tasksRepositoryProvider);
     try {
+      // Relations are fetched in parallel with the thread — they are two
+      // more round trips, and serialising them would double the time the
+      // panel spends on its loader for data that sits below the fold.
       final task = await repo.get(widget.taskId);
-      final thread = await repo.thread(widget.taskId, limit: 50);
+      final thread = repo.thread(widget.taskId, limit: 50);
+      // A task with no subtasks / dependencies 404s on some installs rather
+      // than returning an empty list, so neither is allowed to fail the load.
+      final subtasks = repo.subtasks(widget.taskId).catchError((_) => <Task>[]);
+      final deps = repo
+          .dependencies(widget.taskId)
+          .catchError((_) => <TaskDependency>[]);
+      final entries = await thread;
+      final subs = await subtasks;
+      final dependencies = await deps;
       if (!mounted) return;
       setState(() {
         _task = task;
-        _thread = thread.items;
+        _thread = entries.items;
+        _subtasks = subs;
+        _dependencies = dependencies;
         _loading = false;
       });
     } catch (e) {
@@ -207,6 +241,70 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
         return;
     }
     await _refreshThread();
+  }
+
+  /// Swaps the panel over to a related task without closing it. Cheaper than
+  /// routing — the host's slide-over stays mounted, so there is no open /
+  /// close animation between two tasks the agent is comparing.
+  void _openRelated(int id) {
+    if (id == widget.taskId) return;
+    widget.onOpenTask?.call(id);
+  }
+
+  Future<void> _addSubtask() async {
+    final result = await showDialog<({String title, String description})>(
+      context: context,
+      builder: (_) => const TaskSubtaskDialog(),
+    );
+    if (result == null) return;
+    setState(() => _acting = true);
+    try {
+      await ref.read(tasksRepositoryProvider).createSubtask(widget.taskId, {
+        'title': result.title,
+        if (result.description.isNotEmpty) 'description': result.description,
+      });
+      _toast('Subtask created', type: ToastType.success);
+      await _load();
+    } on ApiException catch (e) {
+      _toast(e.message, type: ToastType.error);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  Future<void> _addDependency() async {
+    final id = await showDialog<int>(
+      context: context,
+      builder: (_) => const TaskDependencyDialog(),
+    );
+    if (id == null) return;
+    setState(() => _acting = true);
+    try {
+      final deps = await ref
+          .read(tasksRepositoryProvider)
+          .addDependency(widget.taskId, id);
+      if (mounted) setState(() => _dependencies = deps);
+      widget.onChanged?.call();
+    } on ApiException catch (e) {
+      _toast(e.message, type: ToastType.error);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  Future<void> _removeDependency(TaskDependency dep) async {
+    setState(() => _acting = true);
+    try {
+      final deps = await ref
+          .read(tasksRepositoryProvider)
+          .removeDependency(widget.taskId, dep.id);
+      if (mounted) setState(() => _dependencies = deps);
+      widget.onChanged?.call();
+    } on ApiException catch (e) {
+      _toast(e.message, type: ToastType.error);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
   }
 
   Future<void> _refreshThread() async {
@@ -401,7 +499,9 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
       return Column(
         children: [
           _Header(
-            task: null,
+            // The seeded summary when we have one — the identity of the task
+            // is not in doubt while its body loads.
+            task: _task,
             onClose: widget.onClose,
             onMenu: null,
             isFullscreen: widget.isFullscreen,
@@ -497,8 +597,7 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
             ),
           )
         else ...[
-          for (final (i, e) in _thread.indexed)
-            _ThreadRow(entry: e, isLast: i == _thread.length - 1),
+          ...zebuThreadItems(_thread),
           const SizedBox(height: ZebuSpacing.s3),
         ],
       ],
@@ -511,7 +610,7 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   /// matches the reference layout where the details block sits as a fixed
   /// rail alongside the message thread.
   Widget _buildWide(ZebuTheme t, Task task, _TaskCaps caps) {
-    return Row(
+    final row = Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
@@ -530,38 +629,90 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
                 )
               else ...[
                 const SizedBox(height: ZebuSpacing.s3),
-                for (final (i, e) in _thread.indexed)
-                  _ThreadRow(entry: e, isLast: i == _thread.length - 1),
+                ...zebuThreadItems(_thread),
                 const SizedBox(height: ZebuSpacing.s3),
               ],
             ],
           ),
         ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: t.borderSubtle, width: 1)),
-          ),
-          child: SizedBox(
-            width: _kFieldsSidebarWidth,
-            child: ListView(
-              padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s4),
-              children: [
-                _FieldsTable(
-                  task: task,
-                  sidebar: true,
-                  statusRowKey: _statusRowKey,
-                  priorityRowKey: _priorityRowKey,
-                  assigneeRowKey: _assigneeRowKey,
-                  departmentRowKey: _departmentRowKey,
-                  onStatusTap: caps.canClose ? _pickTaskStatus : null,
-                  onPriorityTap: caps.canEdit ? _pickTaskPriority : null,
-                  onAssigneeTap: caps.canAssign ? _pickTaskAssignee : null,
-                  onDepartmentTap: caps.canTransfer
-                      ? _pickTaskDepartment
-                      : null,
-                ),
-              ],
+        if (!_detailsCollapsed)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: t.borderSubtle, width: 1)),
             ),
+            child: SizedBox(
+              width: _kFieldsSidebarWidth,
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s4),
+                children: [
+                  _FieldsTable(
+                    task: task,
+                    sidebar: true,
+                    statusRowKey: _statusRowKey,
+                    priorityRowKey: _priorityRowKey,
+                    assigneeRowKey: _assigneeRowKey,
+                    departmentRowKey: _departmentRowKey,
+                    onStatusTap: caps.canClose ? _pickTaskStatus : null,
+                    onPriorityTap: caps.canEdit ? _pickTaskPriority : null,
+                    onAssigneeTap: caps.canAssign ? _pickTaskAssignee : null,
+                    onDepartmentTap: caps.canTransfer
+                        ? _pickTaskDepartment
+                        : null,
+                    onCollapse: () => setState(() => _detailsCollapsed = true),
+                  ),
+                  // Relations sit under the fields, not above the thread: a
+                  // subtask list is metadata about this task, the same kind
+                  // of thing as its assignee or its due date.
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: ZebuSpacing.s4,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TaskSubtasksSection(
+                          subtasks: _subtasks,
+                          onAdd: caps.canEdit && !_acting ? _addSubtask : null,
+                          onOpen: (sub) => _openRelated(sub.id),
+                        ),
+                        TaskDependenciesSection(
+                          dependencies: _dependencies,
+                          onAdd: caps.canEdit && !_acting
+                              ? _addDependency
+                              : null,
+                          onRemove: caps.canEdit && !_acting
+                              ? _removeDependency
+                              : null,
+                          onOpen: (dep) {
+                            final id = dep.blocker?.id;
+                            if (id != null) _openRelated(id);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+
+    if (!_detailsCollapsed) return row;
+
+    // Collapsed, the pane is gone entirely and only its toggle remains,
+    // floated in the corner it vanished from. A persistent rail was cheaper
+    // to build but spent 44 px of a column agents read long quoted email in.
+    return Stack(
+      children: [
+        row,
+        Positioned(
+          top: ZebuSpacing.s3,
+          right: ZebuSpacing.s3,
+          child: ZebuRailToggle(
+            icon: Icons.keyboard_double_arrow_left_rounded,
+            tooltip: 'Show details',
+            onTap: () => setState(() => _detailsCollapsed = false),
           ),
         ),
       ],
@@ -613,18 +764,14 @@ class _Header extends StatelessWidget {
                 style: ZebuTextStyles.smallStrong(context),
               ),
             )
-          else ...[
-            _NumberChip(number: task!.number),
-            const SizedBox(width: ZebuSpacing.s3),
+          else
             Expanded(
-              child: Text(
-                task!.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ZebuTextStyles.pageTitle(context),
+              child: ZebuPanelTitle(
+                id: task!.number,
+                title: task!.title,
+                meta: task!.assignee,
               ),
             ),
-          ],
           const SizedBox(width: ZebuSpacing.s3),
           if (task != null && onMenu != null && caps.hasHeaderAction) ...[
             _ActionsBtn(task: task!, caps: caps, onSelected: onMenu!),
@@ -645,29 +792,6 @@ class _Header extends StatelessWidget {
             onTap: onClose,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NumberChip extends StatelessWidget {
-  const _NumberChip({required this.number});
-  final String number;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: t.bgTertiary,
-        borderRadius: BorderRadius.circular(ZebuRadius.rXs),
-      ),
-      child: Text(
-        '#$number',
-        style: ZebuTextStyles.small(context)
-            .copyWith(fontWeight: FontWeight.w600, color: t.textPrimary)
-            .withTabularNums(),
       ),
     );
   }
@@ -844,6 +968,7 @@ class _FieldsTable extends StatelessWidget {
     required this.onPriorityTap,
     required this.onAssigneeTap,
     required this.onDepartmentTap,
+    this.onCollapse,
   });
   final Task task;
 
@@ -866,6 +991,10 @@ class _FieldsTable extends StatelessWidget {
   final ValueChanged<BuildContext>? onAssigneeTap;
   final ValueChanged<BuildContext>? onDepartmentTap;
 
+  /// Collapses the pane. Null in the stacked (narrow) layout, where there is
+  /// no sidebar to collapse.
+  final VoidCallback? onCollapse;
+
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
@@ -873,81 +1002,99 @@ class _FieldsTable extends StatelessWidget {
     final assignee = (task.assignee ?? '').trim();
     final department = (task.departmentName ?? '').trim();
 
+    // Grouped exactly like the ticket sidebar: a flat run of eight rows gave
+    // an agent nothing to aim at, and the four groups are the four questions
+    // actually asked of a task — who owns it, what state is it in, when is it
+    // due, where did it come from.
     final cells = <Widget>[
-      _FieldRow(
+      if (sidebar) const ZebuFieldGroupLabel('Assignment', first: true),
+      ZebuFieldRow(
         rowKey: assigneeRowKey,
         icon: Icons.person_outline,
         label: 'Assignee',
         sidebar: sidebar,
         onTap: onAssigneeTap,
         value: assignee.isEmpty
-            ? const _EmptyValue(label: 'Unassigned')
-            : _TextValue(text: assignee, tone: t.accent, linked: true),
+            ? const ZebuEmptyValue(label: 'Unassigned')
+            : ZebuTextValue(text: assignee, tone: t.accent, linked: true),
       ),
-      _FieldRow(
+      ZebuFieldRow(
         rowKey: departmentRowKey,
         icon: Icons.business_outlined,
         label: 'Department',
         sidebar: sidebar,
         onTap: onDepartmentTap,
         value: department.isEmpty
-            ? const _EmptyValue(label: 'None')
-            : _TextValue(text: department, tone: t.accent, linked: true),
+            ? const ZebuEmptyValue(label: 'None')
+            : ZebuTextValue(text: department, tone: t.accent, linked: true),
       ),
-      _FieldRow(
+      if (sidebar) const ZebuFieldGroupLabel('Task'),
+      ZebuFieldRow(
         rowKey: statusRowKey,
         icon: Icons.flag_outlined,
         label: 'Status',
         sidebar: sidebar,
         onTap: onStatusTap,
-        value: _StatusValuePill(
-          label: task.statusName,
-          color: _statusTone(task, t),
+        // The badge, not a tinted pill: status comes from a fixed vocabulary
+        // with a designed fill weight per value. Overdue is deliberately not
+        // passed — this panel has its own Due row reporting the breach, and
+        // letting it repaint Status too said the same thing twice.
+        value: Align(
+          alignment: Alignment.centerLeft,
+          child: StatusBadge(
+            label: _titleCase(task.statusName),
+            status: task.statusName,
+            dense: true,
+          ),
         ),
       ),
-      _FieldRow(
+      ZebuFieldRow(
         rowKey: priorityRowKey,
         icon: Icons.priority_high,
         label: 'Priority',
         sidebar: sidebar,
         onTap: onPriorityTap,
         value: priorityName.isEmpty
-            ? const _EmptyValue(label: 'No priority')
-            : _StatusValuePill(
-                label: _titleCase(priorityName),
-                color: _priorityTone(priorityName, t),
-                icon: Icons.flag_rounded,
+            ? const ZebuEmptyValue(label: 'No priority')
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: PriorityBadge(
+                  label: _titleCase(priorityName),
+                  priority: priorityName,
+                  dense: true,
+                ),
               ),
       ),
+      if (task.blocked)
+        ZebuFieldRow(
+          icon: Icons.block,
+          label: 'Blocked',
+          sidebar: sidebar,
+          value: ZebuTextValue(text: 'Blocked by dependency', tone: t.danger),
+        ),
+      if (task.progress > 0)
+        ZebuFieldRow(
+          icon: Icons.donut_small_outlined,
+          label: 'Progress',
+          sidebar: sidebar,
+          value: ZebuTextValue(text: '${task.progress}%'),
+        ),
+      if (sidebar) const ZebuFieldGroupLabel('Schedule'),
       if (task.duedate != null)
-        _FieldRow(
+        ZebuFieldRow(
           icon: Icons.schedule,
           label: 'Due',
           sidebar: sidebar,
-          value: _TextValue(
+          value: ZebuTextValue(
             text: Fmt.dateTime(task.duedate),
             tone: task.overdue ? t.danger : null,
           ),
         ),
-      if (task.blocked)
-        _FieldRow(
-          icon: Icons.block,
-          label: 'Blocked',
-          sidebar: sidebar,
-          value: _TextValue(text: 'Blocked by dependency', tone: t.danger),
-        ),
-      if (task.progress > 0)
-        _FieldRow(
-          icon: Icons.donut_small_outlined,
-          label: 'Progress',
-          sidebar: sidebar,
-          value: _TextValue(text: '${task.progress}%'),
-        ),
-      _FieldRow(
+      ZebuFieldRow(
         icon: Icons.event_outlined,
         label: 'Created',
         sidebar: sidebar,
-        value: _TextValue(text: Fmt.dateTime(task.created)),
+        value: ZebuTextValue(text: Fmt.dateTime(task.created)),
       ),
     ];
 
@@ -955,38 +1102,54 @@ class _FieldsTable extends StatelessWidget {
     // row (clickable or not) sits on the same white ground against the
     // panel's warm-paper bg. The card's subtle shadow lifts the rail off
     // the page. [DefaultTextStyle] pins the ambient base to `bodyBase` so
-    // descendant [_TextValue] runs inherit the sidebar's 14 px size —
+    // descendant [ZebuTextValue] runs inherit the sidebar's 14 px size —
     // fields rail reads one size-step above the messages column, matching
     // TicketDetailPanel.
     if (sidebar) {
+      // No card in the sidebar: the pane's own left border already separates
+      // it from the thread, so a bordered box inside a bordered pane was two
+      // frames around one list.
       return Padding(
         padding: const EdgeInsets.fromLTRB(
-          ZebuSpacing.s3,
+          ZebuSpacing.s4,
           0,
-          ZebuSpacing.s3,
+          ZebuSpacing.s4,
           ZebuSpacing.s3,
         ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: t.bgElevated,
-            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
-            border: Border.all(color: t.borderSubtle, width: 1),
-            boxShadow: ZebuElevation.shadowXs,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: ZebuSpacing.s3,
-              vertical: ZebuSpacing.s2,
-            ),
-            child: DefaultTextStyle.merge(
-              style: ZebuTextStyles.body(
-                context,
-              ).copyWith(color: t.textPrimary),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: cells,
+        child: DefaultTextStyle.merge(
+          style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(
+                  left: ZebuSpacing.s2,
+                  bottom: ZebuSpacing.s3,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Task Details',
+                        style: ZebuTextStyles.sectionTitle(
+                          context,
+                          color: t.textSlate,
+                        ),
+                      ),
+                    ),
+                    if (onCollapse != null)
+                      ZebuRailToggle(
+                        icon: Icons.keyboard_double_arrow_right_rounded,
+                        tooltip: 'Hide details',
+                        onTap: onCollapse!,
+                      ),
+                  ],
+                ),
               ),
-            ),
+              Divider(height: 1, thickness: 1, color: t.dividerSlate),
+              const SizedBox(height: ZebuSpacing.s4),
+              ...cells,
+            ],
           ),
         ),
       );
@@ -1022,216 +1185,9 @@ class _FieldsTable extends StatelessWidget {
     );
   }
 
-  static Color _statusTone(Task task, ZebuTheme t) {
-    if (task.overdue) return t.danger;
-    if (!task.isOpen) return t.textSecondary;
-    return ZebuTheme.success;
-  }
-
-  static Color _priorityTone(String name, ZebuTheme t) {
-    final n = name.toLowerCase();
-    if (n.contains('emergency') || n.contains('urgent')) return t.danger;
-    if (n.contains('high')) return ZebuTheme.warning;
-    if (n.contains('low')) return ZebuTheme.success;
-    if (n.contains('normal')) return ZebuTheme.info;
-    return ZebuTheme.info;
-  }
-
   static String _titleCase(String s) {
     if (s.isEmpty) return s;
     return s[0].toUpperCase() + s.substring(1).toLowerCase();
-  }
-}
-
-class _FieldRow extends StatefulWidget {
-  const _FieldRow({
-    this.rowKey,
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.sidebar,
-    this.onTap,
-  });
-  final GlobalKey? rowKey;
-  final IconData icon;
-  final String label;
-  final Widget value;
-
-  /// True when the row is rendered inside the wide-mode right rail. In
-  /// sidebar mode the clickable value slot flexes to fill remaining space
-  /// instead of using the fixed [_kFieldValueWidth] pill width — the
-  /// sidebar itself is only ~320 px wide, so a 280 px value would clip.
-  final bool sidebar;
-
-  final ValueChanged<BuildContext>? onTap;
-
-  @override
-  State<_FieldRow> createState() => _FieldRowState();
-}
-
-class _FieldRowState extends State<_FieldRow> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final clickable = widget.onTap != null;
-    final Widget valueSlot;
-    if (clickable) {
-      // Key on the pill (not the row) — dropdown popups anchor here so
-      // they land under the value, aligned with the trigger's left edge
-      // and width.
-      final Widget pill = KeyedSubtree(
-        key: widget.rowKey,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(child: widget.value),
-              Icon(
-                Icons.expand_more,
-                size: 16,
-                color: _hover ? t.accent : t.textSecondary,
-              ),
-            ],
-          ),
-        ),
-      );
-      // In sidebar mode the pill flexes to fill remaining row width — the
-      // 320 px rail is too narrow for the 280 px fixed pill used in the
-      // wider single-column card layout.
-      valueSlot = widget.sidebar
-          ? Expanded(child: pill)
-          : SizedBox(width: _kFieldValueWidth, child: pill);
-    } else {
-      valueSlot = Expanded(child: widget.value);
-    }
-    // Sidebar rows sit on a taller [_kSidebarRowHeight] rhythm and bump
-    // the label to the 14 px `bodyBase` size so the fields rail reads as
-    // its own scannable column, not a squeezed footnote. Matches the
-    // TicketDetailPanel reference.
-    final rowHeight = widget.sidebar ? _kSidebarRowHeight : 30.0;
-    final labelStyle = widget.sidebar
-        ? ZebuTextStyles.body(
-            context,
-          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500)
-        : ZebuTextStyles.small(
-            context,
-          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500);
-    // Leading icons removed — labels alone carry the meaning and the row
-    // reads cleaner without the credential glyphs (person / building /
-    // flag / bang / calendar).
-    final row = SizedBox(
-      height: rowHeight,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s1),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: _kFieldLabelWidth,
-              child: Text(widget.label, style: labelStyle),
-            ),
-            const SizedBox(width: ZebuSpacing.s3),
-            valueSlot,
-          ],
-        ),
-      ),
-    );
-    if (!clickable) return row;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => widget.onTap!(widget.rowKey?.currentContext ?? context),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
-          color: t.bgElevated,
-          child: row,
-        ),
-      ),
-    );
-  }
-}
-
-class _TextValue extends StatefulWidget {
-  const _TextValue({required this.text, this.tone, this.linked = false});
-  final String text;
-  final Color? tone;
-  final bool linked;
-
-  @override
-  State<_TextValue> createState() => _TextValueState();
-}
-
-class _TextValueState extends State<_TextValue> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final color = widget.tone ?? t.textPrimary;
-    // Inherit the ambient DefaultTextStyle base so the sidebar's bumped
-    // 14 px wrap propagates into value text — the surrounding column
-    // wraps in a DefaultTextStyle.merge with `bodyBase` (sidebar) or
-    // `bodySm` (narrow card), and this pulls that size out of the
-    // ambient rather than hard-pinning to `bodyBase`.
-    final base = DefaultTextStyle.of(context).style;
-    final child = Text(
-      widget.text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: base.copyWith(
-        color: color,
-        fontWeight: FontWeight.w500,
-        decoration: widget.linked && _hover
-            ? TextDecoration.underline
-            : TextDecoration.none,
-        decorationColor: color,
-      ),
-    );
-    if (!widget.linked) return child;
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: child,
-    );
-  }
-}
-
-class _StatusValuePill extends StatelessWidget {
-  const _StatusValuePill({required this.label, required this.color, this.icon});
-  final String label;
-  final Color color;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: StatusPill(label: label, color: color, icon: icon),
-    );
-  }
-}
-
-class _EmptyValue extends StatelessWidget {
-  const _EmptyValue({required this.label});
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Text(
-      label,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: ZebuTextStyles.body(
-        context,
-      ).copyWith(color: t.textSecondary, fontWeight: FontWeight.w400),
-    );
   }
 }
 
@@ -1272,263 +1228,6 @@ class _ActivityHeader extends StatelessWidget {
 // tags).
 // ---------------------------------------------------------------------------
 
-class _ThreadRow extends StatelessWidget {
-  const _ThreadRow({required this.entry, this.isLast = false});
-  final ThreadEntry entry;
-
-  /// Suppresses the bottom hairline on the final message so the stream
-  /// doesn't end on a dangling divider.
-  final bool isLast;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final isNote = entry.isNote;
-    final html = entry.bodyHtml ?? entry.body ?? '';
-    final plain = Fmt.stripHtml(html);
-
-    // Per-poster name color, matching the avatar, so each participant's
-    // messages are distinguishable at a glance. No contrast fudging needed:
-    // the avatar palette's label tone is already the deep, on-surface step of
-    // the hue — it was the old saturated swatches that had to be darkened.
-    final nameColor = zebuAvatarTone(entry.poster, t);
-
-    final content = Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ZebuAvatar(name: entry.poster),
-        const SizedBox(width: ZebuSpacing.s3),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: Text(
-                      entry.poster,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: ZebuTextStyles.smallStrong(
-                        context,
-                      ).copyWith(color: nameColor),
-                    ),
-                  ),
-                  if (entry.created != null) ...[
-                    const SizedBox(width: ZebuSpacing.s2),
-                    Text(
-                      Fmt.ago(entry.created),
-                      style: ZebuTextStyles.label(context),
-                    ),
-                  ],
-                  if (isNote) ...[
-                    const SizedBox(width: ZebuSpacing.s2),
-                    Text(
-                      'Internal note',
-                      style: ZebuTextStyles.label(
-                        context,
-                      ).copyWith(color: t.note, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ],
-              ),
-              const SizedBox(height: 6),
-              if (plain.trim().isEmpty)
-                Text('(no content)', style: ZebuTextStyles.small(context))
-              else if (html.contains('<'))
-                _HtmlBody(html: html)
-              else
-                Text(
-                  plain,
-                  style: ZebuTextStyles.body(context).copyWith(height: 1.5),
-                ),
-              if (entry.attachments.isNotEmpty) ...[
-                const SizedBox(height: ZebuSpacing.s3),
-                Wrap(
-                  spacing: ZebuSpacing.s2,
-                  runSpacing: ZebuSpacing.s2,
-                  children: [
-                    for (final a in entry.attachments)
-                      _AttachmentChip(attachment: a),
-                  ],
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
-    );
-
-    if (isNote) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(
-          ZebuSpacing.s4,
-          ZebuSpacing.s2,
-          ZebuSpacing.s4,
-          ZebuSpacing.s2,
-        ),
-        child: Container(
-          padding: const EdgeInsets.all(ZebuSpacing.s3),
-          decoration: BoxDecoration(
-            color: t.warningLight,
-            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
-            border: Border.all(color: t.borderSubtle, width: 1),
-          ),
-          child: content,
-        ),
-      );
-    }
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        ZebuSpacing.s4,
-        ZebuSpacing.s3,
-        ZebuSpacing.s4,
-        ZebuSpacing.s3,
-      ),
-      decoration: BoxDecoration(
-        border: isLast
-            ? null
-            : Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
-      ),
-      child: content,
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Attachment chip
 // ---------------------------------------------------------------------------
-
-class _AttachmentChip extends StatefulWidget {
-  const _AttachmentChip({required this.attachment});
-  final Attachment attachment;
-
-  @override
-  State<_AttachmentChip> createState() => _AttachmentChipState();
-}
-
-class _AttachmentChipState extends State<_AttachmentChip> {
-  bool _hover = false;
-
-  IconData get _icon {
-    final t = widget.attachment.type ?? '';
-    if (t.startsWith('image/')) return Icons.image_outlined;
-    if (t.contains('pdf')) return Icons.picture_as_pdf_outlined;
-    if (t.contains('sheet') || t.contains('excel')) {
-      return Icons.table_chart_outlined;
-    }
-    if (t.contains('word') || t.contains('document')) {
-      return Icons.description_outlined;
-    }
-    if (t.contains('zip') || t.contains('rar') || t.contains('compressed')) {
-      return Icons.folder_zip_outlined;
-    }
-    return Icons.attach_file;
-  }
-
-  Future<void> _open() async {
-    final a = widget.attachment;
-    final url = a.downloadUrl ?? a.streamUrl;
-    if (url == null) return;
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final a = widget.attachment;
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _open,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          padding: const EdgeInsets.symmetric(
-            horizontal: ZebuSpacing.s3,
-            vertical: 6,
-          ),
-          decoration: BoxDecoration(
-            color: _hover ? t.accentSoft : t.bgTertiary,
-            border: Border.all(
-              color: _hover ? t.accent : t.borderSubtle,
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(_kFlatRadius),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(_icon, size: 14, color: _hover ? t.accent : t.textSecondary),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 220),
-                child: Text(
-                  a.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZebuTextStyles.small(context).copyWith(
-                    color: _hover ? t.accent : t.textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-              if (a.size != null) ...[
-                const SizedBox(width: 6),
-                Text(
-                  Fmt.fileSize(a.size),
-                  style: ZebuTextStyles.label(context).withTabularNums(),
-                ),
-              ],
-              const SizedBox(width: 6),
-              Icon(
-                Icons.open_in_new,
-                size: 12,
-                color: _hover ? t.accent : t.textSecondary,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HtmlBody extends StatelessWidget {
-  const _HtmlBody({required this.html});
-  final String html;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRect(
-      child: HtmlWidget(
-        html,
-        textStyle: ZebuTextStyles.body(context).copyWith(height: 1.5),
-        onTapUrl: (url) async {
-          final uri = Uri.tryParse(url);
-          if (uri == null) return false;
-          return launchUrl(uri, mode: LaunchMode.externalApplication);
-        },
-        customStylesBuilder: (element) {
-          switch (element.localName) {
-            case 'b':
-            case 'strong':
-              return {'font-weight': '600'};
-            case 'small':
-            case 'sub':
-            case 'sup':
-              return {'font-size': '13px'};
-            case 'a':
-              return {'color': '#0037B7', 'text-decoration': 'underline'};
-            default:
-              return null;
-          }
-        },
-      ),
-    );
-  }
-}

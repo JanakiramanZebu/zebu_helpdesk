@@ -31,7 +31,6 @@ import '../../features/splash/splash_screen.dart';
 import '../../features/tasks/create_task_screen.dart';
 import '../../features/tasks/task_detail_screen.dart';
 import '../../features/tasks/tasks_list_screen.dart';
-import '../../features/tasks/web/task_detail_screen_web.dart';
 import '../../features/tasks/web/tasks_list_screen_web.dart';
 import '../../features/tickets/create_ticket_screen.dart';
 import '../../features/tickets/ticket_detail_screen.dart';
@@ -130,10 +129,12 @@ final routerProvider = Provider<GoRouter>((ref) {
                       path: 'new',
                       builder: (_, __) => const CreateTaskScreen(),
                     ),
+                    // Deep link — renders the list with the detail panel
+                    // already open, rather than a second full-page task UI.
                     GoRoute(
                       path: ':id',
-                      builder: (_, s) => TaskDetailScreenWeb(
-                        taskId: int.parse(s.pathParameters['id']!),
+                      builder: (_, s) => TasksListScreenWeb(
+                        openTaskId: int.tryParse(s.pathParameters['id'] ?? ''),
                       ),
                     ),
                   ],
