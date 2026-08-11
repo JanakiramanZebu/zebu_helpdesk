@@ -49,7 +49,7 @@ class ZebuColors {
   static const Color cardBorderDark = Color(0xFF30363D);
 
   static const Color cardHover = Color(0xFFF6F8FA);
-  static const Color cardHoverDark = Color(0xFF21262D); 
+  static const Color cardHoverDark = Color(0xFF21262D);
 
   static const Color cardPressed = Color(0xFFEAEEF2);
   static const Color cardPressedDark = Color(0xFF30363D);
@@ -57,7 +57,7 @@ class ZebuColors {
   // ---------------- BUSINESS / STATUS ----------------
 
   static const Color profit = Color(0xFF00B14F);
-  static const Color profitDark = Color(0xFF3FB950); 
+  static const Color profitDark = Color(0xFF3FB950);
   static const Color loss = Color(0xFFFF1717);
   static const Color lossDark = Color(0xFFF85149);
 
@@ -123,10 +123,10 @@ class ZebuColors {
   static const Color modalBarrierDark = Color(0x4E010409);
 
   // ---------------- SCROLLBAR ----------------
-  static const Color scrollbarThumbLight =
-      Color(0x804A4A4A); // textSecondary @ 50%
-  static const Color scrollbarThumbDark =
-      Color(0x806E7681); //  fg-subtle @ 50%
+  static const Color scrollbarThumbLight = Color(
+    0x804A4A4A,
+  ); // textSecondary @ 50%
+  static const Color scrollbarThumbDark = Color(0x806E7681); //  fg-subtle @ 50%
 
   static const Color scrollbarTrack = Color(0xFFF6F8FA);
   static const Color scrollbarTrackDark = Color(0xFF010409);
@@ -153,8 +153,7 @@ class ZebuColors {
 
   // static const Color dashboardCarColor = Color.fromARGB(19, 65, 75, 94);
   static const Color dashboardCarColor = Color(0xFF171A1E);
-   // 123 alpha value in ARGB format
-
+  // 123 alpha value in ARGB format
 }
 
 /// Parses a `#RRGGBB` hex string (the format the journal-notes backend stores

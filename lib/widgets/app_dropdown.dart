@@ -125,8 +125,10 @@ Future<T?> showAppDropdown<T>(
   final viewport = overlayBox.size;
 
   final menuWidth = anchorSize.width.clamp(minWidth, maxWidth);
-  final menuLeft = anchorTopLeft.dx
-      .clamp(8.0, (viewport.width - menuWidth - 8.0).clamp(8.0, viewport.width));
+  final menuLeft = anchorTopLeft.dx.clamp(
+    8.0,
+    (viewport.width - menuWidth - 8.0).clamp(8.0, viewport.width),
+  );
   final menuTop = anchorTopLeft.dy + anchorSize.height + 6;
   // If the anchor is near the bottom edge, cap the menu height instead of
   // flipping upward. 24 px keeps the menu clear of the viewport bottom.
@@ -220,10 +222,7 @@ class _AppDropdownButtonState<T> extends State<AppDropdownButton<T>> {
   bool _hover = false;
 
   Future<void> _show() async {
-    final result = await showAppDropdown<T>(
-      context,
-      entries: widget.entries,
-    );
+    final result = await showAppDropdown<T>(context, entries: widget.entries);
     if (result != null) widget.onSelected(result);
   }
 
@@ -277,10 +276,7 @@ class _AppDropdownButtonState<T> extends State<AppDropdownButton<T>> {
 /// action menus stay compact but long lists (agents, departments) become
 /// scannable — mirrors the reference Asana / ClickUp assignee pickers.
 class _AppDropdownContent<T> extends StatefulWidget {
-  const _AppDropdownContent({
-    required this.entries,
-    required this.onPick,
-  });
+  const _AppDropdownContent({required this.entries, required this.onPick});
   final List<AppDropdownEntry<T>> entries;
   final void Function(T?) onPick;
 
@@ -296,8 +292,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
   /// menus with 3–5 rows don't need it, but any long list benefits.
   static const int _kSearchThreshold = 6;
 
-  int get _itemCount =>
-      widget.entries.whereType<AppDropdownItem<T>>().length;
+  int get _itemCount => widget.entries.whereType<AppDropdownItem<T>>().length;
 
   bool get _showSearch => _itemCount >= _kSearchThreshold;
 
@@ -355,11 +350,10 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: t.bgElevated,
-        // 5, matching the search field inside it and the app's other
-        // surfaces. This used to be `rMd` (10) while the Material clipping
-        // its contents was already 5, so the card's outline and its clip
-        // disagreed by 5 px at every corner.
-        borderRadius: BorderRadius.circular(5),
+        // 6, matching the filter panel's menu. The outline and the Material
+        // clipping its contents have to agree — they were `rMd` (10) against
+        // 5 once, and disagreed by 5 px at every corner.
+        borderRadius: BorderRadius.circular(6),
         border: Border.all(color: t.borderSubtle, width: 1),
         boxShadow: const [
           BoxShadow(
@@ -377,7 +371,7 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
       child: Material(
         color: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        borderRadius: BorderRadius.circular(5),
+        borderRadius: BorderRadius.circular(6),
         clipBehavior: Clip.antiAlias,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -420,7 +414,10 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                         vertical: 20,
                       ),
                       child: Center(
-                        child: Text('No results', style: ZebuTextStyles.small(context)),
+                        child: Text(
+                          'No results',
+                          style: ZebuTextStyles.small(context),
+                        ),
                       ),
                     ),
             ),
@@ -472,7 +469,9 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                       autofocus: true,
                       textAlign: TextAlign.start,
                       textAlignVertical: TextAlignVertical.center,
-                      style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+                      style: ZebuTextStyles.body(
+                        context,
+                      ).copyWith(fontWeight: FontWeight.w500),
                       decoration: InputDecoration(
                         isCollapsed: true,
                         border: InputBorder.none,
@@ -485,10 +484,9 @@ class _AppDropdownContentState<T> extends State<_AppDropdownContent<T>> {
                         fillColor: Colors.transparent,
                         hoverColor: Colors.transparent,
                         hintText: 'Search…',
-                        hintStyle: ZebuTextStyles.body(context).copyWith(
-                          color: t.textSecondary,
-                          letterSpacing: -0.1,
-                        ),
+                        hintStyle: ZebuTextStyles.body(
+                          context,
+                        ).copyWith(color: t.textSecondary, letterSpacing: -0.1),
                       ),
                       onChanged: (v) => setState(() => _query = v),
                     ),
@@ -554,10 +552,7 @@ class _DropdownClearButtonState extends State<_DropdownClearButton> {
 /// edge. Used by [showAppDropdown]'s custom overlay (which doesn't have
 /// `PopupMenuItem`'s built-in ink response).
 class _AppDropdownInkRow<T> extends StatelessWidget {
-  const _AppDropdownInkRow({
-    required this.item,
-    required this.onTap,
-  });
+  const _AppDropdownInkRow({required this.item, required this.onTap});
   final AppDropdownItem<T> item;
   final VoidCallback onTap;
 
@@ -577,18 +572,12 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
       onTap: item.disabled ? null : onTap,
       hoverColor: t.bgHover,
       child: Container(
-        // Selected rows take a brand wash at 8 % alpha, matching the strike
-        // dropdown in Mynt Plus Web's options module. Low enough that a long
-        // list doesn't read as banded, strong enough to find at a glance —
-        // and it survives scrolling past the label, which colour alone does
-        // not once the row is half off-screen.
-        color: item.selected && !item.disabled
-            ? (item.tone ?? t.accent).withValues(alpha: 0.08)
-            : null,
-        padding: const EdgeInsets.symmetric(
-          horizontal: ZebuSpacing.s4,
-          vertical: 6,
-        ),
+        // No wash. Selection is carried by the brand-blue semibold label
+        // alone — the scalper treatment. The 8 % fill this used to have came
+        // from the options module's strike dropdown; Mynt Plus Web is
+        // inconsistent between the two, and one mark for one fact wins.
+        color: null,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(
           children: [
             // No leading check column. The selected row is marked by the
@@ -607,8 +596,9 @@ class _AppDropdownInkRow<T> extends StatelessWidget {
                 item.label,
                 style: TextStyle(
                   fontSize: 14,
-                  fontWeight:
-                      item.selected ? FontWeight.w600 : FontWeight.w500,
+                  fontWeight: item.selected
+                      ? ZebuFonts.semiBold
+                      : ZebuFonts.medium,
                   color: item.selected && !item.disabled
                       ? (item.tone ?? t.accent)
                       : effective,

@@ -101,8 +101,10 @@ class _SegmentedTabBarState<T> extends State<SegmentedTabBar<T>> {
 
   void _scrollBy(double delta) {
     if (!_scroll.hasClients) return;
-    final target = (_scroll.offset + delta)
-        .clamp(0.0, _scroll.position.maxScrollExtent);
+    final target = (_scroll.offset + delta).clamp(
+      0.0,
+      _scroll.position.maxScrollExtent,
+    );
     _scroll.animateTo(
       target,
       duration: const Duration(milliseconds: 220),
@@ -133,16 +135,18 @@ class _SegmentedTabBarState<T> extends State<SegmentedTabBar<T>> {
                 // recompute so the chevrons appear/disappear as needed.
                 child: NotificationListener<ScrollMetricsNotification>(
                   onNotification: (_) {
-                    WidgetsBinding.instance
-                        .addPostFrameCallback((_) => _recompute());
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _recompute(),
+                    );
                     return false;
                   },
                   // Suppress the platform scrollbar — the chevrons carry
                   // the affordance, and Flutter web's default gutter would
                   // add a horizontal grey stripe under the tabs.
                   child: ScrollConfiguration(
-                    behavior: ScrollConfiguration.of(context)
-                        .copyWith(scrollbars: false),
+                    behavior: ScrollConfiguration.of(
+                      context,
+                    ).copyWith(scrollbars: false),
                     child: SingleChildScrollView(
                       controller: _scroll,
                       scrollDirection: Axis.horizontal,
@@ -220,9 +224,7 @@ class _ScrollChevronState extends State<_ScrollChevron> {
             child: Icon(
               widget.icon,
               size: 18,
-              color: _hover && widget.visible
-                  ? t.accent
-                  : t.textSecondary,
+              color: _hover && widget.visible ? t.accent : t.textSecondary,
             ),
           ),
         ),
@@ -230,19 +232,12 @@ class _ScrollChevronState extends State<_ScrollChevron> {
     );
     // IgnorePointer when hidden so the reserved space doesn't intercept
     // clicks meant for tabs on the very edge.
-    return IgnorePointer(
-      ignoring: !widget.visible,
-      child: child,
-    );
+    return IgnorePointer(ignoring: !widget.visible, child: child);
   }
 }
 
 class _Tab<T> extends StatefulWidget {
-  const _Tab({
-    required this.item,
-    required this.active,
-    required this.onTap,
-  });
+  const _Tab({required this.item, required this.active, required this.onTap});
   final SegmentedTabItem<T> item;
   final bool active;
   final VoidCallback onTap;

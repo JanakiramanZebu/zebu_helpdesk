@@ -22,9 +22,7 @@ class QueueEditorDialog extends ConsumerStatefulWidget {
 }
 
 class _QueueEditorDialogState extends ConsumerState<QueueEditorDialog> {
-  late final _name = TextEditingController(
-    text: widget.existing?.name ?? '',
-  );
+  late final _name = TextEditingController(text: widget.existing?.name ?? '');
   final _q = TextEditingController();
 
   bool _saving = false;
@@ -135,10 +133,7 @@ class _QueueEditorDialogState extends ConsumerState<QueueEditorDialog> {
               const SizedBox(height: ZebuSpacing.s3),
               _FieldLabel(text: 'Search filter (optional)'),
               const SizedBox(height: 6),
-              _ThemedTextField(
-                controller: _q,
-                hint: 'Keyword to match',
-              ),
+              _ThemedTextField(controller: _q, hint: 'Keyword to match'),
             ],
             if (_formError != null) ...[
               const SizedBox(height: ZebuSpacing.s3),
@@ -176,10 +171,9 @@ class _FieldLabel extends StatelessWidget {
     final t = ZebuTheme.of(context);
     return Text(
       text,
-      style: ZebuTextStyles.small(context).copyWith(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w600,
-      ),
+      style: ZebuTextStyles.small(
+        context,
+      ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
     );
   }
 }
@@ -209,10 +203,7 @@ class _ThemedTextField extends StatelessWidget {
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.accent,
-        width: 1.4,
-      ),
+      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
     );
     return TextField(
       controller: controller,
@@ -231,7 +222,9 @@ class _ThemedTextField extends StatelessWidget {
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(
+          context,
+        ).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -288,9 +281,7 @@ class _CloseIconBtnState extends State<_CloseIconBtn> {
     return Tooltip(
       message: 'Close',
       child: MouseRegion(
-        cursor: disabled
-            ? SystemMouseCursors.basic
-            : SystemMouseCursors.click,
+        cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
@@ -329,9 +320,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
     final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return MouseRegion(
-      cursor: disabled
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -349,10 +338,9 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -388,9 +376,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         ? Color.lerp(base, Colors.black, 0.08) ?? base
         : base;
     return MouseRegion(
-      cursor: disabled
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(

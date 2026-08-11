@@ -36,10 +36,9 @@ class WebBulkBar extends StatelessWidget {
         children: [
           Text(
             '$count selected',
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.accent,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.accent, fontWeight: FontWeight.w600),
           ),
           const SizedBox(width: ZebuSpacing.s3),
           Expanded(
@@ -121,10 +120,9 @@ class _WebBulkButtonState extends State<WebBulkButton> {
                 const SizedBox(width: 6),
                 Text(
                   widget.label,
-                  style: ZebuTextStyles.small(context).copyWith(
-                    color: fg,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: ZebuTextStyles.small(
+                    context,
+                  ).copyWith(color: fg, fontWeight: FontWeight.w600),
                 ),
                 if (widget.hasMenu) ...[
                   const SizedBox(width: 2),

@@ -68,24 +68,24 @@ class TaskQuery {
 
   TaskQuery copyWith({int? page, String? q, String? view, int? limit}) =>
       TaskQuery(
-    view: view ?? this.view,
-    deptId: deptId,
-    assigneeId: assigneeId,
-    teamId: teamId,
-    priorityId: priorityId,
-    tagId: tagId,
-    overdue: overdue,
-    dueFrom: dueFrom,
-    dueTo: dueTo,
-    createdFrom: createdFrom,
-    createdTo: createdTo,
-    q: q ?? this.q,
-    sort: sort,
-    order: order,
-    page: page ?? this.page,
-    limit: limit ?? this.limit,
-    extra: extra,
-  );
+        view: view ?? this.view,
+        deptId: deptId,
+        assigneeId: assigneeId,
+        teamId: teamId,
+        priorityId: priorityId,
+        tagId: tagId,
+        overdue: overdue,
+        dueFrom: dueFrom,
+        dueTo: dueTo,
+        createdFrom: createdFrom,
+        createdTo: createdTo,
+        q: q ?? this.q,
+        sort: sort,
+        order: order,
+        page: page ?? this.page,
+        limit: limit ?? this.limit,
+        extra: extra,
+      );
 }
 
 /// All `/tasks` endpoints.

@@ -69,12 +69,11 @@ class ZebuFonts {
     double? fontSize,
     FontWeight? fontWeight,
     Color? color,
-  }) =>
-      GoogleFonts.inter(
-        fontSize: fontSize,
-        fontWeight: fontWeight,
-        color: color,
-      ).copyWith(fontFamilyFallback: _kEmojiFallbacks);
+  }) => GoogleFonts.inter(
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    color: color,
+  ).copyWith(fontFamilyFallback: _kEmojiFallbacks);
 
   /// A whole [TextTheme] in the app typeface, for `ThemeData.textTheme`.
   static TextTheme textTheme(TextTheme base) =>
@@ -104,8 +103,7 @@ Color resolveThemeColor(
   BuildContext context, {
   required Color dark,
   required Color light,
-}) =>
-    isDarkMode(context) ? dark : light;
+}) => isDarkMode(context) ? dark : light;
 
 /// ===============================================================
 /// CORE TEXT STYLE ENGINE (DO NOT DUPLICATE)
@@ -125,18 +123,15 @@ TextStyle _text(
   Color? darkColor,
   Color? lightColor,
 }) {
-  final resolved = color ??
+  final resolved =
+      color ??
       resolveThemeColor(
         context,
         light: lightColor ?? defaultLight,
         dark: darkColor ?? defaultDark,
       );
 
-  return ZebuFonts.face(
-    fontSize: size,
-    fontWeight: weight,
-    color: resolved,
-  );
+  return ZebuFonts.face(fontSize: size, fontWeight: weight, color: resolved);
 }
 
 /// ===============================================================
@@ -152,17 +147,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.hero,
-        weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuTheme.textPrimaryLight,
-        defaultDark: ZebuTheme.textPrimaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.hero,
+    weight: fontWeight ?? ZebuFonts.semiBold,
+    defaultLight: ZebuTheme.textPrimaryLight,
+    defaultDark: ZebuTheme.textPrimaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// `PageHeader` title — "Tickets", "Saved queues".
   static TextStyle pageTitle(
@@ -171,17 +165,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.pageTitle,
-        weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuTheme.textPrimaryLight,
-        defaultDark: ZebuTheme.textPrimaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.pageTitle,
+    weight: fontWeight ?? ZebuFonts.semiBold,
+    defaultLight: ZebuTheme.textPrimaryLight,
+    defaultDark: ZebuTheme.textPrimaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// Heading inside a card, panel, or dialog.
   static TextStyle sectionTitle(
@@ -190,17 +183,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.sectionTitle,
-        weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuTheme.textPrimaryLight,
-        defaultDark: ZebuTheme.textPrimaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.sectionTitle,
+    weight: fontWeight ?? ZebuFonts.semiBold,
+    defaultLight: ZebuTheme.textPrimaryLight,
+    defaultDark: ZebuTheme.textPrimaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// Small-caps group label above a run of rows ("VIEWS", "WORKSPACE").
   static TextStyle eyebrow(
@@ -209,17 +201,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.small,
-        weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuTheme.textSecondaryLight,
-        defaultDark: ZebuTheme.textSecondaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.small,
+    weight: fontWeight ?? ZebuFonts.semiBold,
+    defaultLight: ZebuTheme.textSecondaryLight,
+    defaultDark: ZebuTheme.textSecondaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   // ---------------- BODY ----------------
 
@@ -230,17 +221,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.body,
-        weight: fontWeight ?? ZebuFonts.regular,
-        defaultLight: ZebuTheme.textPrimaryLight,
-        defaultDark: ZebuTheme.textPrimaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.body,
+    weight: fontWeight ?? ZebuFonts.regular,
+    defaultLight: ZebuTheme.textPrimaryLight,
+    defaultDark: ZebuTheme.textPrimaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// Body at medium weight — names, values, anything that leads a row.
   static TextStyle bodyStrong(
@@ -249,17 +239,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.body,
-        weight: fontWeight ?? ZebuFonts.medium,
-        defaultLight: ZebuTheme.textPrimaryLight,
-        defaultDark: ZebuTheme.textPrimaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.body,
+    weight: fontWeight ?? ZebuFonts.medium,
+    defaultLight: ZebuTheme.textPrimaryLight,
+    defaultDark: ZebuTheme.textPrimaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// Secondary text — subtitles, hints, metadata. Muted by default.
   static TextStyle small(
@@ -268,17 +257,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.small,
-        weight: fontWeight ?? ZebuFonts.regular,
-        defaultLight: ZebuTheme.textSecondaryLight,
-        defaultDark: ZebuTheme.textSecondaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.small,
+    weight: fontWeight ?? ZebuFonts.regular,
+    defaultLight: ZebuTheme.textSecondaryLight,
+    defaultDark: ZebuTheme.textSecondaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// Muted label — field captions, group headings inside a card, the left
   /// column of a key/value pair. Same size and weight as [smallStrong] but
@@ -289,17 +277,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.small,
-        weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuTheme.textSecondaryLight,
-        defaultDark: ZebuTheme.textSecondaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.small,
+    weight: fontWeight ?? ZebuFonts.semiBold,
+    defaultLight: ZebuTheme.textSecondaryLight,
+    defaultDark: ZebuTheme.textSecondaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// Small text carrying weight — labels, list-row titles.
   static TextStyle smallStrong(
@@ -308,17 +295,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.small,
-        weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuTheme.textPrimaryLight,
-        defaultDark: ZebuTheme.textPrimaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.small,
+    weight: fontWeight ?? ZebuFonts.semiBold,
+    defaultLight: ZebuTheme.textPrimaryLight,
+    defaultDark: ZebuTheme.textPrimaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   // ---------------- TABLE ----------------
 
@@ -329,17 +315,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.tableHeader,
-        weight: fontWeight ?? ZebuFonts.semiBold,
-        defaultLight: ZebuTheme.textSecondaryLight,
-        defaultDark: ZebuTheme.textSecondaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.tableHeader,
+    weight: fontWeight ?? ZebuFonts.semiBold,
+    defaultLight: ZebuTheme.textSecondaryLight,
+    defaultDark: ZebuTheme.textSecondaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   /// Body cell.
   static TextStyle tableCell(
@@ -348,17 +333,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.tableCell,
-        weight: fontWeight ?? ZebuFonts.medium,
-        defaultLight: ZebuTheme.textPrimaryLight,
-        defaultDark: ZebuTheme.textPrimaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      );
+  }) => _text(
+    c,
+    size: ZebuFonts.tableCell,
+    weight: fontWeight ?? ZebuFonts.medium,
+    defaultLight: ZebuTheme.textPrimaryLight,
+    defaultDark: ZebuTheme.textPrimaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  );
 
   // ---------------- SMALL ----------------
 
@@ -369,17 +353,16 @@ class ZebuTextStyles {
     Color? darkColor,
     Color? lightColor,
     FontWeight? fontWeight,
-  }) =>
-      _text(
-        c,
-        size: ZebuFonts.caption,
-        weight: fontWeight ?? ZebuFonts.medium,
-        defaultLight: ZebuTheme.textSecondaryLight,
-        defaultDark: ZebuTheme.textSecondaryDark,
-        color: color,
-        darkColor: darkColor,
-        lightColor: lightColor,
-      ).withTabularNums();
+  }) => _text(
+    c,
+    size: ZebuFonts.caption,
+    weight: fontWeight ?? ZebuFonts.medium,
+    defaultLight: ZebuTheme.textSecondaryLight,
+    defaultDark: ZebuTheme.textSecondaryDark,
+    color: color,
+    darkColor: darkColor,
+    lightColor: lightColor,
+  ).withTabularNums();
 }
 
 /// Tabular figures — fixed-width digits so numbers in a column line up and

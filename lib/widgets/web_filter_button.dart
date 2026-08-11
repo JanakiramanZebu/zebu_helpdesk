@@ -9,6 +9,7 @@ import '../res/zebu_spacing.dart';
 import '../res/zebu_text_styles.dart';
 import 'list_controls.dart' show DateRange;
 import 'svg_icon.dart';
+import 'web/select_checkbox.dart';
 
 /// One selectable quick-filter chip shown inside the [WebFilterButton]'s
 /// popover.
@@ -113,8 +114,7 @@ class _WebFilterButtonState extends State<WebFilterButton> {
 
   int get _activeCount {
     var n = widget.filters.where((f) => f.active).length;
-    if (widget.dateRange != null &&
-        widget.dateRange!.value != DateRange.all) {
+    if (widget.dateRange != null && widget.dateRange!.value != DateRange.all) {
       n++;
     }
     for (final f in widget.facets) {
@@ -168,14 +168,19 @@ class _WebFilterButtonState extends State<WebFilterButton> {
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
+                  // Tinted, not solid. A solid brand circle reads as a
+                  // primary action button — the thing you press to *do*
+                  // something — when all it is reporting is that a filter is
+                  // on. The tint says "active" without claiming the page's
+                  // strongest colour for a status.
                   color: active
-                      ? t.accent
+                      ? t.accentSoft
                       : (_hover ? t.bgHover : t.bgHover.withValues(alpha: 0)),
                 ),
                 child: SvgIcon(
                   Assets.searchFilter,
                   size: 20,
-                  color: active ? ZebuTheme.textInverse : t.textSecondary,
+                  color: active ? t.accent : t.textSecondary,
                 ),
               ),
               // Count badge on the circle's top-right edge. The tradebook
@@ -183,29 +188,22 @@ class _WebFilterButtonState extends State<WebFilterButton> {
               // "filtered" alone doesn't say how much is being hidden. The
               // ring is the page bg so it reads as a notification sitting on
               // the circle rather than a chip glued to it.
+              // Superscript, not a notification pill — the same treatment the
+              // view tabs use for their counts. A red badge is the language
+              // of "something arrived that you have not seen"; this number is
+              // just how many filters the agent themselves set, and painting
+              // it as an alert made the toolbar look like it had an error.
               if (active)
                 Positioned(
-                  top: -2,
-                  right: -2,
-                  child: Container(
-                    constraints: const BoxConstraints(minWidth: 16),
-                    height: 16,
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: t.danger,
-                      borderRadius: BorderRadius.circular(ZebuRadius.rFull),
-                      border: Border.all(color: t.bgElevated, width: 2),
-                    ),
-                    child: Text(
-                      '$_activeCount',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                        color: ZebuTheme.textInverse,
-                        height: 1.1,
-                      ),
-                    ),
+                  top: 0,
+                  right: 0,
+                  child: Text(
+                    '$_activeCount',
+                    style: ZebuFonts.face(
+                      fontSize: 12,
+                      fontWeight: ZebuFonts.semiBold,
+                      color: t.accent,
+                    ).copyWith(height: 1.1),
                   ),
                 ),
             ],
@@ -234,8 +232,10 @@ Future<void> _showFilterPanel(
 
   const panelWidth = 480.0;
 
-  final panelLeft = anchorTopLeft.dx
-      .clamp(8.0, viewport.width - panelWidth - 8.0);
+  final panelLeft = anchorTopLeft.dx.clamp(
+    8.0,
+    viewport.width - panelWidth - 8.0,
+  );
   final belowTop = anchorTopLeft.dy + anchorSize.height + 6;
 
   final completer = Completer<void>();
@@ -347,11 +347,10 @@ class _FilterPanelState extends State<_FilterPanel> {
     _dateRange = widget.dateRange?.value ?? DateRange.all;
     _sortKey = widget.sort?.selected ?? '';
     _facetPick = {
-      for (var i = 0; i < widget.facets.length; i++) i: widget.facets[i].selected,
+      for (var i = 0; i < widget.facets.length; i++)
+        i: widget.facets[i].selected,
     };
-    _filterActive = [
-      for (final f in widget.filters) f.active,
-    ];
+    _filterActive = [for (final f in widget.filters) f.active];
   }
 
   @override
@@ -379,47 +378,65 @@ class _FilterPanelState extends State<_FilterPanel> {
     // to the panel's internal SingleChildScrollView — otherwise the user
     // has no signal that the sections continue past the visible viewport
     // when the popover clamps to the viewport height.
-    return Material(
-      color: t.bgElevated,
-      elevation: 10,
-      borderRadius: BorderRadius.circular(ZebuRadius.rMd),
+    // Watchlist-popover surface: one soft shadow rather than a Material
+    // elevation, which stacks several umbra/penumbra layers and reads as a
+    // lifted card. This is a sheet — it should look like it is resting a few
+    // pixels off the page, not floating above it.
+    //
+    // Corners stay at 6, matching the dropdown menus inside it, rather than
+    // the reference's square edge: their theme sets `radius: 0` globally, so
+    // copying it here would leave one square surface among rounded ones.
+    return Container(
+      decoration: BoxDecoration(
+        color: t.bgElevated,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: t.borderSubtle, width: 1),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x26000000),
+            blurRadius: 12,
+            spreadRadius: 2,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
       clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: t.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(ZebuRadius.rMd),
-        ),
+      child: Material(
+        color: Colors.transparent,
         child: Scrollbar(
           controller: _scroll,
           thumbVisibility: true,
           child: SingleChildScrollView(
             controller: _scroll,
             child: Padding(
-            padding: const EdgeInsets.all(ZebuSpacing.s4),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Filters',
-                        style: ZebuTextStyles.body(context).copyWith(
-                          fontWeight: FontWeight.w600,
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Filters',
+                          style: ZebuTextStyles.sectionTitle(
+                            context,
+                          ).copyWith(fontWeight: FontWeight.w600),
                         ),
                       ),
-                    ),
-                    // Visibility is driven by LIVE local state, not by
-                    // whether the parent supplied a non-null callback at
-                    // open-time. Otherwise, filters selected inside the
-                    // panel would only reveal "Clear all" after closing +
-                    // reopening — the OverlayEntry captures `widget.onClear`
-                    // once and never sees the parent's fresh callback.
-                    if (widget.onClear != null && _anyActive)
+                      // Enabled state comes from LIVE local state, not
+                      // from whether the parent supplied a callback at
+                      // open-time: the OverlayEntry captures
+                      // `widget.onClear` once, so filters set inside
+                      // the panel would otherwise not light this up
+                      // until it was closed and reopened.
+                      //
+                      // Disabled rather than absent, so the header
+                      // doesn't reflow when a first filter is ticked.
                       _ClearAllButton(
+                        enabled: _anyActive && widget.onClear != null,
                         onTap: () {
-                          widget.onClear!();
+                          widget.onClear?.call();
                           setState(() {
                             for (var i = 0; i < _filterActive.length; i++) {
                               _filterActive[i] = false;
@@ -431,138 +448,150 @@ class _FilterPanelState extends State<_FilterPanel> {
                           });
                         },
                       ),
-                  ],
-                ),
-                if (widget.filters.isNotEmpty) ...[
-                  const SizedBox(height: ZebuSpacing.s3),
-                  _SectionHeader(label: 'Quick filters'),
-                  const SizedBox(height: ZebuSpacing.s2),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (var i = 0; i < widget.filters.length; i++)
-                        _FilterChip(
-                          label: widget.filters[i].label,
-                          active: _filterActive[i],
-                          onToggled: () {
-                            widget.filters[i].onToggle();
-                            setState(() {
-                              _filterActive[i] = !_filterActive[i];
-                            });
-                          },
-                        ),
                     ],
                   ),
-                ],
-                // Sort + Date range live side-by-side as the first 2-col
-                // row of the panel. If only one of them is provided, the
-                // other cell falls back to an invisible spacer so the
-                // remaining control still occupies its natural half.
-                if (widget.sort != null || widget.dateRange != null) ...[
-                  const SizedBox(height: ZebuSpacing.s4),
-                  _TwoColumnRow(
-                    left: widget.sort == null
-                        ? const SizedBox.shrink()
-                        : _LabelledDropdown(
-                            label: 'Sort by',
-                            child: _FilterDropdown<String>(
-                              label: _labelFor(widget.sort!.options, _sortKey,
-                                  (o) => o.key, (o) => o.label),
-                              entries: [
-                                for (final o in widget.sort!.options)
-                                  _DropdownEntry(
-                                      value: o.key, label: o.label),
-                              ],
-                              selected: _sortKey,
-                              onSelected: (v) {
-                                setState(() => _sortKey = v);
-                                widget.sort!.onChanged(v);
-                              },
-                            ),
-                          ),
-                    right: widget.dateRange == null
-                        ? const SizedBox.shrink()
-                        : _LabelledDropdown(
-                            label: 'Date range',
-                            child: _FilterDropdown<DateRange>(
-                              label: _dateRange.label,
-                              entries: [
-                                for (final r in DateRange.values)
-                                  _DropdownEntry(value: r, label: r.label),
-                              ],
-                              selected: _dateRange,
-                              onSelected: (v) {
-                                setState(() => _dateRange = v);
-                                widget.dateRange!.onChanged(v);
-                              },
-                            ),
-                          ),
-                  ),
-                ],
-                if (widget.facets.isNotEmpty) ...[
-                  const SizedBox(height: ZebuSpacing.s4),
-                  _SectionHeader(label: 'Filters'),
-                  const SizedBox(height: ZebuSpacing.s2),
-                  // 2-column grid — pair facets up so the panel fills
-                  // width evenly instead of a tall column of stacked
-                  // full-width dropdowns. Odd-count trailing facet ends
-                  // up alone in the last row with an empty right cell.
-                  for (var i = 0; i < widget.facets.length; i += 2)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: ZebuSpacing.s2),
-                      child: _TwoColumnRow(
-                        left: _LabelledDropdown(
-                          label: widget.facets[i].label,
-                          child: _FilterDropdown<String>(
-                            label: _labelFor(
-                              widget.facets[i].options,
-                              _facetPick[i] ?? 'all',
-                              (o) => o.value,
-                              (o) => o.text,
-                            ),
-                            entries: [
-                              for (final o in widget.facets[i].options)
-                                _DropdownEntry(
-                                    value: o.value, label: o.text),
-                            ],
-                            selected: _facetPick[i] ?? 'all',
-                            onSelected: (v) {
-                              setState(() => _facetPick[i] = v);
-                              widget.facets[i].onChanged(v);
+                  if (widget.filters.isNotEmpty) ...[
+                    const SizedBox(height: ZebuSpacing.s3),
+                    _SectionHeader(label: 'Quick filters'),
+                    const SizedBox(height: ZebuSpacing.s2),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (var i = 0; i < widget.filters.length; i++)
+                          _FilterChip(
+                            label: widget.filters[i].label,
+                            active: _filterActive[i],
+                            onToggled: () {
+                              widget.filters[i].onToggle();
+                              setState(() {
+                                _filterActive[i] = !_filterActive[i];
+                              });
                             },
                           ),
-                        ),
-                        right: i + 1 < widget.facets.length
-                            ? _LabelledDropdown(
-                                label: widget.facets[i + 1].label,
-                                child: _FilterDropdown<String>(
-                                  label: _labelFor(
-                                    widget.facets[i + 1].options,
-                                    _facetPick[i + 1] ?? 'all',
-                                    (o) => o.value,
-                                    (o) => o.text,
-                                  ),
-                                  entries: [
-                                    for (final o
-                                        in widget.facets[i + 1].options)
-                                      _DropdownEntry(
-                                          value: o.value, label: o.text),
-                                  ],
-                                  selected: _facetPick[i + 1] ?? 'all',
-                                  onSelected: (v) {
-                                    setState(() => _facetPick[i + 1] = v);
-                                    widget.facets[i + 1].onChanged(v);
-                                  },
-                                ),
-                              )
-                            : const SizedBox.shrink(),
-                      ),
+                      ],
                     ),
+                  ],
+                  // Sort + Date range live side-by-side as the first 2-col
+                  // row of the panel. If only one of them is provided, the
+                  // other cell falls back to an invisible spacer so the
+                  // remaining control still occupies its natural half.
+                  if (widget.sort != null || widget.dateRange != null) ...[
+                    const SizedBox(height: ZebuSpacing.s4),
+                    _TwoColumnRow(
+                      left: widget.sort == null
+                          ? const SizedBox.shrink()
+                          : _LabelledDropdown(
+                              label: 'Sort by',
+                              child: _FilterDropdown<String>(
+                                label: _labelFor(
+                                  widget.sort!.options,
+                                  _sortKey,
+                                  (o) => o.key,
+                                  (o) => o.label,
+                                ),
+                                entries: [
+                                  for (final o in widget.sort!.options)
+                                    _DropdownEntry(
+                                      value: o.key,
+                                      label: o.label,
+                                    ),
+                                ],
+                                selected: _sortKey,
+                                onSelected: (v) {
+                                  setState(() => _sortKey = v);
+                                  widget.sort!.onChanged(v);
+                                },
+                              ),
+                            ),
+                      right: widget.dateRange == null
+                          ? const SizedBox.shrink()
+                          : _LabelledDropdown(
+                              label: 'Date range',
+                              child: _FilterDropdown<DateRange>(
+                                label: _dateRange.label,
+                                entries: [
+                                  for (final r in DateRange.values)
+                                    _DropdownEntry(value: r, label: r.label),
+                                ],
+                                selected: _dateRange,
+                                onSelected: (v) {
+                                  setState(() => _dateRange = v);
+                                  widget.dateRange!.onChanged(v);
+                                },
+                              ),
+                            ),
+                    ),
+                  ],
+                  if (widget.facets.isNotEmpty) ...[
+                    // No section header here. Every dropdown below labels
+                    // itself, and the panel is already titled "Filters" — a
+                    // second one said the same word twice, fifteen pixels
+                    // apart, and bought nothing.
+                    const SizedBox(height: ZebuSpacing.s4),
+                    // 2-column grid — pair facets up so the panel fills
+                    // width evenly instead of a tall column of stacked
+                    // full-width dropdowns. Odd-count trailing facet ends
+                    // up alone in the last row with an empty right cell.
+                    for (var i = 0; i < widget.facets.length; i += 2)
+                      Padding(
+                        // 16 between rows, matching the gutter between the two
+                        // columns — the grid then has one spacing value in
+                        // both axes instead of 8 down and 16 across.
+                        padding: const EdgeInsets.only(bottom: ZebuSpacing.s4),
+                        child: _TwoColumnRow(
+                          left: _LabelledDropdown(
+                            label: widget.facets[i].label,
+                            child: _FilterDropdown<String>(
+                              label: _labelFor(
+                                widget.facets[i].options,
+                                _facetPick[i] ?? 'all',
+                                (o) => o.value,
+                                (o) => o.text,
+                              ),
+                              entries: [
+                                for (final o in widget.facets[i].options)
+                                  _DropdownEntry(value: o.value, label: o.text),
+                              ],
+                              selected: _facetPick[i] ?? 'all',
+                              onSelected: (v) {
+                                setState(() => _facetPick[i] = v);
+                                widget.facets[i].onChanged(v);
+                              },
+                            ),
+                          ),
+                          right: i + 1 < widget.facets.length
+                              ? _LabelledDropdown(
+                                  label: widget.facets[i + 1].label,
+                                  child: _FilterDropdown<String>(
+                                    label: _labelFor(
+                                      widget.facets[i + 1].options,
+                                      _facetPick[i + 1] ?? 'all',
+                                      (o) => o.value,
+                                      (o) => o.text,
+                                    ),
+                                    entries: [
+                                      for (final o
+                                          in widget.facets[i + 1].options)
+                                        _DropdownEntry(
+                                          value: o.value,
+                                          label: o.text,
+                                        ),
+                                    ],
+                                    selected: _facetPick[i + 1] ?? 'all',
+                                    onSelected: (v) {
+                                      setState(() => _facetPick[i + 1] = v);
+                                      widget.facets[i + 1].onChanged(v);
+                                    },
+                                  ),
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+                      ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
           ),
         ),
       ),
@@ -581,10 +610,12 @@ class _FilterPanelState extends State<_FilterPanel> {
     String Function(T) labelOf,
   ) {
     if (options.isEmpty) return '';
-    return labelOf(options.firstWhere(
-      (o) => keyOf(o) == selected,
-      orElse: () => options.first,
-    ));
+    return labelOf(
+      options.firstWhere(
+        (o) => keyOf(o) == selected,
+        orElse: () => options.first,
+      ),
+    );
   }
 }
 
@@ -603,7 +634,7 @@ class _TwoColumnRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: left),
-        const SizedBox(width: ZebuSpacing.s3),
+        const SizedBox(width: ZebuSpacing.s4),
         Expanded(child: right),
       ],
     );
@@ -625,14 +656,19 @@ class _LabelledDropdown extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        // Create-SIP dialog pattern: the label sits at body size in the
+        // primary ink, not as a muted caption. A field label is part of the
+        // control, not commentary on it — greying it made the panel read as
+        // seven captions with something under each.
         Text(
           label,
-          style: ZebuTextStyles.small(context).copyWith(
-            color: t.textSecondary,
-            fontWeight: FontWeight.w500,
+          style: ZebuTextStyles.body(
+            context,
+            color: t.textPrimary,
+            fontWeight: ZebuFonts.medium,
           ),
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 10),
         child,
       ],
     );
@@ -691,13 +727,16 @@ class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
     final viewport = overlayBox.size;
 
     final menuWidth = anchorSize.width;
-    const maxMenuHeight = 260.0;
-    final menuLeft = anchorTopLeft.dx
-        .clamp(8.0, viewport.width - menuWidth - 8.0);
+    const maxMenuHeight = 300.0;
+    final menuLeft = anchorTopLeft.dx.clamp(
+      8.0,
+      viewport.width - menuWidth - 8.0,
+    );
     final belowTop = anchorTopLeft.dy + anchorSize.height + 4;
     final aboveTop = anchorTopLeft.dy - maxMenuHeight - 4;
-    final menuTop =
-        belowTop + maxMenuHeight <= viewport.height ? belowTop : aboveTop;
+    final menuTop = belowTop + maxMenuHeight <= viewport.height
+        ? belowTop
+        : aboveTop;
 
     final completer = Completer<T?>();
     late OverlayEntry entry;
@@ -755,26 +794,36 @@ class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 100),
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            height: 40,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            // Scalper's grey field, but a neutral hairline rather than its
+            // brand-blue outline: scalper has two dropdowns in a dialog, this
+            // panel has seven stacked two-up, and seven blue boxes read as a
+            // grid of alerts. The fill alone carries "this is a control".
             decoration: BoxDecoration(
-              color: _hover ? t.bgHover : t.bgElevated,
+              color: _hover ? t.bgHover : t.bgTertiary,
               border: Border.all(color: t.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+              borderRadius: BorderRadius.circular(6),
             ),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
                   child: Text(
                     widget.label,
-                    style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
+                    style: ZebuTextStyles.body(
+                      context,
+                      color: t.textPrimary,
+                      fontWeight: ZebuFonts.medium,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Icon(
-                  Icons.expand_more,
-                  size: 16,
+                  Icons.keyboard_arrow_down,
+                  size: 20,
                   color: t.textSecondary,
                 ),
               ],
@@ -802,14 +851,15 @@ class _DropdownMenu<T> extends StatelessWidget {
     return Material(
       color: t.bgElevated,
       elevation: 8,
-      borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+      borderRadius: BorderRadius.circular(6),
       clipBehavior: Clip.antiAlias,
       child: DecoratedBox(
         decoration: BoxDecoration(
           border: Border.all(color: t.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+          borderRadius: BorderRadius.circular(6),
         ),
         child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 4),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -855,29 +905,30 @@ class _DropdownRowState<T> extends State<_DropdownRow<T>> {
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          color: widget.isSelected
-              ? t.accent.withValues(alpha: 0.08)
-              : (_hover ? t.bgHover : Colors.transparent),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          // Selection is carried by weight and colour alone — no fill, no
+          // tick. Scalper's treatment: with a short list the label is right
+          // there to read, and a wash on top of the blue label was two marks
+          // for one fact. Idle is `bgHover` at zero alpha, never
+          // `Colors.transparent` — that is transparent *black*, and a fill
+          // lerping from it washes through grey on the way in.
+          color: _hover ? t.bgHover : t.bgHover.withValues(alpha: 0),
           child: Row(
             children: [
               Expanded(
                 child: Text(
                   widget.entry.label,
-                  style: ZebuTextStyles.body(context).copyWith(
-                    color: widget.isSelected
-                        ? t.accent
-                        : t.textPrimary,
+                  style: ZebuTextStyles.body(
+                    context,
+                    color: widget.isSelected ? t.accent : t.textPrimary,
                     fontWeight: widget.isSelected
-                        ? FontWeight.w600
-                        : FontWeight.w400,
+                        ? ZebuFonts.semiBold
+                        : ZebuFonts.medium,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (widget.isSelected)
-                Icon(Icons.check, size: 16, color: t.accent),
             ],
           ),
         ),
@@ -907,10 +958,13 @@ class _FilterChipState extends State<_FilterChip> {
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
     final active = widget.active;
-    // Active state is a solid brand-blue pill — unambiguous "on" that
-    // reads instantly against several inactive siblings. Inactive stays
-    // as an outlined hairline chip on the panel bg; hover raises the
-    // bg to `bgHover` so the affordance is legible before commit.
+    // A checkbox, not a chip. These four toggle independently — an agent can
+    // watch Emergency and High at once — and a row of pills reads as
+    // pick-one no matter how it behaves. A checkbox states the arity before
+    // anything is clicked.
+    //
+    // The whole row is the target, label included: a 16 px box is a small
+    // thing to hit, and the label is the part being read.
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -921,35 +975,30 @@ class _FilterChipState extends State<_FilterChip> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           decoration: BoxDecoration(
-            // Active filter pill reads as a filled primary button — keep
-            // Mynt brand blue in both modes.
-            color: active
-                ? ZebuTheme.accentLight
-                : (_hover ? t.bgHover : t.bgElevated),
-            border: Border.all(
-              color: active ? ZebuTheme.accentLight : t.borderSubtle,
-              width: 1,
-            ),
-            borderRadius: BorderRadius.circular(ZebuRadius.rFull),
+            // Idle is the hover tone at zero alpha, never
+            // `Colors.transparent` — that is transparent *black*, and a fill
+            // lerping from it washes through grey on the way in.
+            color: _hover ? t.bgHover : t.bgHover.withValues(alpha: 0),
+            borderRadius: BorderRadius.circular(4),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                active ? Icons.check_rounded : Icons.add_rounded,
-                size: 14,
-                color:
-                    active ? ZebuTheme.textInverse : t.textSecondary,
+              // Ignores its own pointer so the row's tap handler owns the
+              // whole target — otherwise clicking the box and clicking the
+              // label take two different code paths.
+              IgnorePointer(
+                child: SelectCheckbox(value: active, onChanged: (_) {}),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Text(
                 widget.label,
-                style: ZebuTextStyles.small(context).copyWith(
-                  color:
-                      active ? ZebuTheme.textInverse : t.textPrimary,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                style: ZebuTextStyles.body(
+                  context,
+                  color: active ? t.textPrimary : t.textSecondary,
+                  fontWeight: active ? ZebuFonts.semiBold : ZebuFonts.medium,
                 ),
               ),
             ],
@@ -961,8 +1010,9 @@ class _FilterChipState extends State<_FilterChip> {
 }
 
 class _ClearAllButton extends StatefulWidget {
-  const _ClearAllButton({required this.onTap});
+  const _ClearAllButton({required this.onTap, required this.enabled});
   final VoidCallback onTap;
+  final bool enabled;
 
   @override
   State<_ClearAllButton> createState() => _ClearAllButtonState();
@@ -974,25 +1024,42 @@ class _ClearAllButtonState extends State<_ClearAllButton> {
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    // Plain accent-text link — no border, no fill. Underlines on hover
-    // so the affordance is legible without a chip fighting the header
-    // "Filters" title. Matches the "See all" link pattern used across
-    // the dashboard cards.
+    final on = widget.enabled;
+    // Ghost, sized to its label. The outlined skin came from Mynt's filter
+    // dialog, where Clear is the *secondary* of a pair and a solid Apply
+    // carries the weight. With no Apply beside it, that skin made the
+    // loudest control in the panel the one that throws the agent's work
+    // away. A footer action that undoes things should be findable, not
+    // prominent.
     return MouseRegion(
-      cursor: SystemMouseCursors.click,
+      cursor: on ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: Text(
-          'Clear all',
-          style: ZebuTextStyles.small(context).copyWith(
-            color: t.accent,
-            fontWeight: FontWeight.w600,
-            decoration:
-                _hover ? TextDecoration.underline : TextDecoration.none,
-            decorationColor: t.accent,
+        onTap: on ? widget.onTap : null,
+        child: Opacity(
+          opacity: on ? 1 : 0.4,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              // Idle is the hover tone at zero alpha, never
+              // `Colors.transparent` — that is transparent *black*, and a
+              // fill lerping from it washes through grey on the way in.
+              color: _hover && on
+                  ? t.accentSoft
+                  : t.accentSoft.withValues(alpha: 0),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              'Clear all',
+              style: ZebuTextStyles.small(
+                context,
+                color: t.accent,
+                fontWeight: ZebuFonts.semiBold,
+              ),
+            ),
           ),
         ),
       ),

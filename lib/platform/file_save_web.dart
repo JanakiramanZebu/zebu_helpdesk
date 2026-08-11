@@ -13,10 +13,7 @@ Future<void> saveAndReveal({
   required String filename,
   required String mime,
 }) async {
-  final blob = web.Blob(
-    [bytes.toJS].toJS,
-    web.BlobPropertyBag(type: mime),
-  );
+  final blob = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: mime));
   final url = web.URL.createObjectURL(blob);
   final anchor = web.HTMLAnchorElement()
     ..href = url

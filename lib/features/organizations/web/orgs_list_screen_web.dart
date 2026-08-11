@@ -60,9 +60,9 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
   void _openOrg(int id) => setState(() => _openOrgId = id);
   // Reset fullscreen on close so re-opening starts in split view.
   void _closeOrg() => setState(() {
-        _openOrgId = null;
-        _fullscreen = false;
-      });
+    _openOrgId = null;
+    _fullscreen = false;
+  });
   void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
 
   /// Invoked by the panel after any mutation (edit / delete / notes /
@@ -98,11 +98,7 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
       builder: (_) => const _CreateOrgDialog(),
     );
     if (created == true && mounted) {
-      AppToast.show(
-        context,
-        'Organization created',
-        type: ToastType.success,
-      );
+      AppToast.show(context, 'Organization created', type: ToastType.success);
       setState(() => _refreshKey++);
     }
   }
@@ -165,50 +161,50 @@ class _OrgsListScreenWebState extends ConsumerState<OrgsListScreenWeb> {
                         ? _kTableMinWidth
                         : constraints.maxWidth;
                     return Scrollbar(
-                    controller: _tableHScroll,
-                    scrollbarOrientation: ScrollbarOrientation.bottom,
-                    child: SingleChildScrollView(
                       controller: _tableHScroll,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _TableHeader(scrollGutter: horizontalScroll),
-                            Expanded(
-                              child: ColoredBox(
-                                color: t.bgElevated,
-                                child: PagedListView<Organization>(
-                                  padding: EdgeInsets.zero,
-                                  refreshKey: '$_search|$_refreshKey',
-                                  emptyMessage: 'No organizations',
-                                  emptyHint: 'Try a different search.',
-                                  emptyIcon: Icons.apartment,
-                                  onTotalChanged: (v) {
-                                    if (mounted && v != _total) {
-                                      setState(() => _total = v);
-                                    }
-                                  },
-                                  fetch: (page) => repo.list(
-                                    q: _search.isEmpty ? null : _search,
-                                    page: page,
-                                  ),
-                                  itemBuilder: (context, o) => _OrgRow(
-                                    org: o,
-                                    selected: _openOrgId == o.id,
-                                    onTap: () => _openOrg(o.id),
+                      scrollbarOrientation: ScrollbarOrientation.bottom,
+                      child: SingleChildScrollView(
+                        controller: _tableHScroll,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: tableWidth,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _TableHeader(scrollGutter: horizontalScroll),
+                              Expanded(
+                                child: ColoredBox(
+                                  color: t.bgElevated,
+                                  child: PagedListView<Organization>(
+                                    padding: EdgeInsets.zero,
+                                    refreshKey: '$_search|$_refreshKey',
+                                    emptyMessage: 'No organizations',
+                                    emptyHint: 'Try a different search.',
+                                    emptyIcon: Icons.apartment,
+                                    onTotalChanged: (v) {
+                                      if (mounted && v != _total) {
+                                        setState(() => _total = v);
+                                      }
+                                    },
+                                    fetch: (page) => repo.list(
+                                      q: _search.isEmpty ? null : _search,
+                                      page: page,
+                                    ),
+                                    itemBuilder: (context, o) => _OrgRow(
+                                      org: o,
+                                      selected: _openOrgId == o.id,
+                                      onTap: () => _openOrg(o.id),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -503,9 +499,7 @@ class _OrgRowState extends State<_OrgRow> {
             color: widget.selected
                 ? t.accentMuted
                 : (_hover ? t.bgHover : t.bgElevated),
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -517,9 +511,9 @@ class _OrgRowState extends State<_OrgRow> {
                     trimmed.isEmpty ? '(unnamed)' : trimmed,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: ZebuTextStyles.body(context).copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(fontWeight: FontWeight.w500),
                   ),
                 ),
                 _BodyCell(
@@ -668,7 +662,12 @@ class _CreateOrgDialogState extends ConsumerState<_CreateOrgDialog> {
       ),
       title: Row(
         children: [
-          Expanded(child: Text('New organization', style: ZebuTextStyles.pageTitle(context))),
+          Expanded(
+            child: Text(
+              'New organization',
+              style: ZebuTextStyles.pageTitle(context),
+            ),
+          ),
           _DialogCloseButton(
             onTap: _saving ? null : () => Navigator.pop(context, false),
           ),
@@ -748,10 +747,9 @@ class _FieldLabel extends StatelessWidget {
     final t = ZebuTheme.of(context);
     return Text(
       text,
-      style: ZebuTextStyles.small(context).copyWith(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w600,
-      ),
+      style: ZebuTextStyles.small(
+        context,
+      ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
     );
   }
 }
@@ -783,10 +781,7 @@ class _ThemedTextField extends StatelessWidget {
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.accent,
-        width: 1.4,
-      ),
+      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
     );
     return TextField(
       controller: controller,
@@ -806,7 +801,9 @@ class _ThemedTextField extends StatelessWidget {
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(
+          context,
+        ).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -863,9 +860,7 @@ class _DialogCloseButtonState extends State<_DialogCloseButton> {
     return Tooltip(
       message: 'Close',
       child: MouseRegion(
-        cursor: disabled
-            ? SystemMouseCursors.basic
-            : SystemMouseCursors.click,
+        cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
@@ -904,9 +899,7 @@ class _DialogSecondaryButtonState extends State<_DialogSecondaryButton> {
     final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return MouseRegion(
-      cursor: disabled
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -924,10 +917,9 @@ class _DialogSecondaryButtonState extends State<_DialogSecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -956,16 +948,12 @@ class _DialogPrimaryButtonState extends State<_DialogPrimaryButton> {
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
-    final base = disabled
-        ? t.accent.withValues(alpha: 0.4)
-        : t.accent;
+    final base = disabled ? t.accent.withValues(alpha: 0.4) : t.accent;
     final fill = _hover && !disabled
         ? Color.lerp(base, Colors.black, 0.08) ?? base
         : base;
     return MouseRegion(
-      cursor: disabled
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(

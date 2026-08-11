@@ -14,6 +14,7 @@ import '../../../widgets/states.dart';
 import '../../../widgets/user_avatar.dart';
 import '../../../widgets/web/kpi_tile.dart';
 import '../../../widgets/web/premium_card.dart';
+import '../../../widgets/web/status_badge.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../reports/widgets/activity_line_chart.dart';
 import '../../tasks/web/create_task_screen_web.dart';
@@ -513,7 +514,10 @@ class _Hero extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(dateLabel.toUpperCase(), style: ZebuTextStyles.eyebrow(context)),
+                Text(
+                  dateLabel.toUpperCase(),
+                  style: ZebuTextStyles.eyebrow(context),
+                ),
               ],
             ),
             const SizedBox(height: ZebuSpacing.s3),
@@ -604,10 +608,9 @@ class _Subline extends StatelessWidget {
       children.add(
         TextSpan(
           text: Fmt.count(s.count),
-          style: ZebuTextStyles.body(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w600,
-          ),
+          style: ZebuTextStyles.body(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
         ),
       );
       children.add(
@@ -620,14 +623,18 @@ class _Subline extends StatelessWidget {
         children.add(
           TextSpan(
             text: ', ',
-            style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+            style: ZebuTextStyles.body(
+              context,
+            ).copyWith(color: t.textSecondary),
           ),
         );
       } else if (i == spans.length - 2) {
         children.add(
           TextSpan(
             text: ' and ',
-            style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+            style: ZebuTextStyles.body(
+              context,
+            ).copyWith(color: t.textSecondary),
           ),
         );
       }
@@ -1085,13 +1092,17 @@ class _PriorityRow extends StatelessWidget {
               bucket.priority.isEmpty ? '—' : bucket.priority,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+              style: ZebuTextStyles.body(
+                context,
+              ).copyWith(fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 10),
           Text(
             '${(share * 100).round()}%',
-            style: ZebuTextStyles.caption(context).copyWith(color: t.textSecondary),
+            style: ZebuTextStyles.caption(
+              context,
+            ).copyWith(color: t.textSecondary),
           ),
           const SizedBox(width: 12),
           SizedBox(
@@ -1153,7 +1164,9 @@ class _DepartmentLoadCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: ZebuSpacing.s2),
                 child: Text(
                   'and $overflow more teams…',
-                  style: ZebuTextStyles.small(context).copyWith(fontStyle: FontStyle.italic),
+                  style: ZebuTextStyles.small(
+                    context,
+                  ).copyWith(fontStyle: FontStyle.italic),
                 ),
               ),
           ],
@@ -1413,7 +1426,9 @@ class _RecentTicketsEmpty extends StatelessWidget {
           const SizedBox(height: ZebuSpacing.s3),
           Text(
             'No open tickets',
-            style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
+            style: ZebuTextStyles.smallStrong(
+              context,
+            ).copyWith(color: t.textPrimary),
           ),
           const SizedBox(height: 4),
           Text(
@@ -1521,9 +1536,9 @@ class _TicketRowState extends State<_TicketRow> {
                                 widget.ticket.subject,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: ZebuTextStyles.body(context).copyWith(
-                                  fontWeight: FontWeight.w500,
-                                ),
+                                style: ZebuTextStyles.body(
+                                  context,
+                                ).copyWith(fontWeight: FontWeight.w500),
                               ),
                             ),
                           ],
@@ -1582,26 +1597,11 @@ class _PriorityCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
     final name = (priority ?? '').trim();
     if (name.isEmpty) {
       return Text('—', style: ZebuTextStyles.small(context));
     }
-    return StatusPill(
-      label: _titleCase(name),
-      color: _tone(name, t),
-      icon: Icons.flag_rounded,
-      dense: true,
-    );
-  }
-
-  static Color _tone(String name, ZebuTheme t) {
-    final n = name.toLowerCase();
-    if (n.contains('emergency') || n.contains('urgent')) return t.danger;
-    if (n.contains('high')) return ZebuTheme.warning;
-    if (n.contains('low')) return ZebuTheme.success;
-    if (n.contains('normal')) return ZebuTheme.info;
-    return ZebuTheme.info;
+    return PriorityBadge(label: _titleCase(name), priority: name, dense: true);
   }
 
   static String _titleCase(String s) {
@@ -1647,10 +1647,9 @@ class _AssigneeCell extends StatelessWidget {
               'Unassigned',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textSecondary,
-                fontWeight: FontWeight.w500,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textSecondary, fontWeight: FontWeight.w500),
             ),
           ),
         ],
@@ -1666,10 +1665,9 @@ class _AssigneeCell extends StatelessWidget {
             name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w500,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
           ),
         ),
       ],
@@ -1677,31 +1675,26 @@ class _AssigneeCell extends StatelessWidget {
   }
 }
 
-/// Premium status pill — resolves the ticket's semantic tone and renders via
-/// [StatusPill] so the tag gets the shared tinted-chip treatment.
+/// Status tag — delegates entirely to [StatusBadge] so the dashboard's
+/// tickets read identically to the same rows in the Tickets table.
 class _StatusTag extends StatelessWidget {
   const _StatusTag({required this.ticket});
   final Ticket ticket;
 
   @override
   Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
     final label = ticket.isOverdue ? 'Overdue' : _titleCase(ticket.statusName);
-    return StatusPill(label: label, color: _fg(t), dense: true);
+    return StatusBadge(
+      label: label,
+      status: ticket.statusName,
+      overdue: ticket.isOverdue,
+      dense: true,
+    );
   }
 
   String _titleCase(String s) {
     if (s.isEmpty) return s;
     return s[0].toUpperCase() + s.substring(1).toLowerCase();
-  }
-
-  Color _fg(ZebuTheme t) {
-    if (ticket.isOverdue) return t.danger;
-    final s = ticket.statusName.toLowerCase();
-    if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
-    if (s.contains('unassigned')) return ZebuTheme.info;
-    if (s.contains('open')) return ZebuTheme.success;
-    return ZebuTheme.info;
   }
 }
 
@@ -1826,9 +1819,9 @@ class _TaskStatTileState extends State<_TaskStatTile> {
               const SizedBox(height: ZebuSpacing.s2),
               Text(
                 Fmt.count(widget.row.value),
-                style: ZebuTextStyles.hero(context)
-                    .withTabularNums()
-                    .copyWith(fontSize: 24, letterSpacing: -0.6),
+                style: ZebuTextStyles.hero(
+                  context,
+                ).withTabularNums().copyWith(fontSize: 24, letterSpacing: -0.6),
               ),
             ],
           ),
@@ -1926,7 +1919,10 @@ class _ActivityCard extends StatelessWidget {
               SizedBox(
                 height: 180,
                 child: Center(
-                  child: Text('No activity in this range', style: ZebuTextStyles.small(context)),
+                  child: Text(
+                    'No activity in this range',
+                    style: ZebuTextStyles.small(context),
+                  ),
                 ),
               )
             else

@@ -85,9 +85,7 @@ class _LoginScreenWebState extends ConsumerState<LoginScreenWeb> {
     final base = Theme.of(context);
     final t = ZebuTheme.of(context);
     return Theme(
-      data: base.copyWith(
-        textTheme: ZebuFonts.textTheme(base.textTheme),
-      ),
+      data: base.copyWith(textTheme: ZebuFonts.textTheme(base.textTheme)),
       child: Scaffold(
         backgroundColor: t.bgPrimary,
         body: SafeArea(
@@ -104,8 +102,7 @@ class _LoginScreenWebState extends ConsumerState<LoginScreenWeb> {
                   busy: _busy,
                   error: _error,
                   fieldErrors: _fieldErrors,
-                  onToggleObscure: () =>
-                      setState(() => _obscure = !_obscure),
+                  onToggleObscure: () => setState(() => _obscure = !_obscure),
                   onSubmit: _submit,
                   onForgot: _forgotPassword,
                 ),
@@ -165,7 +162,9 @@ class _LoginCard extends StatelessWidget {
             const SizedBox(height: ZebuSpacing.s2),
             Text(
               'Use your Zebu staff credentials',
-              style: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+              style: ZebuTextStyles.body(
+                context,
+              ).copyWith(color: t.textSecondary),
             ),
             const SizedBox(height: ZebuSpacing.s8),
 
@@ -279,10 +278,7 @@ class _TextField extends StatelessWidget {
       ),
     );
     final focused = UnderlineInputBorder(
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.accent,
-        width: 1.6,
-      ),
+      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.6),
     );
 
     return Column(
@@ -298,10 +294,9 @@ class _TextField extends StatelessWidget {
           inputFormatters: inputFormatters,
           onFieldSubmitted: onFieldSubmitted,
           validator: validator,
-          style: ZebuTextStyles.body(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w500,
-          ),
+          style: ZebuTextStyles.body(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
           decoration: InputDecoration(
             filled: false,
             hoverColor: Colors.transparent,
@@ -320,7 +315,9 @@ class _TextField extends StatelessWidget {
             // Idle label = placeholder-sized, secondary text. Floats up
             // to the smaller `bodySm` size in accent color on focus /
             // when a value is entered.
-            labelStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+            labelStyle: ZebuTextStyles.body(
+              context,
+            ).copyWith(color: t.textSecondary),
             floatingLabelStyle: ZebuTextStyles.small(context).copyWith(
               color: hasError ? t.danger : t.accent,
               fontWeight: FontWeight.w500,
@@ -338,10 +335,9 @@ class _TextField extends StatelessWidget {
           const SizedBox(height: ZebuSpacing.s2),
           Text(
             errorText!,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.danger,
-              fontWeight: FontWeight.w500,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.danger, fontWeight: FontWeight.w500),
           ),
         ],
       ],
@@ -375,9 +371,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
     final t = ZebuTheme.of(context);
     final enabled = widget.onPressed != null && !widget.busy;
     return MouseRegion(
-      cursor: enabled
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: enabled ? (_) => setState(() => _hover = true) : null,
       onExit: enabled ? (_) => setState(() => _hover = false) : null,
       child: GestureDetector(
@@ -475,9 +469,7 @@ class _LinkButtonState extends State<_LinkButton> {
     final t = ZebuTheme.of(context);
     final enabled = widget.onTap != null;
     return MouseRegion(
-      cursor: enabled
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.basic,
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: enabled ? (_) => setState(() => _hover = true) : null,
       onExit: enabled ? (_) => setState(() => _hover = false) : null,
       child: GestureDetector(
@@ -516,19 +508,14 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.error_outline,
-            color: t.danger,
-            size: 18,
-          ),
+          Icon(Icons.error_outline, color: t.danger, size: 18),
           const SizedBox(width: ZebuSpacing.s2),
           Expanded(
             child: Text(
               message,
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.danger,
-                fontWeight: FontWeight.w500,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.danger, fontWeight: FontWeight.w500),
             ),
           ),
         ],

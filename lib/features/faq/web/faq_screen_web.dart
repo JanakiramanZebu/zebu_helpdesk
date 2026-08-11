@@ -46,9 +46,9 @@ class _FaqScreenWebState extends ConsumerState<FaqScreenWeb> {
 
   void _openFaq(int id) => setState(() => _openId = id);
   void _closeFaq() => setState(() {
-        _openId = null;
-        _fullscreen = false;
-      });
+    _openId = null;
+    _fullscreen = false;
+  });
   void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
 
   @override
@@ -121,50 +121,50 @@ class _FaqScreenWebState extends ConsumerState<FaqScreenWeb> {
                         ? _kTableMinWidth
                         : constraints.maxWidth;
                     return Scrollbar(
-                    controller: _tableHScroll,
-                    scrollbarOrientation: ScrollbarOrientation.bottom,
-                    child: SingleChildScrollView(
                       controller: _tableHScroll,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _TableHeader(scrollGutter: horizontalScroll),
-                            Expanded(
-                              child: ColoredBox(
-                                color: t.bgElevated,
-                                child: PagedListView<Faq>(
-                                  padding: EdgeInsets.zero,
-                                  refreshKey: '$_search|$_refreshKey',
-                                  emptyMessage: 'No articles',
-                                  emptyHint: 'Try a different search.',
-                                  emptyIcon: Icons.menu_book_outlined,
-                                  onTotalChanged: (v) {
-                                    if (mounted && v != _total) {
-                                      setState(() => _total = v);
-                                    }
-                                  },
-                                  fetch: (page) => repo.search(
-                                    q: _search.isEmpty ? null : _search,
-                                    page: page,
-                                  ),
-                                  itemBuilder: (context, f) => _Row(
-                                    faq: f,
-                                    selected: _openId == f.id,
-                                    onTap: () => _openFaq(f.id),
+                      scrollbarOrientation: ScrollbarOrientation.bottom,
+                      child: SingleChildScrollView(
+                        controller: _tableHScroll,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: tableWidth,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _TableHeader(scrollGutter: horizontalScroll),
+                              Expanded(
+                                child: ColoredBox(
+                                  color: t.bgElevated,
+                                  child: PagedListView<Faq>(
+                                    padding: EdgeInsets.zero,
+                                    refreshKey: '$_search|$_refreshKey',
+                                    emptyMessage: 'No articles',
+                                    emptyHint: 'Try a different search.',
+                                    emptyIcon: Icons.menu_book_outlined,
+                                    onTotalChanged: (v) {
+                                      if (mounted && v != _total) {
+                                        setState(() => _total = v);
+                                      }
+                                    },
+                                    fetch: (page) => repo.search(
+                                      q: _search.isEmpty ? null : _search,
+                                      page: page,
+                                    ),
+                                    itemBuilder: (context, f) => _Row(
+                                      faq: f,
+                                      selected: _openId == f.id,
+                                      onTap: () => _openFaq(f.id),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -350,11 +350,7 @@ class _BodyCell extends StatelessWidget {
 }
 
 class _Row extends StatefulWidget {
-  const _Row({
-    required this.faq,
-    required this.onTap,
-    this.selected = false,
-  });
+  const _Row({required this.faq, required this.onTap, this.selected = false});
   final Faq faq;
   final VoidCallback onTap;
   final bool selected;
@@ -384,9 +380,7 @@ class _RowState extends State<_Row> {
             color: widget.selected
                 ? t.accentMuted
                 : (_hover ? t.bgHover : t.bgElevated),
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -398,9 +392,9 @@ class _RowState extends State<_Row> {
                     f.question.trim().isEmpty ? '(untitled)' : f.question,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: ZebuTextStyles.body(context).copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(fontWeight: FontWeight.w500),
                   ),
                 ),
                 _BodyCell(
@@ -477,11 +471,9 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: ZebuTextStyles.small(context).copyWith(
-          color: tone,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
+        style: ZebuTextStyles.small(
+          context,
+        ).copyWith(color: tone, fontWeight: FontWeight.w600, fontSize: 12),
       ),
     );
   }

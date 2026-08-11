@@ -70,8 +70,7 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
       _error = null;
     });
     try {
-      final queues =
-          await ref.read(queuesRepositoryProvider).list(type: _type);
+      final queues = await ref.read(queuesRepositoryProvider).list(type: _type);
       if (!mounted) return;
       setState(() {
         _queues = queues;
@@ -179,8 +178,9 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
             trailing: LayoutBuilder(
               builder: (context, c) {
                 final filterAllowance = 152.0; // new button + gap
-                final available =
-                    c.hasBoundedWidth ? c.maxWidth - filterAllowance : 320.0;
+                final available = c.hasBoundedWidth
+                    ? c.maxWidth - filterAllowance
+                    : 320.0;
                 final searchWidth = available.clamp(180.0, 320.0);
                 return Row(
                   mainAxisSize: MainAxisSize.min,
@@ -242,8 +242,9 @@ class _QueuesScreenWebState extends ConsumerState<QueuesScreenWeb> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final horizontalScroll = constraints.maxWidth <= _kTableMinWidth;
-        final tableWidth =
-            horizontalScroll ? _kTableMinWidth : constraints.maxWidth;
+        final tableWidth = horizontalScroll
+            ? _kTableMinWidth
+            : constraints.maxWidth;
         return Scrollbar(
           controller: _tableHScroll,
           scrollbarOrientation: ScrollbarOrientation.bottom,
@@ -358,11 +359,7 @@ class _NewButtonState extends State<_NewButton> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(
-                Icons.add,
-                size: 16,
-                color: ZebuTheme.textInverse,
-              ),
+              const Icon(Icons.add, size: 16, color: ZebuTheme.textInverse),
               const SizedBox(width: ZebuSpacing.s2),
               Text(
                 'New queue',
@@ -412,11 +409,7 @@ class _TableHeader extends StatelessWidget {
               label: 'Filters',
               alignRight: true,
             ),
-            const _HeaderCell(
-              width: _kColActionsWidth,
-              label: '',
-              last: true,
-            ),
+            const _HeaderCell(width: _kColActionsWidth, label: '', last: true),
             if (scrollGutter) const SizedBox(width: 10),
           ],
         ),
@@ -529,10 +522,7 @@ class _RowState extends State<_Row> {
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
     final q = widget.queue;
-    final scopes = <String>[
-      if (q.public) 'Public',
-      if (q.personal) 'Personal',
-    ];
+    final scopes = <String>[if (q.public) 'Public', if (q.personal) 'Personal'];
     final scopeLabel = scopes.isEmpty ? 'System' : scopes.join(' · ');
 
     return MouseRegion(
@@ -546,9 +536,7 @@ class _RowState extends State<_Row> {
           duration: const Duration(milliseconds: 80),
           decoration: BoxDecoration(
             color: _hover ? t.bgHover : t.bgElevated,
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -560,9 +548,9 @@ class _RowState extends State<_Row> {
                     q.fullName.isEmpty ? '(unnamed)' : q.fullName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: ZebuTextStyles.body(context).copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(fontWeight: FontWeight.w500),
                   ),
                 ),
                 _BodyCell(
@@ -614,10 +602,7 @@ class _RowState extends State<_Row> {
                             color: t.textSecondary,
                           ),
                           itemBuilder: (_) => const [
-                            PopupMenuItem(
-                              value: 'edit',
-                              child: Text('Rename'),
-                            ),
+                            PopupMenuItem(value: 'edit', child: Text('Rename')),
                             PopupMenuItem(
                               value: 'delete',
                               child: Text('Delete'),
@@ -652,11 +637,9 @@ class _Pill extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: ZebuTextStyles.small(context).copyWith(
-            color: tone,
-            fontWeight: FontWeight.w600,
-            fontSize: 12,
-          ),
+          style: ZebuTextStyles.small(
+            context,
+          ).copyWith(color: tone, fontWeight: FontWeight.w600, fontSize: 12),
         ),
       ),
     );

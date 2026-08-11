@@ -69,7 +69,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       showDragHandle: true,
       builder: (_) => const _ChangePasswordSheet(),
     );
-    if (changed == true && mounted) _toast('Password changed', type: ToastType.success);
+    if (changed == true && mounted)
+      _toast('Password changed', type: ToastType.success);
   }
 
   @override

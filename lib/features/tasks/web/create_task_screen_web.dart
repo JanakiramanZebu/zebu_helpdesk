@@ -108,21 +108,23 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
       _fieldErrors = const {};
     });
     try {
-      final task = await ref.read(tasksRepositoryProvider).create(
-        {
-          'dept_id': _department!.id,
-          'title': _title.text.trim(),
-          'description': _description.text.trim(),
-          if (_priority != null) 'priority_id': _priority!.id,
-          if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
-          if (_parent != null) 'parent_id': _parent!.id,
-        },
-        files: [
-          for (final f in _files)
-            if (f.bytes != null)
-              MultipartFile.fromBytes(f.bytes!, filename: f.name),
-        ],
-      );
+      final task = await ref
+          .read(tasksRepositoryProvider)
+          .create(
+            {
+              'dept_id': _department!.id,
+              'title': _title.text.trim(),
+              'description': _description.text.trim(),
+              if (_priority != null) 'priority_id': _priority!.id,
+              if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
+              if (_parent != null) 'parent_id': _parent!.id,
+            },
+            files: [
+              for (final f in _files)
+                if (f.bytes != null)
+                  MultipartFile.fromBytes(f.bytes!, filename: f.name),
+            ],
+          );
       if (!mounted) return;
       _toast('Task #${task.number} created', type: ToastType.success);
       _close();
@@ -192,8 +194,7 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
     final chosen = await showAppDropdown<int>(
       anchorContext,
       entries: [
-        for (final m in items)
-          AppDropdownItem<int>(value: m.id, label: m.name),
+        for (final m in items) AppDropdownItem<int>(value: m.id, label: m.name),
       ],
     );
     if (chosen == null) return;
@@ -540,10 +541,9 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -636,10 +636,9 @@ class _LabeledField extends StatelessWidget {
           children: [
             Text(
               label,
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
             ),
             if (required) ...[
               const SizedBox(width: 4),
@@ -658,7 +657,10 @@ class _LabeledField extends StatelessWidget {
         child,
         if (error != null) ...[
           const SizedBox(height: 4),
-          Text(error!, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
+          Text(
+            error!,
+            style: ZebuTextStyles.small(context).copyWith(color: t.danger),
+          ),
         ],
       ],
     );
@@ -739,11 +741,7 @@ class _SelectFieldState extends State<_SelectField> {
                 _MiniIcon(icon: Icons.close, onTap: widget.onClear!),
                 const SizedBox(width: 2),
               ],
-              Icon(
-                Icons.keyboard_arrow_down,
-                size: 18,
-                color: t.textSecondary,
-              ),
+              Icon(Icons.keyboard_arrow_down, size: 18, color: t.textSecondary),
             ],
           ),
         ),
@@ -819,10 +817,7 @@ class _TextInput extends StatelessWidget {
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.accent,
-        width: 1.4,
-      ),
+      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
     );
     return TextField(
       controller: controller,
@@ -842,7 +837,9 @@ class _TextInput extends StatelessWidget {
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(
+          context,
+        ).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -869,10 +866,9 @@ class _AttachmentsBlock extends StatelessWidget {
           children: [
             Text(
               'Attachments',
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
             ),
             const Spacer(),
             _AddFilesButton(onTap: onAdd),
@@ -972,10 +968,9 @@ class _Chip extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w500,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 4),
@@ -1008,7 +1003,10 @@ class _ErrorBanner extends StatelessWidget {
           Icon(Icons.error_outline, size: 16, color: t.danger),
           const SizedBox(width: ZebuSpacing.s2),
           Expanded(
-            child: Text(message, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
+            child: Text(
+              message,
+              style: ZebuTextStyles.small(context).copyWith(color: t.danger),
+            ),
           ),
         ],
       ),
@@ -1059,9 +1057,9 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
       _error = null;
     });
     try {
-      final page = await ref.read(tasksRepositoryProvider).list(
-        TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25),
-      );
+      final page = await ref
+          .read(tasksRepositoryProvider)
+          .list(TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25));
       if (!mounted) return;
       setState(() {
         _results = page.items;
@@ -1104,7 +1102,10 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
                 ),
                 child: Row(
                   children: [
-                    Text('Select parent task', style: ZebuTextStyles.pageTitle(context)),
+                    Text(
+                      'Select parent task',
+                      style: ZebuTextStyles.pageTitle(context),
+                    ),
                     const Spacer(),
                     _IconBtn(
                       icon: Icons.close_rounded,
@@ -1133,7 +1134,9 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
                       color: t.textSecondary,
                     ),
                     hintText: 'Search task by number or title',
-                    hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+                    hintStyle: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(color: t.textSecondary),
                     contentPadding: const EdgeInsets.symmetric(vertical: 12),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(_kFlatRadius),
@@ -1156,10 +1159,18 @@ class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
                     ? const Center(child: CircularProgressIndicator())
                     : _error != null
                     ? Center(
-                        child: Text(_error!, style: ZebuTextStyles.small(context)),
+                        child: Text(
+                          _error!,
+                          style: ZebuTextStyles.small(context),
+                        ),
                       )
                     : _results.isEmpty
-                    ? Center(child: Text('No tasks found', style: ZebuTextStyles.small(context)))
+                    ? Center(
+                        child: Text(
+                          'No tasks found',
+                          style: ZebuTextStyles.small(context),
+                        ),
+                      )
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(
                           vertical: ZebuSpacing.s2,
@@ -1216,7 +1227,9 @@ class _TaskPickRowState extends State<_TaskPickRow> {
                 widget.task.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+                style: ZebuTextStyles.body(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 2),
               Text(

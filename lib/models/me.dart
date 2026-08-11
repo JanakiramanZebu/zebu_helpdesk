@@ -95,8 +95,7 @@ class Me {
     }
 
     final caps = J.map(j['computed_capabilities']);
-    List<int> intList(dynamic x) =>
-        J.list(x).map((e) => J.intOr(e)).toList();
+    List<int> intList(dynamic x) => J.list(x).map((e) => J.intOr(e)).toList();
 
     return Me(
       id: J.intOr(j['id']),

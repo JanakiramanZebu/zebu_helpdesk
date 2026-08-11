@@ -42,8 +42,9 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
       _error = null;
     });
     try {
-      final report =
-          await ref.read(reportsRepositoryProvider).volume(days: _days);
+      final report = await ref
+          .read(reportsRepositoryProvider)
+          .volume(days: _days);
       if (!mounted) return;
       setState(() {
         _report = report;
@@ -108,10 +109,7 @@ class _ReportsScreenWebState extends ConsumerState<ReportsScreenWeb> {
 
                 final rangeSelector = SizedBox(
                   width: 220,
-                  child: _RangePicker(
-                    days: _days,
-                    onSelected: _selectDays,
-                  ),
+                  child: _RangePicker(days: _days, onSelected: _selectDays),
                 );
 
                 const narrowBreak = 640.0;
@@ -257,14 +255,10 @@ class _RangePicker extends StatelessWidget {
           isExpanded: true,
           isDense: true,
           borderRadius: BorderRadius.circular(4),
-          icon: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: t.textSecondary,
-          ),
-          style: ZebuTextStyles.body(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w600,
-          ),
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: t.textSecondary),
+          style: ZebuTextStyles.body(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
           items: [
             for (final d in _options)
               DropdownMenuItem(value: d, child: Text('Last $d days')),

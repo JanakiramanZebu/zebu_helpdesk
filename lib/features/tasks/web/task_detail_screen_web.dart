@@ -137,31 +137,27 @@ class _TaskDetailScreenWebState extends ConsumerState<TaskDetailScreenWeb> {
           await _load();
         });
       case 'transfer':
-        await _pickMeta(
-          MetaKind.departments,
-          title: 'Transfer department',
-          (id) async {
-            await _runAction(
-              () => repo.transfer(widget.taskId, id),
-              success: 'Transferred',
-            );
-            await _load();
-          },
-        );
+        await _pickMeta(MetaKind.departments, title: 'Transfer department', (
+          id,
+        ) async {
+          await _runAction(
+            () => repo.transfer(widget.taskId, id),
+            success: 'Transferred',
+          );
+          await _load();
+        });
       case 'progress':
         await _editProgress();
       case 'priority':
-        await _pickMeta(
-          MetaKind.taskPriorities,
-          title: 'Set priority',
-          (id) async {
-            await _runAction(
-              () => repo.edit(widget.taskId, priorityId: id),
-              success: 'Priority updated',
-            );
-            await _load();
-          },
-        );
+        await _pickMeta(MetaKind.taskPriorities, title: 'Set priority', (
+          id,
+        ) async {
+          await _runAction(
+            () => repo.edit(widget.taskId, priorityId: id),
+            success: 'Priority updated',
+          );
+          await _load();
+        });
     }
   }
 
@@ -318,9 +314,7 @@ class _TaskDetailScreenWebState extends ConsumerState<TaskDetailScreenWeb> {
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1360),
-                    child: wide
-                        ? _wideLayout(task)
-                        : _narrowLayout(task),
+                    child: wide ? _wideLayout(task) : _narrowLayout(task),
                   ),
                 ),
               ),
@@ -406,17 +400,13 @@ class _HeroHeader extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Text(
-                    '#${task.number}',
-                    style: ZebuTextStyles.label(context),
-                  ),
+                  Text('#${task.number}', style: ZebuTextStyles.label(context)),
                   const SizedBox(width: ZebuSpacing.s2),
                   if (task.blocked) ...[
                     _Tag(label: 'BLOCKED', tone: t.danger),
                     const SizedBox(width: ZebuSpacing.s2),
                   ],
-                  if (task.overdue)
-                    _Tag(label: 'OVERDUE', tone: t.danger),
+                  if (task.overdue) _Tag(label: 'OVERDUE', tone: t.danger),
                 ],
               ),
               const SizedBox(height: ZebuSpacing.s2),
@@ -444,15 +434,12 @@ class _HeroHeader extends StatelessWidget {
                           SizedBox(
                             width: 160,
                             child: ClipRRect(
-                              borderRadius:
-                                  BorderRadius.circular(_kFlatRadius),
+                              borderRadius: BorderRadius.circular(_kFlatRadius),
                               child: LinearProgressIndicator(
                                 value: (task.progress / 100).clamp(0, 1),
                                 minHeight: 6,
                                 backgroundColor: t.bgHover,
-                                valueColor: AlwaysStoppedAnimation(
-                                  t.accent,
-                                ),
+                                valueColor: AlwaysStoppedAnimation(t.accent),
                               ),
                             ),
                           ),
@@ -595,14 +582,16 @@ class _ThreadCard extends StatelessWidget {
           ? Padding(
               padding: const EdgeInsets.all(ZebuSpacing.s5),
               child: Center(
-                child: Text('No messages yet', style: ZebuTextStyles.small(context)),
+                child: Text(
+                  'No messages yet',
+                  style: ZebuTextStyles.small(context),
+                ),
               ),
             )
           : Column(
               children: [
                 for (int i = 0; i < thread.length; i++) ...[
-                  if (i > 0)
-                    Divider(height: 1, color: t.borderSubtle),
+                  if (i > 0) Divider(height: 1, color: t.borderSubtle),
                   _ThreadEntryRow(entry: thread[i]),
                 ],
               ],
@@ -623,9 +612,7 @@ class _ThreadEntryRow extends StatelessWidget {
     final tone = isNote
         ? ZebuTheme.warning
         : (isResponse ? t.accent : t.textSecondary);
-    final typeLabel = isNote
-        ? 'NOTE'
-        : (isResponse ? 'REPLY' : 'MESSAGE');
+    final typeLabel = isNote ? 'NOTE' : (isResponse ? 'REPLY' : 'MESSAGE');
     final html = entry.bodyHtml ?? entry.body ?? '';
     final plain = Fmt.stripHtml(html);
 
@@ -668,15 +655,19 @@ class _ThreadEntryRow extends StatelessWidget {
                     _Tag(label: typeLabel, tone: tone),
                     const Spacer(),
                     if (entry.created != null)
-                      Text(Fmt.ago(entry.created), style: ZebuTextStyles.label(context)),
+                      Text(
+                        Fmt.ago(entry.created),
+                        style: ZebuTextStyles.label(context),
+                      ),
                   ],
                 ),
                 if (entry.title != null && entry.title!.isNotEmpty) ...[
                   const SizedBox(height: ZebuSpacing.s2),
                   Text(
                     entry.title!,
-                    style: ZebuTextStyles.body(context)
-                        .copyWith(fontWeight: FontWeight.w600),
+                    style: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(fontWeight: FontWeight.w600),
                   ),
                 ],
                 const SizedBox(height: ZebuSpacing.s2),
@@ -685,10 +676,15 @@ class _ThreadEntryRow extends StatelessWidget {
                 else if (html.contains('<'))
                   HtmlWidget(
                     html,
-                    textStyle: ZebuTextStyles.body(context).copyWith(height: 1.5),
+                    textStyle: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(height: 1.5),
                   )
                 else
-                  Text(plain, style: ZebuTextStyles.body(context).copyWith(height: 1.5)),
+                  Text(
+                    plain,
+                    style: ZebuTextStyles.body(context).copyWith(height: 1.5),
+                  ),
                 if (entry.attachments.isNotEmpty) ...[
                   const SizedBox(height: ZebuSpacing.s3),
                   Wrap(
@@ -715,7 +711,10 @@ class _ThreadEntryRow extends StatelessWidget {
                                 color: t.textSecondary,
                               ),
                               const SizedBox(width: 6),
-                              Text(a.name, style: ZebuTextStyles.small(context)),
+                              Text(
+                                a.name,
+                                style: ZebuTextStyles.small(context),
+                              ),
                             ],
                           ),
                         ),
@@ -738,7 +737,7 @@ class _ThreadEntryRow extends StatelessWidget {
 class _ReplyCard extends StatefulWidget {
   const _ReplyCard({required this.onSend, required this.disabled});
   final Future<void> Function({required bool asNote, required String body})
-      onSend;
+  onSend;
   final bool disabled;
 
   @override
@@ -812,7 +811,9 @@ class _ReplyCardState extends State<_ReplyCard> {
                       hintText: _asNote
                           ? 'Add an internal note (not visible to requester)…'
                           : 'Write a reply…',
-                      hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+                      hintStyle: ZebuTextStyles.body(
+                        context,
+                      ).copyWith(color: t.textSecondary),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(_kFlatRadius),
                         borderSide: BorderSide(color: t.borderSubtle),
@@ -988,13 +989,21 @@ class _SubtasksCard extends StatelessWidget {
       child: subtasks.isEmpty
           ? Padding(
               padding: const EdgeInsets.all(ZebuSpacing.s5),
-              child: Center(child: Text('No subtasks', style: ZebuTextStyles.small(context))),
+              child: Center(
+                child: Text(
+                  'No subtasks',
+                  style: ZebuTextStyles.small(context),
+                ),
+              ),
             )
           : Column(
               children: [
                 for (int i = 0; i < subtasks.length; i++) ...[
                   if (i > 0) Divider(height: 1, color: t.borderSubtle),
-                  _SubtaskRow(task: subtasks[i], onTap: () => onOpen(subtasks[i])),
+                  _SubtaskRow(
+                    task: subtasks[i],
+                    onTap: () => onOpen(subtasks[i]),
+                  ),
                 ],
               ],
             ),
@@ -1034,9 +1043,9 @@ class _SubtaskRowState extends State<_SubtaskRow> {
             children: [
               Text(
                 '#${task.number}',
-                style: ZebuTextStyles.small(context)
-                    .copyWith(fontWeight: FontWeight.w600)
-                    .withTabularNums(),
+                style: ZebuTextStyles.small(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w600).withTabularNums(),
               ),
               const SizedBox(width: ZebuSpacing.s3),
               Expanded(
@@ -1091,7 +1100,12 @@ class _DependenciesCard extends StatelessWidget {
       child: dependencies.isEmpty
           ? Padding(
               padding: const EdgeInsets.all(ZebuSpacing.s5),
-              child: Center(child: Text('No dependencies', style: ZebuTextStyles.small(context))),
+              child: Center(
+                child: Text(
+                  'No dependencies',
+                  style: ZebuTextStyles.small(context),
+                ),
+              ),
             )
           : Column(
               children: [
@@ -1142,7 +1156,9 @@ class _DependencyRow extends StatelessWidget {
                       : '#${blocker.number} ${blocker.title}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+                  style: ZebuTextStyles.body(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -1226,14 +1242,13 @@ class _MetaRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: ZebuTextStyles.label(context),
-          ),
+          Text(label, style: ZebuTextStyles.label(context)),
           const SizedBox(height: 2),
           Text(
             value,
-            style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+            style: ZebuTextStyles.body(
+              context,
+            ).copyWith(fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -1335,10 +1350,9 @@ class _AddButtonState extends State<_AddButton> {
               const SizedBox(width: 4),
               Text(
                 widget.label,
-                style: ZebuTextStyles.small(context).copyWith(
-                  color: t.accent,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: ZebuTextStyles.small(
+                  context,
+                ).copyWith(color: t.accent, fontWeight: FontWeight.w600),
               ),
             ],
           ),
@@ -1363,7 +1377,10 @@ class _Tag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(label, style: ZebuTextStyles.label(context).copyWith(color: tone));
+    return Text(
+      label,
+      style: ZebuTextStyles.label(context).copyWith(color: tone),
+    );
   }
 }
 
@@ -1525,10 +1542,10 @@ class _SubtaskDialogState extends State<_SubtaskDialog> {
           onPressed: () {
             final title = _title.text.trim();
             if (title.isEmpty) return;
-            Navigator.pop(
-              context,
-              (title: title, description: _description.text.trim()),
-            );
+            Navigator.pop(context, (
+              title: title,
+              description: _description.text.trim(),
+            ));
           },
           child: const Text('Create'),
         ),

@@ -35,8 +35,7 @@ class UsersListScreenWeb extends ConsumerStatefulWidget {
   const UsersListScreenWeb({super.key});
 
   @override
-  ConsumerState<UsersListScreenWeb> createState() =>
-      _UsersListScreenWebState();
+  ConsumerState<UsersListScreenWeb> createState() => _UsersListScreenWebState();
 }
 
 class _UsersListScreenWebState extends ConsumerState<UsersListScreenWeb> {
@@ -51,9 +50,9 @@ class _UsersListScreenWebState extends ConsumerState<UsersListScreenWeb> {
 
   void _openUser(int id) => setState(() => _openUserId = id);
   void _closeUser() => setState(() {
-        _openUserId = null;
-        _fullscreen = false;
-      });
+    _openUserId = null;
+    _fullscreen = false;
+  });
   void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
 
   void _onUserChanged() {
@@ -131,50 +130,50 @@ class _UsersListScreenWebState extends ConsumerState<UsersListScreenWeb> {
                         ? _kTableMinWidth
                         : constraints.maxWidth;
                     return Scrollbar(
-                    controller: _tableHScroll,
-                    scrollbarOrientation: ScrollbarOrientation.bottom,
-                    child: SingleChildScrollView(
                       controller: _tableHScroll,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _TableHeader(scrollGutter: horizontalScroll),
-                            Expanded(
-                              child: ColoredBox(
-                                color: t.bgElevated,
-                                child: PagedListView<AppUser>(
-                                  padding: EdgeInsets.zero,
-                                  refreshKey: '$_search|$_refreshKey',
-                                  emptyMessage: 'No users',
-                                  emptyHint: 'Try a different search.',
-                                  emptyIcon: Icons.people_outline,
-                                  onTotalChanged: (v) {
-                                    if (mounted && v != _total) {
-                                      setState(() => _total = v);
-                                    }
-                                  },
-                                  fetch: (page) => repo.list(
-                                    q: _search.isEmpty ? null : _search,
-                                    page: page,
-                                  ),
-                                  itemBuilder: (context, u) => _UserRow(
-                                    user: u,
-                                    selected: _openUserId == u.id,
-                                    onTap: () => _openUser(u.id),
+                      scrollbarOrientation: ScrollbarOrientation.bottom,
+                      child: SingleChildScrollView(
+                        controller: _tableHScroll,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: tableWidth,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _TableHeader(scrollGutter: horizontalScroll),
+                              Expanded(
+                                child: ColoredBox(
+                                  color: t.bgElevated,
+                                  child: PagedListView<AppUser>(
+                                    padding: EdgeInsets.zero,
+                                    refreshKey: '$_search|$_refreshKey',
+                                    emptyMessage: 'No users',
+                                    emptyHint: 'Try a different search.',
+                                    emptyIcon: Icons.people_outline,
+                                    onTotalChanged: (v) {
+                                      if (mounted && v != _total) {
+                                        setState(() => _total = v);
+                                      }
+                                    },
+                                    fetch: (page) => repo.list(
+                                      q: _search.isEmpty ? null : _search,
+                                      page: page,
+                                    ),
+                                    itemBuilder: (context, u) => _UserRow(
+                                      user: u,
+                                      selected: _openUserId == u.id,
+                                      onTap: () => _openUser(u.id),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -402,9 +401,7 @@ class _UserRowState extends State<_UserRow> {
             color: widget.selected
                 ? t.accentMuted
                 : (_hover ? t.bgHover : t.bgElevated),
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -435,9 +432,9 @@ class _UserRowState extends State<_UserRow> {
                           trimmed.isEmpty ? '(unnamed)' : trimmed,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: ZebuTextStyles.body(context).copyWith(
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: ZebuTextStyles.body(
+                            context,
+                          ).copyWith(fontWeight: FontWeight.w500),
                         ),
                       ),
                     ],

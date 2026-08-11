@@ -120,12 +120,11 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   bool _acting = false;
 
   final GlobalKey _statusRowKey = GlobalKey(debugLabel: 'task-status-row');
-  final GlobalKey _priorityRowKey =
-      GlobalKey(debugLabel: 'task-priority-row');
-  final GlobalKey _assigneeRowKey =
-      GlobalKey(debugLabel: 'task-assignee-row');
-  final GlobalKey _departmentRowKey =
-      GlobalKey(debugLabel: 'task-department-row');
+  final GlobalKey _priorityRowKey = GlobalKey(debugLabel: 'task-priority-row');
+  final GlobalKey _assigneeRowKey = GlobalKey(debugLabel: 'task-assignee-row');
+  final GlobalKey _departmentRowKey = GlobalKey(
+    debugLabel: 'task-department-row',
+  );
 
   @override
   void initState() {
@@ -263,7 +262,8 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
           AppDropdownItem<int>(
             value: m.id,
             label: m.name,
-            selected: current != null &&
+            selected:
+                current != null &&
                 current.isNotEmpty &&
                 m.name.trim().toLowerCase() == current,
           ),
@@ -455,7 +455,10 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
         ),
         // Reply and internal note both require task.reply on the backend, so a
         // single canReply gate covers the whole composer.
-        CommentComposer(onSend: _sendReply, disabled: _acting || !caps.canReply),
+        CommentComposer(
+          onSend: _sendReply,
+          disabled: _acting || !caps.canReply,
+        ),
       ],
     );
   }
@@ -487,7 +490,10 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s6),
             child: Center(
-              child: Text('No messages yet', style: ZebuTextStyles.small(context)),
+              child: Text(
+                'No messages yet',
+                style: ZebuTextStyles.small(context),
+              ),
             ),
           )
         else ...[
@@ -516,7 +522,10 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s8),
                   child: Center(
-                    child: Text('No messages yet', style: ZebuTextStyles.small(context)),
+                    child: Text(
+                      'No messages yet',
+                      style: ZebuTextStyles.small(context),
+                    ),
                   ),
                 )
               else ...[
@@ -530,9 +539,7 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
         ),
         DecoratedBox(
           decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(left: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: SizedBox(
             width: _kFieldsSidebarWidth,
@@ -549,7 +556,9 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
                   onStatusTap: caps.canClose ? _pickTaskStatus : null,
                   onPriorityTap: caps.canEdit ? _pickTaskPriority : null,
                   onAssigneeTap: caps.canAssign ? _pickTaskAssignee : null,
-                  onDepartmentTap: caps.canTransfer ? _pickTaskDepartment : null,
+                  onDepartmentTap: caps.canTransfer
+                      ? _pickTaskDepartment
+                      : null,
                 ),
               ],
             ),
@@ -592,15 +601,18 @@ class _Header extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (task == null)
-            Expanded(child: Text('Loading…', style: ZebuTextStyles.smallStrong(context)))
+            Expanded(
+              child: Text(
+                'Loading…',
+                style: ZebuTextStyles.smallStrong(context),
+              ),
+            )
           else ...[
             _NumberChip(number: task!.number),
             const SizedBox(width: ZebuSpacing.s3),
@@ -620,9 +632,7 @@ class _Header extends StatelessWidget {
           ],
           if (onToggleFullscreen != null) ...[
             _IconBtn(
-              icon: isFullscreen
-                  ? Icons.close_fullscreen
-                  : Icons.open_in_full,
+              icon: isFullscreen ? Icons.close_fullscreen : Icons.open_in_full,
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
             ),
@@ -656,10 +666,7 @@ class _NumberChip extends StatelessWidget {
       child: Text(
         '#$number',
         style: ZebuTextStyles.small(context)
-            .copyWith(
-              fontWeight: FontWeight.w600,
-              color: t.textPrimary,
-            )
+            .copyWith(fontWeight: FontWeight.w600, color: t.textPrimary)
             .withTabularNums(),
       ),
     );
@@ -754,10 +761,9 @@ class _ActionsBtnState extends State<_ActionsBtn> {
               children: [
                 Text(
                   'Actions',
-                  style: ZebuTextStyles.small(context).copyWith(
-                    color: t.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: ZebuTextStyles.small(
+                    context,
+                  ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(width: 4),
                 Icon(Icons.expand_more, size: 16, color: t.textPrimary),
@@ -795,9 +801,7 @@ class _IconBtnState extends State<_IconBtn> {
     final bg = _hover
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
-    final fg = _hover && widget.destructive
-        ? t.danger
-        : t.textPrimary;
+    final fg = _hover && widget.destructive ? t.danger : t.textPrimary;
     final child = MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -853,6 +857,7 @@ class _FieldsTable extends StatelessWidget {
   final GlobalKey priorityRowKey;
   final GlobalKey assigneeRowKey;
   final GlobalKey departmentRowKey;
+
   /// Null when the current agent lacks the permission for that field — the
   /// row then renders as static text (no chevron, no tap), mirroring the
   /// backend's per-action checkStaffPerm gate.
@@ -869,7 +874,7 @@ class _FieldsTable extends StatelessWidget {
     final department = (task.departmentName ?? '').trim();
 
     final cells = <Widget>[
-       _FieldRow(
+      _FieldRow(
         rowKey: assigneeRowKey,
         icon: Icons.person_outline,
         label: 'Assignee',
@@ -877,13 +882,9 @@ class _FieldsTable extends StatelessWidget {
         onTap: onAssigneeTap,
         value: assignee.isEmpty
             ? const _EmptyValue(label: 'Unassigned')
-            : _TextValue(
-                text: assignee,
-                tone: t.accent,
-                linked: true,
-              ),
+            : _TextValue(text: assignee, tone: t.accent, linked: true),
       ),
-       _FieldRow(
+      _FieldRow(
         rowKey: departmentRowKey,
         icon: Icons.business_outlined,
         label: 'Department',
@@ -891,11 +892,7 @@ class _FieldsTable extends StatelessWidget {
         onTap: onDepartmentTap,
         value: department.isEmpty
             ? const _EmptyValue(label: 'None')
-            : _TextValue(
-                text: department,
-                tone: t.accent,
-                linked: true,
-              ),
+            : _TextValue(text: department, tone: t.accent, linked: true),
       ),
       _FieldRow(
         rowKey: statusRowKey,
@@ -937,10 +934,7 @@ class _FieldsTable extends StatelessWidget {
           icon: Icons.block,
           label: 'Blocked',
           sidebar: sidebar,
-          value: _TextValue(
-            text: 'Blocked by dependency',
-            tone: t.danger,
-          ),
+          value: _TextValue(text: 'Blocked by dependency', tone: t.danger),
         ),
       if (task.progress > 0)
         _FieldRow(
@@ -985,7 +979,9 @@ class _FieldsTable extends StatelessWidget {
               vertical: ZebuSpacing.s2,
             ),
             child: DefaultTextStyle.merge(
-              style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
+              style: ZebuTextStyles.body(
+                context,
+              ).copyWith(color: t.textPrimary),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: cells,
@@ -1117,14 +1113,12 @@ class _FieldRowState extends State<_FieldRow> {
     // TicketDetailPanel reference.
     final rowHeight = widget.sidebar ? _kSidebarRowHeight : 30.0;
     final labelStyle = widget.sidebar
-        ? ZebuTextStyles.body(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w500,
-          )
-        : ZebuTextStyles.small(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w500,
-          );
+        ? ZebuTextStyles.body(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500)
+        : ZebuTextStyles.small(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500);
     // Leading icons removed — labels alone carry the meaning and the row
     // reads cleaner without the credential glyphs (person / building /
     // flag / bang / calendar).
@@ -1152,9 +1146,7 @@ class _FieldRowState extends State<_FieldRow> {
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => widget.onTap!(
-          widget.rowKey?.currentContext ?? context,
-        ),
+        onTap: () => widget.onTap!(widget.rowKey?.currentContext ?? context),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 80),
           color: t.bgElevated,
@@ -1211,11 +1203,7 @@ class _TextValueState extends State<_TextValue> {
 }
 
 class _StatusValuePill extends StatelessWidget {
-  const _StatusValuePill({
-    required this.label,
-    required this.color,
-    this.icon,
-  });
+  const _StatusValuePill({required this.label, required this.color, this.icon});
   final String label;
   final Color color;
   final IconData? icon;
@@ -1240,10 +1228,9 @@ class _EmptyValue extends StatelessWidget {
       label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: ZebuTextStyles.body(context).copyWith(
-        color: t.textSecondary,
-        fontWeight: FontWeight.w400,
-      ),
+      style: ZebuTextStyles.body(
+        context,
+      ).copyWith(color: t.textSecondary, fontWeight: FontWeight.w400),
     );
   }
 }
@@ -1265,13 +1252,13 @@ class _ActivityHeader extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          top: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Text(
         'Activity',
-        style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
+        style: ZebuTextStyles.smallStrong(
+          context,
+        ).copyWith(color: t.textPrimary),
       ),
     );
   }
@@ -1324,21 +1311,25 @@ class _ThreadRow extends StatelessWidget {
                       entry.poster,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ZebuTextStyles.smallStrong(context).copyWith(color: nameColor),
+                      style: ZebuTextStyles.smallStrong(
+                        context,
+                      ).copyWith(color: nameColor),
                     ),
                   ),
                   if (entry.created != null) ...[
                     const SizedBox(width: ZebuSpacing.s2),
-                    Text(Fmt.ago(entry.created), style: ZebuTextStyles.label(context)),
+                    Text(
+                      Fmt.ago(entry.created),
+                      style: ZebuTextStyles.label(context),
+                    ),
                   ],
                   if (isNote) ...[
                     const SizedBox(width: ZebuSpacing.s2),
                     Text(
                       'Internal note',
-                      style: ZebuTextStyles.label(context).copyWith(
-                        color: t.note,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: ZebuTextStyles.label(
+                        context,
+                      ).copyWith(color: t.note, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ],
@@ -1349,7 +1340,10 @@ class _ThreadRow extends StatelessWidget {
               else if (html.contains('<'))
                 _HtmlBody(html: html)
               else
-                Text(plain, style: ZebuTextStyles.body(context).copyWith(height: 1.5)),
+                Text(
+                  plain,
+                  style: ZebuTextStyles.body(context).copyWith(height: 1.5),
+                ),
               if (entry.attachments.isNotEmpty) ...[
                 const SizedBox(height: ZebuSpacing.s3),
                 Wrap(
@@ -1402,9 +1396,6 @@ class _ThreadRow extends StatelessWidget {
     );
   }
 }
-
-
-
 
 // ---------------------------------------------------------------------------
 // Attachment chip
@@ -1472,11 +1463,7 @@ class _AttachmentChipState extends State<_AttachmentChip> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                _icon,
-                size: 14,
-                color: _hover ? t.accent : t.textSecondary,
-              ),
+              Icon(_icon, size: 14, color: _hover ? t.accent : t.textSecondary),
               const SizedBox(width: 6),
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 220),
@@ -1536,10 +1523,7 @@ class _HtmlBody extends StatelessWidget {
             case 'sup':
               return {'font-size': '13px'};
             case 'a':
-              return {
-                'color': '#0037B7',
-                'text-decoration': 'underline',
-              };
+              return {'color': '#0037B7', 'text-decoration': 'underline'};
             default:
               return null;
           }

@@ -276,9 +276,7 @@ class _GridHeader<T> extends StatelessWidget {
         vertical: ZebuSpacing.s3,
       ),
       child: Align(
-        alignment: c.alignRight
-            ? Alignment.centerRight
-            : Alignment.centerLeft,
+        alignment: c.alignRight ? Alignment.centerRight : Alignment.centerLeft,
         child: Text(
           c.label,
           maxLines: 1,
@@ -353,9 +351,7 @@ class _GridRowState<T> extends State<_GridRow<T>> {
                 // `Colors.transparent` — that is transparent *black*, and
                 // lerping from it washes the row through grey on the way in.
                 : (_hover ? t.bgHover : t.bgHover.withValues(alpha: 0)),
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: SizedBox(
             height: widget.height,

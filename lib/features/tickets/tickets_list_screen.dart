@@ -46,7 +46,11 @@ const _sortItems = <({String key, String label})>[
 const _filterFacets = <FilterFacet>[
   FilterFacet(key: 'dept', label: 'Department', metaKind: MetaKind.departments),
   FilterFacet(key: 'status', label: 'Status', metaKind: MetaKind.statuses),
-  FilterFacet(key: 'priority', label: 'Priority', metaKind: MetaKind.priorities),
+  FilterFacet(
+    key: 'priority',
+    label: 'Priority',
+    metaKind: MetaKind.priorities,
+  ),
   FilterFacet(key: 'agent', label: 'Agent', metaKind: MetaKind.agents),
   FilterFacet(key: 'tag', label: 'Tag', metaKind: MetaKind.tags),
 ];
@@ -369,7 +373,10 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
       ),
     );
     if (ok == true) {
-      await _runBulk('Deleted', (t) => ref.read(ticketsRepositoryProvider).delete(t));
+      await _runBulk(
+        'Deleted',
+        (t) => ref.read(ticketsRepositoryProvider).delete(t),
+      );
     }
   }
 
@@ -396,9 +403,9 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     try {
       // Export exactly what's visible: the view's rows, narrowed by the active
       // search.
-      final tickets = (await _gatherAll(_query))
-          .where((t) => _matches(t, meName))
-          .toList();
+      final tickets = (await _gatherAll(
+        _query,
+      )).where((t) => _matches(t, meName)).toList();
       if (tickets.isEmpty) {
         _toast('No tickets to export');
         return;
@@ -573,9 +580,15 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
               PopupMenuButton<String>(
                 onSelected: _onBulkMenu,
                 itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'assign', child: Text('Assign to agent…')),
+                  PopupMenuItem(
+                    value: 'assign',
+                    child: Text('Assign to agent…'),
+                  ),
                   PopupMenuItem(value: 'status', child: Text('Set status…')),
-                  PopupMenuItem(value: 'priority', child: Text('Set priority…')),
+                  PopupMenuItem(
+                    value: 'priority',
+                    child: Text('Set priority…'),
+                  ),
                   PopupMenuItem(value: 'delete', child: Text('Delete')),
                 ],
               ),
@@ -698,7 +711,8 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
           Expanded(
             child: PagedListView(
               fabClearance: !_selectionMode,
-              refreshKey: '$_view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
+              refreshKey:
+                  '$_view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
               itemFilter: (t) => _matches(t, meName),
               itemSort: _sort == 'thread' ? null : _compare,
               onItems: _onItems,

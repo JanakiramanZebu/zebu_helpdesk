@@ -61,21 +61,23 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       _fieldErrors = const {};
     });
     try {
-      final task = await ref.read(tasksRepositoryProvider).create(
-        {
-          'dept_id': _department!.id,
-          'title': _title.text.trim(),
-          'description': _description.text.trim(),
-          if (_priority != null) 'priority_id': _priority!.id,
-          if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
-          if (_parent != null) 'parent_id': _parent!.id,
-        },
-        files: [
-          for (final f in _files)
-            if (f.bytes != null)
-              MultipartFile.fromBytes(f.bytes!, filename: f.name),
-        ],
-      );
+      final task = await ref
+          .read(tasksRepositoryProvider)
+          .create(
+            {
+              'dept_id': _department!.id,
+              'title': _title.text.trim(),
+              'description': _description.text.trim(),
+              if (_priority != null) 'priority_id': _priority!.id,
+              if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
+              if (_parent != null) 'parent_id': _parent!.id,
+            },
+            files: [
+              for (final f in _files)
+                if (f.bytes != null)
+                  MultipartFile.fromBytes(f.bytes!, filename: f.name),
+            ],
+          );
       if (!mounted) return;
       _toast('Task #${task.number} created', type: ToastType.success);
       context.pushReplacement(Routes.task(task.id));
@@ -356,9 +358,9 @@ class _ParentTaskSheetState extends ConsumerState<_ParentTaskSheet> {
       _error = null;
     });
     try {
-      final page = await ref.read(tasksRepositoryProvider).list(
-        TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25),
-      );
+      final page = await ref
+          .read(tasksRepositoryProvider)
+          .list(TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25));
       if (!mounted) return;
       setState(() {
         _results = page.items;

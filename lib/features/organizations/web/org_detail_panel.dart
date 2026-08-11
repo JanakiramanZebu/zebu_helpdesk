@@ -18,7 +18,7 @@ import '../../../widgets/app_dropdown.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/comment_composer.dart';
 import '../../../widgets/states.dart';
-import '../../../widgets/web/status_pill.dart';
+import '../../../widgets/web/status_badge.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
@@ -214,7 +214,8 @@ class _OrgDetailPanelState extends ConsumerState<OrgDetailPanel> {
     final ok = await showAppConfirmDialog(
       context,
       title: 'Remove member?',
-      message: 'Remove ${u.name.isEmpty ? u.email : u.name} from this '
+      message:
+          'Remove ${u.name.isEmpty ? u.email : u.name} from this '
           'organization?',
       confirmLabel: 'Remove',
       destructive: true,
@@ -339,7 +340,10 @@ class _OrgDetailPanelState extends ConsumerState<OrgDetailPanel> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s5),
             child: Center(
-              child: Text('No members yet', style: ZebuTextStyles.small(context)),
+              child: Text(
+                'No members yet',
+                style: ZebuTextStyles.small(context),
+              ),
             ),
           )
         else ...[
@@ -435,7 +439,10 @@ class _OrgDetailPanelState extends ConsumerState<OrgDetailPanel> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s5),
                   child: Center(
-                    child: Text('No members yet', style: ZebuTextStyles.small(context)),
+                    child: Text(
+                      'No members yet',
+                      style: ZebuTextStyles.small(context),
+                    ),
                   ),
                 )
               else ...[
@@ -500,7 +507,10 @@ class _OrgDetailPanelState extends ConsumerState<OrgDetailPanel> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s5),
                   child: Center(
-                    child: Text('No notes yet', style: ZebuTextStyles.small(context)),
+                    child: Text(
+                      'No notes yet',
+                      style: ZebuTextStyles.small(context),
+                    ),
                   ),
                 )
               else ...[
@@ -513,9 +523,7 @@ class _OrgDetailPanelState extends ConsumerState<OrgDetailPanel> {
         ),
         DecoratedBox(
           decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(left: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: SizedBox(
             width: _kFieldsSidebarWidth,
@@ -575,15 +583,18 @@ class _Header extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (org == null)
-            Expanded(child: Text('Loading…', style: ZebuTextStyles.smallStrong(context)))
+            Expanded(
+              child: Text(
+                'Loading…',
+                style: ZebuTextStyles.smallStrong(context),
+              ),
+            )
           else ...[
             const _OrgChip(),
             const SizedBox(width: ZebuSpacing.s3),
@@ -616,9 +627,7 @@ class _Header extends StatelessWidget {
           ],
           if (onToggleFullscreen != null) ...[
             _IconBtn(
-              icon: isFullscreen
-                  ? Icons.close_fullscreen
-                  : Icons.open_in_full,
+              icon: isFullscreen ? Icons.close_fullscreen : Icons.open_in_full,
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
             ),
@@ -653,11 +662,7 @@ class _OrgChip extends StatelessWidget {
         color: t.accentMuted,
         borderRadius: BorderRadius.circular(ZebuRadius.rSm),
       ),
-      child: Icon(
-        Icons.apartment,
-        size: 18,
-        color: t.accent,
-      ),
+      child: Icon(Icons.apartment, size: 18, color: t.accent),
     );
   }
 }
@@ -722,10 +727,9 @@ class _ActionsBtnState extends State<_ActionsBtn> {
               children: [
                 Text(
                   'Actions',
-                  style: ZebuTextStyles.small(context).copyWith(
-                    color: t.textPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: ZebuTextStyles.small(
+                    context,
+                  ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(width: 4),
                 Icon(Icons.expand_more, size: 16, color: t.textPrimary),
@@ -763,9 +767,7 @@ class _IconBtnState extends State<_IconBtn> {
     final bg = _hover
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
-    final fg = _hover && widget.destructive
-        ? t.danger
-        : t.textPrimary;
+    final fg = _hover && widget.destructive ? t.danger : t.textPrimary;
     final child = MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -886,7 +888,9 @@ class _FieldsTable extends StatelessWidget {
               vertical: ZebuSpacing.s2,
             ),
             child: DefaultTextStyle.merge(
-              style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
+              style: ZebuTextStyles.body(
+                context,
+              ).copyWith(color: t.textPrimary),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: rows,
@@ -946,14 +950,12 @@ class _FieldRow extends StatelessWidget {
     final t = ZebuTheme.of(context);
     final rowHeight = sidebar ? _kSidebarRowHeight : 30.0;
     final labelStyle = sidebar
-        ? ZebuTextStyles.body(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w500,
-          )
-        : ZebuTextStyles.small(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w500,
-          );
+        ? ZebuTextStyles.body(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500)
+        : ZebuTextStyles.small(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500);
     // Leading icons removed — labels alone carry the meaning and the row
     // reads cleaner without the credential glyphs.
     return SizedBox(
@@ -988,10 +990,7 @@ class _TextValue extends StatelessWidget {
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: base.copyWith(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w500,
-      ),
+      style: base.copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
     );
   }
 }
@@ -1005,7 +1004,10 @@ class _FlagsValue extends StatelessWidget {
   Widget build(BuildContext context) {
     final flags = <Widget>[
       if (org.collabAll)
-        Text('COLLAB ALL', style: ZebuTextStyles.label(context).copyWith(color: ZebuTheme.info)),
+        Text(
+          'COLLAB ALL',
+          style: ZebuTextStyles.label(context).copyWith(color: ZebuTheme.info),
+        ),
       if (org.collabPrimary)
         Text(
           'COLLAB PRIMARY',
@@ -1014,14 +1016,12 @@ class _FlagsValue extends StatelessWidget {
       if (org.autoAssign)
         Text(
           'AUTO-ASSIGN',
-          style: ZebuTextStyles.label(context).copyWith(color: ZebuTheme.success),
+          style: ZebuTextStyles.label(
+            context,
+          ).copyWith(color: ZebuTheme.success),
         ),
     ];
-    return Wrap(
-      spacing: ZebuSpacing.s3,
-      runSpacing: 2,
-      children: flags,
-    );
+    return Wrap(spacing: ZebuSpacing.s3, runSpacing: 2, children: flags);
   }
 }
 
@@ -1044,19 +1044,22 @@ class _SectionSubheader extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          top: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         children: [
           Text(
             label,
-            style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
+            style: ZebuTextStyles.smallStrong(
+              context,
+            ).copyWith(color: t.textPrimary),
           ),
           if (trailing != null) ...[
             const SizedBox(width: ZebuSpacing.s2),
-            Text(trailing!, style: ZebuTextStyles.label(context).withTabularNums()),
+            Text(
+              trailing!,
+              style: ZebuTextStyles.label(context).withTabularNums(),
+            ),
           ],
         ],
       ),
@@ -1098,7 +1101,9 @@ class _CustomFields extends StatelessWidget {
                     Expanded(
                       child: Text(
                         e.value,
-                        style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+                        style: ZebuTextStyles.body(
+                          context,
+                        ).copyWith(fontWeight: FontWeight.w500),
                       ),
                     ),
                   ],
@@ -1162,7 +1167,9 @@ class _MemberRowState extends State<_MemberRow> {
                 color: _hover ? t.borderDefault : t.borderSubtle,
                 width: 1,
               ),
-              boxShadow: _hover ? ZebuElevation.shadowSm : ZebuElevation.shadowXs,
+              boxShadow: _hover
+                  ? ZebuElevation.shadowSm
+                  : ZebuElevation.shadowXs,
             ),
             padding: const EdgeInsets.symmetric(
               horizontal: ZebuSpacing.s4,
@@ -1266,14 +1273,6 @@ class _TicketRow extends StatefulWidget {
 class _TicketRowState extends State<_TicketRow> {
   bool _hover = false;
 
-  Color _statusTone(ZebuTheme t) {
-    final s = widget.ticket.statusName.toLowerCase();
-    if (widget.ticket.isOverdue) return t.danger;
-    if (s.contains('closed') || s.contains('resolved')) return t.textSecondary;
-    if (s.contains('open') || s.contains('new')) return ZebuTheme.success;
-    return ZebuTheme.info;
-  }
-
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
@@ -1302,7 +1301,9 @@ class _TicketRowState extends State<_TicketRow> {
                 color: _hover ? t.borderDefault : t.borderSubtle,
                 width: 1,
               ),
-              boxShadow: _hover ? ZebuElevation.shadowSm : ZebuElevation.shadowXs,
+              boxShadow: _hover
+                  ? ZebuElevation.shadowSm
+                  : ZebuElevation.shadowXs,
             ),
             padding: const EdgeInsets.symmetric(
               horizontal: ZebuSpacing.s4,
@@ -1345,13 +1346,17 @@ class _TicketRowState extends State<_TicketRow> {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          StatusPill(
+                          StatusBadge(
                             label: ticket.statusName,
-                            color: _statusTone(t),
+                            status: ticket.statusName,
+                            overdue: ticket.isOverdue,
                             dense: true,
                           ),
                           const SizedBox(width: ZebuSpacing.s3),
-                          Text(Fmt.date(ticket.created), style: ZebuTextStyles.label(context)),
+                          Text(
+                            Fmt.date(ticket.created),
+                            style: ZebuTextStyles.label(context),
+                          ),
                         ],
                       ),
                     ],
@@ -1433,8 +1438,9 @@ class _NoteRowState extends State<_NoteRow> {
                                 poster,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: ZebuTextStyles.smallStrong(context)
-                                    .copyWith(color: t.textPrimary),
+                                style: ZebuTextStyles.smallStrong(
+                                  context,
+                                ).copyWith(color: t.textPrimary),
                               ),
                             ),
                             const SizedBox(width: ZebuSpacing.s2),
@@ -1459,7 +1465,10 @@ class _NoteRowState extends State<_NoteRow> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     if (n.created != null)
-                      Text(Fmt.ago(n.created), style: ZebuTextStyles.label(context)),
+                      Text(
+                        Fmt.ago(n.created),
+                        style: ZebuTextStyles.label(context),
+                      ),
                     if (_hover) ...[
                       const SizedBox(width: ZebuSpacing.s2),
                       _DeleteBtn(onTap: widget.onDelete),
@@ -1529,7 +1538,10 @@ class _NoteBody extends StatelessWidget {
       return Text('(empty)', style: ZebuTextStyles.small(context));
     }
     if (!trimmed.contains('<')) {
-      return Text(trimmed, style: ZebuTextStyles.body(context).copyWith(height: 1.5));
+      return Text(
+        trimmed,
+        style: ZebuTextStyles.body(context).copyWith(height: 1.5),
+      );
     }
     return ClipRect(
       child: HtmlWidget(
@@ -1550,10 +1562,7 @@ class _NoteBody extends StatelessWidget {
             case 'sup':
               return {'font-size': '13px'};
             case 'a':
-              return {
-                'color': '#0037B7',
-                'text-decoration': 'underline',
-              };
+              return {'color': '#0037B7', 'text-decoration': 'underline'};
             default:
               return null;
           }
@@ -1567,8 +1576,6 @@ class _NoteBody extends StatelessWidget {
 // Shared primitives — actor avatar mirrors ticket panel.
 // ---------------------------------------------------------------------------
 
-
-
 class _TypeTag extends StatelessWidget {
   const _TypeTag({required this.label, required this.tone});
   final String label;
@@ -1576,7 +1583,10 @@ class _TypeTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(label, style: ZebuTextStyles.label(context).copyWith(color: tone));
+    return Text(
+      label,
+      style: ZebuTextStyles.label(context).copyWith(color: tone),
+    );
   }
 }
 
@@ -1672,7 +1682,9 @@ class _EditOrgDialogState extends ConsumerState<_EditOrgDialog> {
                 const SizedBox(height: ZebuSpacing.s3),
                 Text(
                   _formError!,
-                  style: ZebuTextStyles.small(context).copyWith(color: t.danger),
+                  style: ZebuTextStyles.small(
+                    context,
+                  ).copyWith(color: t.danger),
                 ),
               ],
               const SizedBox(height: ZebuSpacing.s4),

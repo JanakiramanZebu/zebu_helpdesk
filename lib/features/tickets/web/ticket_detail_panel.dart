@@ -16,6 +16,10 @@ import '../../../widgets/app_dropdown.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/comment_composer.dart';
 import '../../../widgets/states.dart';
+import '../../../widgets/web/bubble_shape.dart';
+import '../../../widgets/web/dots_loader.dart';
+import '../../../widgets/web/hatched_card.dart';
+import '../../../widgets/web/status_badge.dart';
 import '../../../widgets/web/status_pill.dart';
 import '../../../res/zebu_status_colors.dart';
 import '../../../res/zebu_text_styles.dart';
@@ -130,12 +134,21 @@ class TicketDetailPanel extends ConsumerStatefulWidget {
     super.key,
     required this.ticketId,
     required this.onClose,
+    this.initialTicket,
     this.isFullscreen = false,
     this.onToggleFullscreen,
     this.onChanged,
   });
   final int ticketId;
   final VoidCallback onClose;
+
+  /// The list row's summary of this ticket, when the host has one.
+  ///
+  /// Purely a first-paint optimisation: the panel still fetches the full
+  /// ticket, but with this the header can show the number and subject
+  /// immediately rather than the word "Loading…". Every field it carries is
+  /// replaced the moment the real fetch lands.
+  final Ticket? initialTicket;
 
   /// When true the host is rendering this panel at full viewport width;
   /// the expand button in the header flips its icon accordingly.
@@ -157,6 +170,11 @@ class TicketDetailPanel extends ConsumerStatefulWidget {
 
 class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   Ticket? _ticket;
+
+  /// Whether the right-hand details pane is collapsed to its rail. Panel
+  /// state, not persisted: an agent who collapses it for one wide ticket
+  /// usually wants it back on the next one.
+  bool _detailsCollapsed = false;
   List<ThreadEntry> _thread = const [];
   Object? _error;
   bool _loading = true;
@@ -167,12 +185,15 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   // dropdown to the field being edited (via `key.currentContext`), keeping
   // the user's eyes on the value that's about to change.
   final GlobalKey _statusRowKey = GlobalKey(debugLabel: 'ticket-status-row');
-  final GlobalKey _priorityRowKey =
-      GlobalKey(debugLabel: 'ticket-priority-row');
-  final GlobalKey _assigneeRowKey =
-      GlobalKey(debugLabel: 'ticket-assignee-row');
-  final GlobalKey _departmentRowKey =
-      GlobalKey(debugLabel: 'ticket-department-row');
+  final GlobalKey _priorityRowKey = GlobalKey(
+    debugLabel: 'ticket-priority-row',
+  );
+  final GlobalKey _assigneeRowKey = GlobalKey(
+    debugLabel: 'ticket-assignee-row',
+  );
+  final GlobalKey _departmentRowKey = GlobalKey(
+    debugLabel: 'ticket-department-row',
+  );
 
   @override
   void initState() {
@@ -182,6 +203,10 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
 
   Future<void> _load() async {
     setState(() {
+      // Seed from the row's summary so the header has something to draw on
+      // the first frame. Null on hosts that don't pass one, which behave
+      // exactly as before.
+      _ticket ??= widget.initialTicket;
       _loading = true;
       _error = null;
     });
@@ -331,7 +356,8 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
           AppDropdownItem<int>(
             value: m.id,
             label: m.name,
-            selected: current != null &&
+            selected:
+                current != null &&
                 current.isNotEmpty &&
                 m.name.trim().toLowerCase() == current,
           ),
@@ -463,7 +489,9 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
       return Column(
         children: [
           _Header(
-            ticket: null,
+            // The seeded summary when we have one — the identity of the
+            // ticket is not in doubt while its body loads.
+            ticket: _ticket,
             onClose: widget.onClose,
             onMenu: null,
             isFullscreen: widget.isFullscreen,
@@ -558,11 +586,14 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s6),
             child: Center(
-              child: Text('No messages yet', style: ZebuTextStyles.small(context)),
+              child: Text(
+                'No messages yet',
+                style: ZebuTextStyles.small(context),
+              ),
             ),
           )
         else ...[
-          for (final e in _thread) _ThreadRow(entry: e),
+          ..._threadItems(_thread),
           const SizedBox(height: ZebuSpacing.s3),
         ],
       ],
@@ -575,53 +606,90 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   /// matches the reference layout where the details block sits as a fixed
   /// rail alongside the message thread.
   Widget _buildWide(ZebuTheme t, Ticket ticket, _TicketCaps caps) {
-    return Row(
+    final row = Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              if (_thread.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s8),
-                  child: Center(
-                    child: Text('No messages yet', style: ZebuTextStyles.small(context)),
-                  ),
-                )
-              else ...[
-                const SizedBox(height: ZebuSpacing.s3),
-                for (final e in _thread) _ThreadRow(entry: e),
-                const SizedBox(height: ZebuSpacing.s3),
+          // The thread scrolls on a canvas a hair off white, so an inbound
+          // bubble — which is white — reads as an object on a surface rather
+          // than dissolving into the page. The sidebar stays pure white, and
+          // the one-unit step between them is what separates the two panes
+          // without needing a heavier divider.
+          child: ColoredBox(
+            color: t.threadCanvas,
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                if (_thread.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: ZebuSpacing.s8,
+                    ),
+                    child: Center(
+                      child: Text(
+                        'No messages yet',
+                        style: ZebuTextStyles.small(context),
+                      ),
+                    ),
+                  )
+                else ...[
+                  const SizedBox(height: ZebuSpacing.s3),
+                  ..._threadItems(_thread),
+                  const SizedBox(height: ZebuSpacing.s3),
+                ],
               ],
-            ],
+            ),
           ),
         ),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: t.borderSubtle, width: 1),
+        if (!_detailsCollapsed)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border(left: BorderSide(color: t.borderSubtle, width: 1)),
+            ),
+            child: SizedBox(
+              width: _kFieldsSidebarWidth,
+              child: ListView(
+                children: [
+                  _FieldsTable(
+                    ticket: ticket,
+                    sidebar: true,
+                    statusRowKey: _statusRowKey,
+                    priorityRowKey: _priorityRowKey,
+                    assigneeRowKey: _assigneeRowKey,
+                    departmentRowKey: _departmentRowKey,
+                    onStatusTap: caps.canChangeStatus
+                        ? _pickTicketStatus
+                        : null,
+                    onPriorityTap: caps.canEdit ? _pickTicketPriority : null,
+                    onAssigneeTap: caps.canAssign ? _pickTicketAssignee : null,
+                    onDepartmentTap: caps.canTransfer
+                        ? _pickTicketDepartment
+                        : null,
+                    onCollapse: () => setState(() => _detailsCollapsed = true),
+                  ),
+                ],
+              ),
             ),
           ),
-          child: SizedBox(
-            width: _kFieldsSidebarWidth,
-            child: ListView(
-              // padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s4),
-              children: [
-                _FieldsTable(
-                  ticket: ticket,
-                  sidebar: true,
-                  statusRowKey: _statusRowKey,
-                  priorityRowKey: _priorityRowKey,
-                  assigneeRowKey: _assigneeRowKey,
-                  departmentRowKey: _departmentRowKey,
-                  onStatusTap: caps.canChangeStatus ? _pickTicketStatus : null,
-                  onPriorityTap: caps.canEdit ? _pickTicketPriority : null,
-                  onAssigneeTap: caps.canAssign ? _pickTicketAssignee : null,
-                  onDepartmentTap: caps.canTransfer ? _pickTicketDepartment : null,
-                ),
-              ],
-            ),
+      ],
+    );
+
+    if (!_detailsCollapsed) return row;
+
+    // Collapsed, the pane is gone entirely and only its toggle remains,
+    // floated in the corner it vanished from. A persistent rail was cheaper
+    // to build but spent 44 px of a column agents read long quoted email in —
+    // and the whole point of collapsing was to get that width back.
+    return Stack(
+      children: [
+        row,
+        Positioned(
+          top: ZebuSpacing.s3,
+          right: ZebuSpacing.s3,
+          child: _RailToggle(
+            icon: Icons.keyboard_double_arrow_left_rounded,
+            tooltip: 'Show details',
+            onTap: () => setState(() => _detailsCollapsed = false),
           ),
         ),
       ],
@@ -662,9 +730,7 @@ class _Header extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       // Single-row header — `#chip + title` on the left, `Actions +
       // Fullscreen + Close` cluster on the right. Title truncates instead
@@ -674,19 +740,14 @@ class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (ticket == null)
-            Expanded(child: Text('Loading…', style: ZebuTextStyles.smallStrong(context)))
-          else ...[
-            _NumberChip(number: ticket!.number),
-            const SizedBox(width: ZebuSpacing.s3),
             Expanded(
               child: Text(
-                ticket!.subject,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ZebuTextStyles.pageTitle(context),
+                'Loading…',
+                style: ZebuTextStyles.smallStrong(context),
               ),
-            ),
-          ],
+            )
+          else
+            Expanded(child: _TitleBlock(ticket: ticket!)),
           const SizedBox(width: ZebuSpacing.s3),
           // Claim needs assign perm (only when unassigned); Release needs
           // release perm (only when assigned). Show the Actions button when the
@@ -701,9 +762,7 @@ class _Header extends StatelessWidget {
           ],
           if (onToggleFullscreen != null) ...[
             _IconBtn(
-              icon: isFullscreen
-                  ? Icons.close_fullscreen
-                  : Icons.open_in_full,
+              icon: isFullscreen ? Icons.close_fullscreen : Icons.open_in_full,
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
             ),
@@ -712,41 +771,147 @@ class _Header extends StatelessWidget {
           // Not `destructive` — that paints a red hover fill, which belongs
           // to actions that lose something (Delete, Ban). Dismissing the
           // panel discards nothing, so it hovers like its neighbours.
-          _IconBtn(
-            icon: Icons.close,
-            tooltip: 'Close',
-            onTap: onClose,
-          ),
+          _IconBtn(icon: Icons.close, tooltip: 'Close', onTap: onClose),
         ],
       ),
     );
   }
 }
 
-/// Small pill that reads `#12345` — sits next to the title as a breadcrumb
-/// prefix, replacing the previous stacked `#number` above the subject.
-class _NumberChip extends StatelessWidget {
-  const _NumberChip({required this.number});
-  final String number;
+/// Small square chevron button shared by the pane header and its rail.
+class _RailToggle extends StatefulWidget {
+  const _RailToggle({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  State<_RailToggle> createState() => _RailToggleState();
+}
+
+class _RailToggleState extends State<_RailToggle> {
+  bool _hover = false;
 
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: t.bgTertiary,
-        borderRadius: BorderRadius.circular(5),
+    return Tooltip(
+      message: widget.tooltip,
+      waitDuration: const Duration(milliseconds: 400),
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hover = true),
+        onExit: (_) => setState(() => _hover = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              // Idle is the hover tone at zero alpha, never
+              // `Colors.transparent` — that is transparent *black*, and
+              // lerping from it drags the fill through a grey flash.
+              color: _hover
+                  ? t.surfaceMuted
+                  : t.surfaceMuted.withValues(alpha: 0),
+              border: Border.all(color: t.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(ZebuRadius.rXs),
+            ),
+            child: Icon(
+              widget.icon,
+              size: 15,
+              color: _hover ? t.textSlate : t.iconMuted,
+            ),
+          ),
+        ),
       ),
-      child: Text(
-        '#$number',
-        style: ZebuTextStyles.small(context)
-            .copyWith(
-              fontWeight: FontWeight.w600,
+    );
+  }
+}
+
+/// Ticket identity — a quiet meta line over the subject.
+///
+/// The number and the requester used to share the title's row, which cost the
+/// subject ~140 px of the only line it gets. Stacked, the subject runs the
+/// full width of the header and truncates far later; the meta line costs no
+/// height the header wasn't already reserving.
+class _TitleBlock extends StatelessWidget {
+  const _TitleBlock({required this.ticket});
+  final Ticket ticket;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ZebuTheme.of(context);
+    final requester = (ticket.requester ?? '').trim();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Text(
+              '#${ticket.number}',
+              // Tabular figures rather than a second typeface: the handoff
+              // asks for a monospace ticket id, but the whole point of the
+              // one-font rule is that a number needs even columns, not a
+              // different family.
+              style: ZebuTextStyles.eyebrow(
+                context,
+                color: t.textSlateMuted,
+              ).withTabularNums(),
+            ),
+            if (requester.isNotEmpty) ...[
+              const SizedBox(width: ZebuSpacing.s2),
+              Container(
+                width: 3,
+                height: 3,
+                decoration: BoxDecoration(
+                  color: t.borderDefault,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: ZebuSpacing.s2),
+              Flexible(
+                child: Text(
+                  requester,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: ZebuTextStyles.eyebrow(
+                    context,
+                    color: t.textSlateMuted,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 1),
+        // Full subject on hover — a truncated subject is the one thing in
+        // this header an agent actually needs to read in full, and there is
+        // nowhere else on the screen it appears.
+        Tooltip(
+          message: ticket.subject,
+          waitDuration: const Duration(milliseconds: 400),
+          child: Text(
+            ticket.subject,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+            style: ZebuTextStyles.sectionTitle(
+              context,
               color: t.textPrimary,
-            )
-            .withTabularNums(),
-      ),
+              fontWeight: ZebuFonts.semiBold,
+            ).copyWith(height: 1.25),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -856,10 +1021,9 @@ class _ActionsBtnState extends State<_ActionsBtn> {
               children: [
                 Text(
                   'Actions',
-                  style: ZebuTextStyles.body(context).copyWith(
-                    color: t.textPrimary,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: ZebuTextStyles.body(
+                    context,
+                  ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(width: 4),
                 Icon(Icons.expand_more, size: 16, color: t.textPrimary),
@@ -873,11 +1037,7 @@ class _ActionsBtnState extends State<_ActionsBtn> {
 }
 
 class _IconBtn extends StatefulWidget {
-  const _IconBtn({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
-  });
+  const _IconBtn({required this.icon, required this.onTap, this.tooltip});
   final IconData icon;
   final VoidCallback onTap;
   final String? tooltip;
@@ -939,6 +1099,7 @@ class _FieldsTable extends StatelessWidget {
     required this.onPriorityTap,
     required this.onAssigneeTap,
     required this.onDepartmentTap,
+    this.onCollapse,
   });
   final Ticket ticket;
 
@@ -960,6 +1121,10 @@ class _FieldsTable extends StatelessWidget {
   final ValueChanged<BuildContext>? onPriorityTap;
   final ValueChanged<BuildContext>? onAssigneeTap;
   final ValueChanged<BuildContext>? onDepartmentTap;
+
+  /// Collapses the pane to its rail. Null in the stacked (narrow) layout,
+  /// where there is no sidebar to collapse.
+  final VoidCallback? onCollapse;
 
   @override
   Widget build(BuildContext context) {
@@ -1014,25 +1179,24 @@ class _FieldsTable extends StatelessWidget {
         label: 'Status',
         sidebar: sidebar,
         onTap: onStatusTap,
-        value: Builder(
-          builder: (_) {
-            final c = zebuStatusColor(
-              ticket.statusName,
-              t,
-              overdue: ticket.isOverdue,
-            );
-            // Sidebar: colour the value itself. A bar or dot before it
-            // pushed Status and Priority out of the column every other
-            // value lines up in, and the colour is legible without one.
-            // `zebuOnTint` because this text sits on white, where the
-            // vivid palette tone is harsher still than on a 12 % wash.
-            return sidebar
-                ? _TextValue(
-                    text: ticket.statusName,
-                    tone: zebuOnTint(c, t),
-                  )
-                : _StatusValuePill(label: ticket.statusName, color: c);
-          },
+        // The badge, not coloured text. Status is the one field here drawn
+        // from a fixed vocabulary with a designed fill weight per value, and
+        // painting it as plain text threw all of that away.
+        //
+        // Overdue is deliberately *not* passed here, unlike in the tickets
+        // table. This panel has a dedicated SLA row that already reports the
+        // breach, and a red Due date above it; letting overdue repaint the
+        // Status row too said the same thing three times and — worse — left
+        // the badge reading "Re-open" in Overdue's solid red, so its label
+        // and its colour disagreed. The table has no SLA column, so there
+        // the substitution is the only way to surface a breach.
+        value: Align(
+          alignment: Alignment.centerLeft,
+          child: StatusBadge(
+            label: _titleCase(ticket.statusName),
+            status: ticket.statusName,
+            dense: true,
+          ),
         ),
       ),
       _FieldRow(
@@ -1041,18 +1205,19 @@ class _FieldsTable extends StatelessWidget {
         label: 'Priority',
         sidebar: sidebar,
         onTap: onPriorityTap,
+        // Priority stays a tinted pill rather than a StatusBadge: it is a
+        // different vocabulary (Low..Emergency), and giving it the status
+        // system's fills would put two solid-red badges in adjacent rows.
         value: priority.isEmpty
             ? const _EmptyValue(label: 'No priority')
-            : (sidebar
-                  ? _TextValue(
-                      text: _titleCase(priority),
-                      tone: zebuOnTint(zebuPriorityColor(priority, t), t),
-                    )
-                  : _StatusValuePill(
-                      label: _titleCase(priority),
-                      color: zebuPriorityColor(priority, t),
-                      icon: Icons.flag_rounded,
-                    )),
+            : Align(
+                alignment: Alignment.centerLeft,
+                child: PriorityBadge(
+                  label: _titleCase(priority),
+                  priority: priority,
+                  dense: true,
+                ),
+              ),
       ),
       if (sidebar && (requester.isNotEmpty || userEmail.isNotEmpty))
         const _FieldGroupLabel('Requester'),
@@ -1084,9 +1249,7 @@ class _FieldsTable extends StatelessWidget {
           sidebar: sidebar,
           value: _TextValue(
             text: Fmt.dateTime(ticket.due),
-            tone: ticket.isOverdue
-                ? t.danger
-                : (sidebar ? t.textSlate : null),
+            tone: ticket.isOverdue ? t.danger : (sidebar ? t.textSlate : null),
           ),
         ),
       if (sla != null && slaLabel.isNotEmpty)
@@ -1160,19 +1323,27 @@ class _FieldsTable extends StatelessWidget {
                   left: ZebuSpacing.s2,
                   bottom: ZebuSpacing.s3,
                 ),
-                child: Text(
-                  'Ticket Details',
-                  style: ZebuTextStyles.sectionTitle(
-                    context,
-                    color: t.textSlate,
-                  ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Ticket Details',
+                        style: ZebuTextStyles.sectionTitle(
+                          context,
+                          color: t.textSlate,
+                        ),
+                      ),
+                    ),
+                    if (onCollapse != null)
+                      _RailToggle(
+                        icon: Icons.keyboard_double_arrow_right_rounded,
+                        tooltip: 'Hide details',
+                        onTap: onCollapse!,
+                      ),
+                  ],
                 ),
               ),
-              Divider(
-                height: 1,
-                thickness: 1,
-                color: t.dividerSlate,
-              ),
+              Divider(height: 1, thickness: 1, color: t.dividerSlate),
               const SizedBox(height: ZebuSpacing.s4),
               ...cells,
             ],
@@ -1305,10 +1476,7 @@ class _FieldRowState extends State<_FieldRow> {
               children: [
                 Text(
                   widget.label,
-                  style: ZebuTextStyles.small(
-                    context,
-                    color: t.textSlateMuted,
-                  ),
+                  style: ZebuTextStyles.small(context, color: t.textSlateMuted),
                 ),
                 const SizedBox(height: 3),
                 widget.value,
@@ -1443,10 +1611,7 @@ class _FieldGroupLabel extends StatelessWidget {
           ],
           Text(
             label,
-            style: ZebuTextStyles.eyebrow(
-              context,
-              color: t.textSlateMuted,
-            ),
+            style: ZebuTextStyles.eyebrow(context, color: t.textSlateMuted),
           ),
         ],
       ),
@@ -1508,23 +1673,16 @@ class _TextValueState extends State<_TextValue> {
   }
 }
 
-
-
 class _StatusValuePill extends StatelessWidget {
-  const _StatusValuePill({
-    required this.label,
-    required this.color,
-    this.icon,
-  });
+  const _StatusValuePill({required this.label, required this.color});
   final String label;
   final Color color;
-  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
-      child: StatusPill(label: label, color: color, icon: icon),
+      child: StatusPill(label: label, color: color),
     );
   }
 }
@@ -1543,10 +1701,9 @@ class _EmptyValue extends StatelessWidget {
       label,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: ZebuTextStyles.body(context).copyWith(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w500,
-      ),
+      style: ZebuTextStyles.body(
+        context,
+      ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
     );
   }
 }
@@ -1573,13 +1730,13 @@ class _ActivityHeader extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          top: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Text(
         'Activity',
-        style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
+        style: ZebuTextStyles.smallStrong(
+          context,
+        ).copyWith(color: t.textPrimary),
       ),
     );
   }
@@ -1590,214 +1747,475 @@ class _ActivityHeader extends StatelessWidget {
 // poster name so the whole activity feed reads as one column of entries.
 // ---------------------------------------------------------------------------
 
-/// Width held back from every bubble so the opposite side always reads as
-/// empty gutter. Covers the avatar (32) + its gap (12) on the sender's
-/// side plus a deliberate ~15% of a typical panel on the far side.
-const double _kBubbleGutter = 220;
+/// Horizontal space held back from every bubble so the far side always reads
+/// as empty gutter — the gutter *is* the directional cue. Deliberately small:
+/// the tint and the type tag already say which side an entry is on twice
+/// over, and agents read long quoted email in this column, so width is the
+/// scarcest thing on the screen.
+const double _kBubbleGutter = 160;
 
-class _ThreadRow extends StatefulWidget {
-  const _ThreadRow({required this.entry});
-  final ThreadEntry entry;
+/// Inline image preview box. Wide enough that a screenshot of a form or
+/// an error dialog is legible without opening it, short enough that a tall
+/// portrait image can't push the rest of the thread off-screen.
+const double _kPreviewWidth = 280;
 
-  @override
-  State<_ThreadRow> createState() => _ThreadRowState();
+/// Attachment chip width. Fixed so a message carrying several files
+/// renders a tidy stack rather than a ragged staircase.
+const double _kChipWidth = 280;
+const double _kPreviewHeight = 180;
+
+/// Avatar diameter plus the gap to the bubble. Reserved on the sender's side
+/// even when the avatar is hidden by grouping, so a run of bubbles keeps one
+/// straight edge instead of stepping in and out.
+const double _kAvatarSize = 32;
+const double _kAvatarGap = ZebuSpacing.s3;
+
+/// Consecutive entries by the same author, of the same type, closer together
+/// than this collapse into one visual run: avatar and name appear once, and
+/// the follow-ups are bare bubbles. Without it a four-reply burst repeats the
+/// same name and face four times and reads noisier than a plain list.
+const Duration _kGroupWindow = Duration(minutes: 10);
+
+bool _groupsWith(ThreadEntry entry, ThreadEntry? prev) {
+  if (prev == null) return false;
+  if (prev.poster != entry.poster || prev.type != entry.type) return false;
+  final a = prev.created, b = entry.created;
+  if (a == null || b == null) return false;
+  return b.difference(a).abs() <= _kGroupWindow;
 }
 
-class _ThreadRowState extends State<_ThreadRow> {
-  bool _hover = false;
+/// True when the body says nothing the attachment chips don't already say.
+///
+/// osTicket fills the body with `Attachment: <filename>` when a file is sent
+/// without a message, so the name lands twice — once as body copy and again
+/// on the chip directly beneath it.
+bool _isAttachmentEcho(String plain, List<Attachment> files) {
+  if (files.isEmpty) return false;
+  var s = plain.trim();
+  final m = RegExp(r'^Attachments?\s*:\s*', caseSensitive: false).firstMatch(s);
+  if (m == null) return false;
+  s = s.substring(m.end).trim();
+  for (final f in files) {
+    s = s.replaceFirst(f.name, '').trim();
+    s = s.replaceFirst(RegExp(r'^[,;]\s*'), '');
+  }
+  // Only suppress on an exact echo — a real message that merely opens with
+  // the word "Attachment:" must still be shown.
+  return s.isEmpty;
+}
+
+/// Reveals an entry's exact timestamp on hover. The header only carries a
+/// relative time ("a day ago"), and grouped follow-ups have no header at all.
+class _Dated extends StatelessWidget {
+  const _Dated({required this.created, required this.child});
+  final DateTime? created;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => created == null
+      ? child
+      : Tooltip(
+          message: Fmt.dateTime(created),
+          waitDuration: const Duration(milliseconds: 500),
+          child: child,
+        );
+}
+
+/// The thread as a flat widget list, with a [_DateDivider] wherever the day
+/// changes. Grouping is suppressed across a divider — a run that straddles
+/// midnight would otherwise lose its author to the divider it sits under.
+List<Widget> _threadItems(List<ThreadEntry> thread) {
+  final out = <Widget>[];
+  DateTime? lastDay;
+  for (var i = 0; i < thread.length; i++) {
+    final e = thread[i];
+    var divided = false;
+    final d = e.created;
+    if (d != null) {
+      final day = DateTime(d.year, d.month, d.day);
+      if (day != lastDay) {
+        out.add(_DateDivider(day: day));
+        lastDay = day;
+        divided = true;
+      }
+    }
+    out.add(
+      _ThreadRow(entry: e, prev: (divided || i == 0) ? null : thread[i - 1]),
+    );
+  }
+  return out;
+}
+
+/// A day heading between thread entries — hairlines either side of an
+/// uppercase label.
+///
+/// A ticket can span months. Without this the thread is an undifferentiated
+/// run of entries and there is nothing to anchor "when did this go quiet" to,
+/// which is exactly the question an agent opens an old ticket to answer.
+class _DateDivider extends StatelessWidget {
+  const _DateDivider({required this.day});
+  final DateTime day;
 
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    final entry = widget.entry;
-    final isNote = entry.isNote;
-    final isResponse = entry.isResponse;
-    final tone = isNote
-        ? t.note
-        : (isResponse ? t.accent : t.textSecondary);
-    final typeLabel = isNote
-        ? 'NOTE'
-        : (isResponse ? 'REPLY' : 'MESSAGE');
-    final html = entry.bodyHtml ?? entry.body ?? '';
-    final plain = Fmt.stripHtml(html);
-
-    // Chat-bubble layout: the requester's messages sit on the left, staff
-    // replies and internal notes on the right. `type` is osTicket's own
-    // M / R / N, so the side is *customer vs staff* rather than
-    // *me vs everyone else* — the thread therefore renders identically for
-    // every agent looking at the ticket, and a second agent's reply doesn't
-    // jump sides depending on who is signed in.
-    //
-    // Notes have no natural side (they're addressed to nobody), so they
-    // follow their author onto the staff side and lean on the violet fill
-    // and NOTE tag to say they never left the building.
-    final onRight = !entry.isMessage;
-
+    final rule = Expanded(child: Container(height: 1, color: t.borderSubtle));
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         ZebuSpacing.s4,
-        ZebuSpacing.s3,
+        ZebuSpacing.s5,
+        ZebuSpacing.s4,
+        ZebuSpacing.s1,
+      ),
+      child: Row(
+        children: [
+          rule,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
+            child: Text(
+              Fmt.dayLabel(day).toUpperCase(),
+              style: ZebuTextStyles.eyebrow(
+                context,
+                color: t.textSlateMuted,
+              ).copyWith(letterSpacing: 0.6),
+            ),
+          ),
+          rule,
+        ],
+      ),
+    );
+  }
+}
+
+class _ThreadRow extends StatelessWidget {
+  const _ThreadRow({required this.entry, this.prev});
+  final ThreadEntry entry;
+
+  /// The entry rendered directly above this one, for grouping. Null for the
+  /// first row in the thread and for the first row under a date divider.
+  final ThreadEntry? prev;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = ZebuTheme.of(context);
+    final isNote = entry.isNote;
+
+    // Side comes from osTicket's own M / R / N: the requester's messages on
+    // the left, everything the desk produced — replies and internal notes —
+    // on the right. Keying off `type` rather than off the signed-in agent
+    // means the thread renders identically for everyone, and a second
+    // agent's reply doesn't jump sides depending on who opened the ticket.
+    final onRight = !entry.isMessage;
+    final grouped = _groupsWith(entry, prev);
+
+    // Body ink per surface: the default body grey goes muddy on the blue
+    // reply tint and on the note's warm hatch, so each carries its own.
+    final ink = isNote
+        ? t.noteBody
+        : onRight
+        ? t.bubbleOutboundInk
+        : t.bubbleInboundInk;
+
+    // The name / label / time strip lives *outside* the surface. Inside, it
+    // set the surface's intrinsic width, so a one-word reply rendered as wide
+    // as a full paragraph and the layout read as cards-pushed-right rather
+    // than as bubbles. Out here the surface shrink-wraps its body, and short
+    // messages finally look short.
+    // Header parts in reading order for the left side. On the desk's side the
+    // whole strip is reversed so the name still lands next to its avatar —
+    // otherwise the timestamp sits against the face and the name drifts off
+    // toward the middle of the column.
+    final headerParts = <Widget>[
+      Flexible(
+        child: Text(
+          entry.poster,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: ZebuTextStyles.body(
+            context,
+            color: t.textPrimary,
+            fontWeight: ZebuFonts.semiBold,
+          ),
+        ),
+      ),
+      // No REPLY / MESSAGE tag: by the time a row is drawn its type has been
+      // stated three times over — which side it sits on, which tint it
+      // carries, and which way its tail points. A note keeps its label
+      // because the hatch is learned, not innate, and because getting a note
+      // wrong is the one mistake on this screen that reaches a customer.
+      if (isNote)
+        Tooltip(
+          message: 'Not visible to the requester',
+          waitDuration: const Duration(milliseconds: 400),
+          child: Text(
+            'INTERNAL NOTE',
+            style: ZebuTextStyles.eyebrow(
+              context,
+              color: t.note,
+            ).copyWith(letterSpacing: 0.6),
+          ),
+        ),
+    ];
+    final ordered = onRight ? headerParts.reversed.toList() : headerParts;
+
+    final header = Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < ordered.length; i++) ...[
+            if (i > 0) const SizedBox(width: ZebuSpacing.s2),
+            ordered[i],
+          ],
+        ],
+      ),
+    );
+
+    final body = _body(context, t, ink);
+
+    // A note is a hatched, dashed card rather than a filled bubble. It sits
+    // on the desk's side like a reply — it *was* written by the desk — but a
+    // note that looks like a reply is a note that eventually gets sent as
+    // one, so the surface has to stay unmistakable. Hatching is the one
+    // texture nothing else in the app uses, which is what makes it survive
+    // being seen out of the corner of the eye.
+    // Shared by both surfaces: a speech-bubble outline with the tail on the
+    // speaker's side. The tail is why the avatar sits at the *bottom* of the
+    // row rather than beside the name — a tail that points at empty gutter is
+    // worse than no tail at all.
+    final shape = BubbleShape(tailOnRight: onRight);
+
+    final surface = isNote
+        ? HatchedCard(
+            baseColor: t.noteHatchBase,
+            stripeColor: t.noteHatchStripe,
+            // No edge: every other surface in the thread lost its hairline
+            // when both sides gained a fill, and a dashed outline on the one
+            // remaining bordered card made it read as a form field. The hatch
+            // is doing the warning on its own.
+            shape: shape,
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZebuSpacing.s4,
+              vertical: ZebuSpacing.s3,
+            ),
+            child: body,
+          )
+        : Container(
+            decoration: ShapeDecoration(
+              // Fill only, no hairline. Once both sides carry a fill the
+              // border is a second edge doing the first one's job, and the
+              // pair stops reading as speech and starts reading as boxes.
+              color: onRight ? t.bubbleOutbound : t.bubbleInbound,
+              shape: shape,
+            ),
+            // ShapeDecoration already insets by the shape's dimensions, which
+            // reserve the tail strip, so this is the copy padding only.
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZebuSpacing.s4,
+              vertical: ZebuSpacing.s3,
+            ),
+            child: body,
+          );
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        ZebuSpacing.s4,
+        // A run reads as one block: tight between its rows, open before the
+        // next speaker.
+        grouped ? 3 : ZebuSpacing.s4,
         ZebuSpacing.s4,
         0,
       ),
       child: LayoutBuilder(
         builder: (context, c) {
-          // Cap the bubble well short of the full column so the opposite
-          // side always shows as empty gutter — that gutter *is* the
-          // directional cue, and a full-width bubble would erase it. Long
-          // email bodies still get most of the width.
-          //
-          // Proportional, capped: a fixed 220 would swallow half a narrow
-          // side-panel, and a flat percentage would waste 400 px on a wide
-          // monitor where the gutter is already unmistakable.
-          final gutter = (c.maxWidth * 0.25).clamp(0.0, _kBubbleGutter);
-          final maxBubble = (c.maxWidth - gutter).clamp(0.0, c.maxWidth);
-          final avatar = ZebuAvatar(name: entry.poster);
+          final gutter = (c.maxWidth * 0.12).clamp(0.0, _kBubbleGutter);
+          final maxSurface = (c.maxWidth - gutter - _kAvatarSize - _kAvatarGap)
+              .clamp(0.0, c.maxWidth);
+          // Always occupied, but only painted once per run. A note's avatar
+          // is warm rather than the author's hashed identity colour — on a
+          // note, "this is private" outranks "this is Venkat".
+          final avatarSlot = SizedBox(
+            width: _kAvatarSize,
+            child: grouped
+                ? null
+                : ZebuAvatar(
+                    name: entry.poster,
+                    fill: isNote ? t.noteAvatarBg : null,
+                    ink: isNote ? t.note : null,
+                  ),
+          );
           return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            // Bottom-aligned so the avatar meets the tail. The name and time
+            // still sit above the bubble, so a tall message puts a little air
+            // between the two — which is the Telegram / WhatsApp arrangement
+            // and reads as the face belonging to the last thing said.
+            crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisAlignment: onRight
                 ? MainAxisAlignment.end
                 : MainAxisAlignment.start,
             children: [
-              if (!onRight) ...[avatar, const SizedBox(width: ZebuSpacing.s3)],
+              if (!onRight) ...[avatarSlot, const SizedBox(width: _kAvatarGap)],
               Flexible(
                 child: ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: maxBubble),
-                  child: MouseRegion(
-                    onEnter: (_) => setState(() => _hover = true),
-                    onExit: (_) => setState(() => _hover = false),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 120),
-                      curve: Curves.easeOut,
-                      decoration: BoxDecoration(
-                        // Every bubble is plain white. The side it sits on
-                        // and its type tag carry the whole distinction —
-                        // tinting the fill as well made the thread read as
-                        // three competing colours.
-                        color: t.bgTertiary,
-                        // The corner nearest the avatar is clipped short —
-                        // the standard bubble tail, and the only thing in
-                        // the shape that encodes direction.
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(onRight ? 12 : 4),
-                          topRight: Radius.circular(onRight ? 4 : 12),
-                          bottomLeft: const Radius.circular(12),
-                          bottomRight: const Radius.circular(12),
-                        ),
-                        // border: Border.all(
-                        //   color: _hover ? t.borderDefault : t.borderSubtle,
-                        //   width: 1,
-                        // ),
-                        // boxShadow: _hover
-                        //     ? ZebuElevation.shadowSm
-                        //     : ZebuElevation.shadowXs,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: ZebuSpacing.s4,
-                        vertical: ZebuSpacing.s3,
-                      ),
-                      child: Column(
-                        // Body copy stays left-aligned in both bubbles —
-                        // ragged-left paragraphs are unreadable, and the
-                        // bubble's position already carries the direction.
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  entry.poster,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: ZebuTextStyles.body(
-                                    context,
-                                    color: t.textPrimary,
-                                    fontWeight: ZebuFonts.semiBold,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: ZebuSpacing.s2),
-                              _TypeTag(label: typeLabel, tone: tone),
-                            ],
-                          ),
-                          const SizedBox(height: ZebuSpacing.s2),
-                          if (plain.trim().isEmpty)
-                            Text(
-                              '(no content)',
-                              style: ZebuTextStyles.small(context),
-                            )
-                          else if (html.contains('<'))
-                            _HtmlBody(html: html)
-                          else
-                            Text(
-                              plain,
-                              style: ZebuTextStyles.body(
-                                context,
-                              ).copyWith(height: 1.5),
-                            ),
-                          if (entry.attachments.isNotEmpty) ...[
-                            const SizedBox(height: ZebuSpacing.s3),
-                            Wrap(
-                              spacing: ZebuSpacing.s2,
-                              runSpacing: ZebuSpacing.s2,
-                              children: [
-                                for (final a in entry.attachments)
-                                  _AttachmentChip(attachment: a),
-                              ],
-                            ),
-                          ],
-                          if (entry.created != null) ...[
-                            const SizedBox(height: ZebuSpacing.s2),
-                            // Bottom-right rather than pinned to the card's
-                            // top corner: a shrink-wrapped bubble around
-                            // "hi" has no top-right corner to spare, and
-                            // reserving one would force a minimum width on
-                            // every short message.
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                Fmt.ago(entry.created),
-                                style: ZebuTextStyles.small(
-                                  context,
-                                  color: t.textSlateMuted,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                  constraints: BoxConstraints(maxWidth: maxSurface),
+                  child: Column(
+                    // The header and the surface hang off the same edge — the
+                    // one nearest the avatar — so a run of differently sized
+                    // rows still has one straight side.
+                    crossAxisAlignment: onRight
+                        ? CrossAxisAlignment.end
+                        : CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [if (!grouped) header, surface],
                   ),
                 ),
               ),
-              if (onRight) ...[const SizedBox(width: ZebuSpacing.s3), avatar],
+              if (onRight) ...[const SizedBox(width: _kAvatarGap), avatarSlot],
             ],
           );
         },
       ),
     );
   }
-}
 
-/// Small colored uppercase label used inside a thread row header (REPLY /
-/// NOTE / MESSAGE). Same treatment as the previous `_Tag` primitive.
-class _TypeTag extends StatelessWidget {
-  const _TypeTag({required this.label, required this.tone});
-  final String label;
-  final Color tone;
+  /// Message text plus any attachment chips. Identical inside a bubble and
+  /// inside a note card, so it is built once and handed to whichever surface
+  /// wins.
+  Widget _body(BuildContext context, ZebuTheme t, Color ink) {
+    final html = entry.bodyHtml ?? entry.body ?? '';
+    final plain = Fmt.stripHtml(html);
+    final echo = _isAttachmentEcho(plain, entry.attachments);
+    final hasFiles = entry.attachments.isNotEmpty;
 
-  @override
-  Widget build(BuildContext context) {
-    return Text(label, style: ZebuTextStyles.label(context).copyWith(color: tone));
+    final clockStyle = ZebuTextStyles.small(
+      context,
+      color: t.textSlateMuted,
+    ).withTabularNums();
+    final clockText = entry.created == null ? null : Fmt.time(entry.created);
+
+    final bodyStyle = ZebuTextStyles.body(
+      context,
+      color: ink,
+    ).copyWith(height: 1.55);
+
+    // The clock rides the end of the last line when it fits there, and drops
+    // to its own line only when it doesn't — the WhatsApp behaviour. It works
+    // by appending an invisible spacer the clock's own width to the text, so
+    // the layout reserves the room, and then painting the real clock in the
+    // corner the spacer just cleared. Only plain-text bodies qualify: an HTML
+    // body can't take a trailing span, and a message with attachments has a
+    // chip below the text for the clock to sit under anyway.
+    final inline =
+        clockText != null &&
+        !echo &&
+        !hasFiles &&
+        !html.contains('<') &&
+        plain.trim().isNotEmpty;
+
+    if (inline) {
+      final gap =
+          _measureWidth(context, clockText, clockStyle) + ZebuSpacing.s3;
+      return IntrinsicWidth(
+        child: _Dated(
+          created: entry.created,
+          child: Stack(
+            children: [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(text: plain),
+                    WidgetSpan(child: SizedBox(width: gap, height: 1)),
+                  ],
+                ),
+                style: bodyStyle,
+              ),
+              // Positioned, so it costs the layout nothing beyond the spacer
+              // above — the Stack sizes to the text alone.
+              Positioned(
+                right: 0,
+                bottom: 1,
+                child: Text(clockText, style: clockStyle),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Sizes the column to its widest child before the clock is right-aligned
+    // inside it. Without this the `Align` below takes every pixel it is
+    // offered, so a two-letter reply rendered as wide as the width cap. The
+    // outer ConstrainedBox still caps it, so long copy wraps as before.
+    return IntrinsicWidth(
+      child: Column(
+        // Body copy stays left-aligned on both sides — ragged-left paragraphs
+        // are unreadable, and the row's position already carries direction.
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // osTicket writes "Attachment: <name>" as the body when a file is
+          // sent with no message. Rendering that *and* the chip prints the same
+          // filename twice, one line apart, which reads as a stutter.
+          if (!echo) ...[
+            // The exact timestamp hangs off the body text alone, not the whole
+            // surface — wrapping the surface meant hovering an attachment
+            // popped the date tooltip over the thing you were trying to see.
+            _Dated(
+              created: entry.created,
+              child: plain.trim().isEmpty
+                  ? Text('(no content)', style: ZebuTextStyles.small(context))
+                  : html.contains('<')
+                  ? _HtmlBody(html: html)
+                  : Text(plain, style: bodyStyle),
+            ),
+            if (hasFiles) const SizedBox(height: ZebuSpacing.s3),
+          ],
+          if (hasFiles)
+            Wrap(
+              spacing: ZebuSpacing.s2,
+              runSpacing: ZebuSpacing.s2,
+              children: [
+                for (final a in entry.attachments)
+                  _AttachmentChip(attachment: a),
+              ],
+            ),
+          if (clockText != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: Text(clockText, style: clockStyle),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Laid-out width of [text] in [style], for reserving space the layout
+  /// engine can't be asked for directly.
+  static double _measureWidth(
+    BuildContext context,
+    String text,
+    TextStyle style,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    return painter.width;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Attachment chip — icon + name + size, opens signed URL in a new tab
-// ---------------------------------------------------------------------------
-
+/// One attachment: an inline preview for images, a compact chip for
+/// everything else.
+///
+/// Images get the preview because a screenshot *is* the message — a customer
+/// reporting a bug sends a picture of it, and forcing a round-trip to a new
+/// browser tab to see it is the single most expensive interaction in the
+/// thread. Non-image types have nothing to show until they're opened, so a
+/// chip is the honest representation.
 class _AttachmentChip extends StatefulWidget {
   const _AttachmentChip({required this.attachment});
   final Attachment attachment;
@@ -1807,7 +2225,9 @@ class _AttachmentChip extends StatefulWidget {
 }
 
 class _AttachmentChipState extends State<_AttachmentChip> {
-  bool _hover = false;
+  /// Set once [Image.network] fails, so the row falls back to the chip
+  /// permanently instead of retrying the broken URL on every rebuild.
+  bool _previewFailed = false;
 
   IconData get _icon {
     final t = widget.attachment.type ?? '';
@@ -1825,6 +2245,27 @@ class _AttachmentChipState extends State<_AttachmentChip> {
     return Icons.attach_file;
   }
 
+  /// Badge tint, keyed off the file type. A red PDF and a green spreadsheet
+  /// are findable in a long thread the way a uniformly blue tile is not — the
+  /// eye sorts by colour before it reads a filename.
+  Color _badgeTone(ZebuTheme t) {
+    final m = widget.attachment.type ?? '';
+    if (m.contains('pdf')) return t.danger;
+    if (m.startsWith('image/')) return t.accent;
+    if (m.contains('sheet') || m.contains('excel')) return ZebuTheme.success;
+    if (m.contains('word') || m.contains('document')) return t.accent;
+    return t.iconMuted;
+  }
+
+  /// Short uppercase extension for the badge — PDF, XLSX, PNG. Null when the
+  /// filename has none, in which case the glyph stands in.
+  String? get _ext {
+    final n = widget.attachment.name;
+    final dot = n.lastIndexOf('.');
+    if (dot <= 0 || n.length - dot > 6) return null;
+    return n.substring(dot + 1).toUpperCase();
+  }
+
   Future<void> _open() async {
     final a = widget.attachment;
     final url = a.downloadUrl ?? a.streamUrl;
@@ -1834,77 +2275,185 @@ class _AttachmentChipState extends State<_AttachmentChip> {
 
   @override
   Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
     final a = widget.attachment;
+    // `downloadUrl` is the signed absolute `file.php` URL — it carries its own
+    // HMAC, so an <img> can fetch it without our bearer token. `streamUrl`
+    // needs an Authorization header and so can't be handed to Image.network.
+    final canPreview = a.isImage && a.downloadUrl != null && !_previewFailed;
     return MouseRegion(
+      // Cursor only, no hover styling. An attachment sits inside a tinted
+      // bubble, so a hover fill would be a third surface colour flickering
+      // inside a second one — the pointer is affordance enough.
       cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _open,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          padding: const EdgeInsets.symmetric(
-            horizontal: ZebuSpacing.s2,
-            vertical: ZebuSpacing.s2,
-          ),
-          decoration: BoxDecoration(
-            // White rather than a grey fill: the chip sits inside a thread
-            // card that is already white, and the file-type tile is what
-            // gives it presence now.
-            color: _hover ? t.accentSoft : t.bgElevated,
-            border: Border.all(
-              color: _hover ? t.accent : t.borderSubtle,
-              width: 1,
+        child: canPreview ? _buildPreview(context) : _buildChip(context),
+      ),
+    );
+  }
+
+  /// Image: a media card — the picture itself, with a caption strip under it
+  /// carrying the name, size, and open-externally affordance.
+  Widget _buildPreview(BuildContext context) {
+    final t = ZebuTheme.of(context);
+    final a = widget.attachment;
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: t.bgElevated,
+        border: Border.all(color: t.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: _kPreviewWidth,
+              maxHeight: _kPreviewHeight,
             ),
-            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+            child: Image.network(
+              a.downloadUrl!,
+              fit: BoxFit.cover,
+              width: _kPreviewWidth,
+              loadingBuilder: (context, child, progress) => progress == null
+                  ? child
+                  : Container(
+                      width: _kPreviewWidth,
+                      height: _kPreviewHeight,
+                      color: t.surfaceMuted,
+                      alignment: Alignment.center,
+                      child: const DotsLoader(),
+                    ),
+              // A blocked or expired URL must not leave a broken-image box in
+              // the thread — drop to the chip, which still opens fine.
+              errorBuilder: (context, _, _) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) setState(() => _previewFailed = true);
+                });
+                return const SizedBox.shrink();
+              },
+            ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // File-type glyph in a tinted tile — the same device the
-              // ticket sidebar uses for its field icons, so an attachment
-              // reads as a proper object rather than an inline label.
-              Container(
-                width: 30,
-                height: 30,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: t.accent.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(ZebuRadius.rXs),
-                ),
-                child: Icon(_icon, size: 17, color: t.accent),
-              ),
-              const SizedBox(width: ZebuSpacing.s3),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 240),
-                child: Text(
-                  a.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZebuTextStyles.body(
-                    context,
-                    color: t.textSlate,
-                    fontWeight: ZebuFonts.medium,
+          Container(
+            width: _kPreviewWidth,
+            color: t.surfaceMuted,
+            padding: const EdgeInsets.symmetric(
+              horizontal: ZebuSpacing.s2,
+              vertical: 6,
+            ),
+            child: _caption(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Everything else: icon tile, name, size, open glyph.
+  Widget _buildChip(BuildContext context) {
+    final t = ZebuTheme.of(context);
+    return Container(
+      width: _kChipWidth,
+      padding: const EdgeInsets.symmetric(
+        horizontal: ZebuSpacing.s3,
+        vertical: ZebuSpacing.s2 + 2,
+      ),
+      decoration: BoxDecoration(
+        color: t.bgElevated,
+        border: Border.all(color: t.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+      ),
+      child: Row(
+        children: [
+          _badge(context),
+          const SizedBox(width: ZebuSpacing.s3),
+          _caption(context),
+        ],
+      ),
+    );
+  }
+
+  /// 32x32 type tile: the extension in a tinted square, or the glyph when the
+  /// filename has none.
+  Widget _badge(BuildContext context) {
+    final t = ZebuTheme.of(context);
+    final tone = _badgeTone(t);
+    final ext = _ext;
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: tone.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: ext == null
+          ? Icon(_icon, size: 17, color: tone)
+          : Text(
+              // Four characters is the widest that fits without shrinking
+              // past legibility.
+              ext.length > 4 ? ext.substring(0, 4) : ext,
+              style: ZebuTextStyles.caption(
+                context,
+                color: zebuOnTint(tone, t),
+                fontWeight: ZebuFonts.bold,
+              ).copyWith(fontSize: ext.length > 3 ? 8 : 9),
+            ),
+    );
+  }
+
+  /// Name over size, with the download affordance trailing. Two lines rather
+  /// than one row: at a fixed chip width the filename gets the whole line
+  /// instead of competing with the size for it, so far less of it is lost to
+  /// the ellipsis.
+  Widget _caption(BuildContext context) {
+    final t = ZebuTheme.of(context);
+    final a = widget.attachment;
+    return Expanded(
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // One ellipsis, at the end, plus the full name on hover.
+                // Shortening the string ourselves *and* letting the layout
+                // clip it produced two ellipses in the same filename
+                // ("ChatGPT Image...36_32 PM...."), which reads as a bug.
+                // Losing the extension costs nothing now that the badge
+                // states the type.
+                Tooltip(
+                  message: a.name,
+                  waitDuration: const Duration(milliseconds: 400),
+                  child: Text(
+                    a.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                    style: ZebuTextStyles.small(
+                      context,
+                      color: t.textPrimary,
+                      fontWeight: ZebuFonts.semiBold,
+                    ),
                   ),
                 ),
-              ),
-              if (a.size != null) ...[
-                const SizedBox(width: ZebuSpacing.s3),
-                Text(
-                  Fmt.fileSize(a.size),
-                  style: ZebuTextStyles.small(
-                    context,
-                    color: t.textSlateMuted,
-                  ).withTabularNums(),
-                ),
+                if (a.size != null)
+                  Text(
+                    Fmt.fileSize(a.size),
+                    style: ZebuTextStyles.caption(
+                      context,
+                      color: t.textSlateMuted,
+                    ).withTabularNums(),
+                  ),
               ],
-              const SizedBox(width: ZebuSpacing.s3),
-              Icon(Icons.open_in_new, size: 16, color: t.accent),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(width: ZebuSpacing.s2),
+          Icon(Icons.download_outlined, size: 16, color: t.iconMuted),
+        ],
       ),
     );
   }

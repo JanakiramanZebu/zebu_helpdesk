@@ -33,7 +33,10 @@ class SectionHeader extends StatelessWidget {
           Icon(icon, size: 14, color: t.textSecondary),
           const SizedBox(width: 6),
         ],
-        Text(uppercase ? title.toUpperCase() : title, style: ZebuTextStyles.eyebrow(context)),
+        Text(
+          uppercase ? title.toUpperCase() : title,
+          style: ZebuTextStyles.eyebrow(context),
+        ),
         const Spacer(),
         if (trailing != null) trailing!,
       ],

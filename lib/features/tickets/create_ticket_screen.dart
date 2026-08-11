@@ -96,11 +96,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       // endpoints (best-effort, so none can fail the create itself).
       if (_agent != null || _team != null) {
         try {
-          await repo.assign(
-            ticket.id,
-            staffId: _agent?.id,
-            teamId: _team?.id,
-          );
+          await repo.assign(ticket.id, staffId: _agent?.id, teamId: _team?.id);
         } catch (_) {}
       }
       if (_status != null) {
@@ -166,7 +162,10 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
               ListTile(
                 title: Text(o),
                 trailing: o == _source
-                    ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+                    ? Icon(
+                        Icons.check,
+                        color: Theme.of(context).colorScheme.primary,
+                      )
                     : null,
                 onTap: () => Navigator.pop(context, o),
               ),
@@ -323,7 +322,10 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Text('Attachments', style: Theme.of(context).textTheme.titleSmall),
+                  Text(
+                    'Attachments',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                   const Spacer(),
                   TextButton.icon(
                     onPressed: _pickFiles,
@@ -623,7 +625,10 @@ class _CannedPickerSheetState extends ConsumerState<_CannedPickerSheet> {
                       child: Center(child: CircularProgressIndicator()),
                     )
                   : _error != null
-                  ? Padding(padding: const EdgeInsets.all(24), child: Text(_error!))
+                  ? Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(_error!),
+                    )
                   : _items.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.all(24),

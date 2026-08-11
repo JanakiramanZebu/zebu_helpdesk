@@ -19,10 +19,9 @@ import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../../widgets/web/select_checkbox.dart';
-import '../../../widgets/web/status_pill.dart';
+import '../../../widgets/web/status_badge.dart';
 import '../../../widgets/web_filter_button.dart';
 import 'task_detail_panel.dart';
-import '../../../res/zebu_status_colors.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
@@ -67,8 +66,7 @@ class TasksListScreenWeb extends ConsumerStatefulWidget {
   const TasksListScreenWeb({super.key});
 
   @override
-  ConsumerState<TasksListScreenWeb> createState() =>
-      _TasksListScreenWebState();
+  ConsumerState<TasksListScreenWeb> createState() => _TasksListScreenWebState();
 }
 
 /// Ordered saved views, each with the glyph its tab wears. Open and Closed
@@ -147,20 +145,20 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
   }
 
   void _toggleChecked(int id) => setState(() {
-        if (!_selectedIds.remove(id)) _selectedIds.add(id);
-      });
+    if (!_selectedIds.remove(id)) _selectedIds.add(id);
+  });
 
   void _toggleCheckAll() => setState(() {
-        if (_allChecked) {
-          for (final t in _visibleTasks) {
-            _selectedIds.remove(t.id);
-          }
-        } else {
-          for (final t in _visibleTasks) {
-            _selectedIds.add(t.id);
-          }
-        }
-      });
+    if (_allChecked) {
+      for (final t in _visibleTasks) {
+        _selectedIds.remove(t.id);
+      }
+    } else {
+      for (final t in _visibleTasks) {
+        _selectedIds.add(t.id);
+      }
+    }
+  });
 
   void _clearSelection() => setState(_selectedIds.clear);
 
@@ -192,8 +190,10 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
     if (failed == 0) {
       _toast('$verb ${ids.length} $noun', type: ToastType.success);
     } else {
-      _toast('$verb ${ids.length - failed}/${ids.length} — $failed failed',
-          type: ToastType.error);
+      _toast(
+        '$verb ${ids.length - failed}/${ids.length} — $failed failed',
+        type: ToastType.error,
+      );
     }
   }
 
@@ -216,14 +216,14 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
   }
 
   Future<void> _bulkComplete() => _bulkRun(
-        (id) async => ref.read(tasksRepositoryProvider).close(id),
-        verb: 'Completed',
-      );
+    (id) async => ref.read(tasksRepositoryProvider).close(id),
+    verb: 'Completed',
+  );
 
   Future<void> _bulkReopen() => _bulkRun(
-        (id) async => ref.read(tasksRepositoryProvider).reopen(id),
-        verb: 'Reopened',
-      );
+    (id) async => ref.read(tasksRepositoryProvider).reopen(id),
+    verb: 'Reopened',
+  );
 
   Future<void> _bulkAssign(BuildContext anchor) async {
     final agentId = await _pickMetaId(anchor, MetaKind.agents);
@@ -257,9 +257,9 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
   void _openTask(int id) => setState(() => _openTaskId = id);
   // Closing the panel is a pure state change — no refetch on close.
   void _closeTask() => setState(() {
-        _openTaskId = null;
-        _fullscreen = false;
-      });
+    _openTaskId = null;
+    _fullscreen = false;
+  });
   void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
 
   @override
@@ -404,12 +404,12 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
 
   List<WebQuickFilter> _quickFilters() {
     WebQuickFilter chip(String key, String label) => WebQuickFilter(
-          label: label,
-          active: _quickFlags.contains(key),
-          onToggle: () => setState(() {
-            if (!_quickFlags.add(key)) _quickFlags.remove(key);
-          }),
-        );
+      label: label,
+      active: _quickFlags.contains(key),
+      onToggle: () => setState(() {
+        if (!_quickFlags.add(key)) _quickFlags.remove(key);
+      }),
+    );
     return [
       chip('incomplete', 'Incomplete tasks'),
       chip('completed', 'Completed tasks'),
@@ -452,8 +452,9 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
 
   int _compare(Task a, Task b) {
     return switch (_sort) {
-      'updated' => (b.updated ?? b.created ?? DateTime(0))
-          .compareTo(a.updated ?? a.created ?? DateTime(0)),
+      'updated' => (b.updated ?? b.created ?? DateTime(0)).compareTo(
+        a.updated ?? a.created ?? DateTime(0),
+      ),
       'due' => _dueCompare(a.duedate, b.duedate),
       'number' => b.number.compareTo(a.number),
       _ => (b.created ?? DateTime(0)).compareTo(a.created ?? DateTime(0)),
@@ -542,14 +543,24 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                   // slot expands to the row width and the search still
                   // fits with the filter button beside it.
                   final filterAllowance = 48.0; // filter btn + gap
-                  final available =
-                      c.hasBoundedWidth ? c.maxWidth - filterAllowance : 360.0;
-                  final searchWidth =
-                      available.clamp(200.0, 360.0);
+                  final available = c.hasBoundedWidth
+                      ? c.maxWidth - filterAllowance
+                      : 360.0;
+                  final searchWidth = available.clamp(200.0, 360.0);
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      WebFilterButton(
+                   
+                      SizedBox(
+                        width: searchWidth,
+                        child: ListSearchInput(
+                          hintText: 'Search',
+                          onChanged: _onSearchChanged,
+                        ),
+                      ),
+                      const SizedBox(width: ZebuSpacing.s3),
+
+                         WebFilterButton(
                         filters: _quickFilters(),
                         sort: WebSortControl(
                           options: _sortItems,
@@ -558,22 +569,13 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                         ),
                         dateRange: WebDateRangeControl(
                           value: _dateRange,
-                          onChanged: (r) =>
-                              setState(() => _dateRange = r),
+                          onChanged: (r) => setState(() => _dateRange = r),
                         ),
                         facets: _facetControls(),
                         // Always pass the reset callback — the popover
                         // decides visibility itself from its live local
                         // state.
                         onClear: _clearAllFilters,
-                      ),
-                      const SizedBox(width: ZebuSpacing.s3),
-                      SizedBox(
-                        width: searchWidth,
-                        child: ListSearchInput(
-                          hintText: 'Search',
-                          onChanged: _onSearchChanged,
-                        ),
                       ),
                     ],
                   );
@@ -635,63 +637,63 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                         ? _kTableMinWidth
                         : constraints.maxWidth;
                     return Scrollbar(
-                    controller: _tableHScroll,
-                    scrollbarOrientation: ScrollbarOrientation.bottom,
-                    child: SingleChildScrollView(
                       controller: _tableHScroll,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _TableHeader(
-                              scrollGutter: horizontalScroll,
-                              allChecked: _allChecked,
-                              someChecked: _someChecked,
-                              onToggleAll: _toggleCheckAll,
-                            ),
-                            Expanded(
-                              child: ColoredBox(
-                                color: t.bgElevated,
-                                child: PagedListView<Task>(
-                                  padding: EdgeInsets.zero,
-                                  refreshKey: '$_view|$_search|$_refreshSeq',
-                                  filterKey: filterKey,
-                                  itemFilter: (task) => _matches(
-                                    task,
-                                    meNameLower: meNameLower,
-                                    bounds: dateBounds,
-                                    needle: searchNeedle,
-                                    facetNeedles: facetNeedles,
-                                  ),
-                                  itemSort: _compare,
-                                  emptyMessage: 'No tasks',
-                                  emptyHint:
-                                      'Try a different filter or search.',
-                                  fetch: (page) =>
-                                      repo.list(query.copyWith(page: page)),
-                                  loadingBuilder: (_) =>
-                                      const _TaskTableSkeleton(),
-                                  onItems: _onVisibleTasks,
-                                  itemBuilder: (context, task) => _TaskRow(
-                                    task: task,
-                                    selected: _openTaskId == task.id,
-                                    checked: _selectedIds.contains(task.id),
-                                    onToggleChecked: () =>
-                                        _toggleChecked(task.id),
-                                    onTap: () => _openTask(task.id),
+                      scrollbarOrientation: ScrollbarOrientation.bottom,
+                      child: SingleChildScrollView(
+                        controller: _tableHScroll,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: tableWidth,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _TableHeader(
+                                scrollGutter: horizontalScroll,
+                                allChecked: _allChecked,
+                                someChecked: _someChecked,
+                                onToggleAll: _toggleCheckAll,
+                              ),
+                              Expanded(
+                                child: ColoredBox(
+                                  color: t.bgElevated,
+                                  child: PagedListView<Task>(
+                                    padding: EdgeInsets.zero,
+                                    refreshKey: '$_view|$_search|$_refreshSeq',
+                                    filterKey: filterKey,
+                                    itemFilter: (task) => _matches(
+                                      task,
+                                      meNameLower: meNameLower,
+                                      bounds: dateBounds,
+                                      needle: searchNeedle,
+                                      facetNeedles: facetNeedles,
+                                    ),
+                                    itemSort: _compare,
+                                    emptyMessage: 'No tasks',
+                                    emptyHint:
+                                        'Try a different filter or search.',
+                                    fetch: (page) =>
+                                        repo.list(query.copyWith(page: page)),
+                                    loadingBuilder: (_) =>
+                                        const _TaskTableSkeleton(),
+                                    onItems: _onVisibleTasks,
+                                    itemBuilder: (context, task) => _TaskRow(
+                                      task: task,
+                                      selected: _openTaskId == task.id,
+                                      checked: _selectedIds.contains(task.id),
+                                      onToggleChecked: () =>
+                                          _toggleChecked(task.id),
+                                      onTap: () => _openTask(task.id),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -854,6 +856,7 @@ class _TaskRow extends StatefulWidget {
   });
   final Task task;
   final VoidCallback onTap;
+
   /// Row selection (bulk-action checkbox) — distinct from [selected], which
   /// flags the row whose detail panel is open.
   final bool checked;
@@ -887,114 +890,102 @@ class _TaskRowState extends State<_TaskRow> {
             color: widget.selected
                 ? t.accentMuted
                 : (_hover ? t.bgHover : t.bgElevated),
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: SizedBox(
             height: _kRowHeight,
             child: Row(
               children: [
-                      SizedBox(
-                        width: _kColSelectWidth,
-                        child: Center(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: widget.onToggleChecked,
-                            child: SelectCheckbox(
-                              value: widget.checked,
-                              onChanged: (_) => widget.onToggleChecked(),
-                            ),
-                          ),
-                        ),
+                SizedBox(
+                  width: _kColSelectWidth,
+                  child: Center(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onToggleChecked,
+                      child: SelectCheckbox(
+                        value: widget.checked,
+                        onChanged: (_) => widget.onToggleChecked(),
                       ),
-                      _BodyCell(
-                        width: _kColNumberWidth,
+                    ),
+                  ),
+                ),
+                _BodyCell(
+                  width: _kColNumberWidth,
+                  child: Text(
+                    '#${task.number}',
+                    style: ZebuTextStyles.small(context)
+                        .copyWith(fontWeight: FontWeight.w600, color: t.accent)
+                        .withTabularNums(),
+                  ),
+                ),
+                _BodyCell(
+                  flex: _kColTaskFlex,
+                  child: Row(
+                    children: [
+                      Flexible(
                         child: Text(
-                          '#${task.number}',
-                          style: ZebuTextStyles.small(context)
-                              .copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: t.accent,
-                              )
-                              .withTabularNums(),
-                        ),
-                      ),
-                      _BodyCell(
-                        flex: _kColTaskFlex,
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                task.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: ZebuTextStyles.body(context)
-                                    .copyWith(fontWeight: FontWeight.w500),
-                              ),
-                            ),
-                            if (task.blocked) ...[
-                              const SizedBox(width: ZebuSpacing.s2),
-                              Icon(
-                                Icons.lock_outline,
-                                size: 14,
-                                color: t.danger,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                      _BodyCell(
-                        flex: _kColAssigneeFlex,
-                        child: _TextCell(
-                          text: task.assignee ?? '',
-                          emptyLabel: 'Unassigned',
-                        ),
-                      ),
-                      _BodyCell(
-                        flex: _kColDeptFlex,
-                        child: _TextCell(text: task.departmentName ?? ''),
-                      ),
-                      _BodyCell(
-                        width: _kColPriorityWidth,
-                        child: (task.priority?.name ?? '').isEmpty
-                            ? Text('—', style: ZebuTextStyles.small(context))
-                            : StatusPill(
-                                label: _titleCase(task.priority!.name),
-                                color: zebuPriorityColor(widget.task.priority?.name, t),
-                                icon: Icons.flag_rounded,
-                              ),
-                      ),
-                      _BodyCell(
-                        width: _kColStatusWidth,
-                        child: StatusPill(
-                          label: task.overdue
-                              ? 'Overdue'
-                              : _titleCase(task.statusName),
-                          color: zebuStatusColor(
-                            widget.task.statusName,
-                            t,
-                            overdue: widget.task.overdue,
-                          ),
-                        ),
-                      ),
-                      _BodyCell(
-                        width: _kColDueWidth,
-                        alignRight: true,
-                        child: Text(
-                          Fmt.date(task.duedate ?? task.created),
+                          task.title,
                           maxLines: 1,
-                          softWrap: false,
-                          overflow: TextOverflow.clip,
-                          textAlign: TextAlign.right,
-                          style: ZebuTextStyles.small(context)
-                              .copyWith(
-                                color: t.textPrimary,
-                                fontWeight: FontWeight.w500,
-                              )
-                              .withTabularNums(),
+                          overflow: TextOverflow.ellipsis,
+                          style: ZebuTextStyles.body(
+                            context,
+                          ).copyWith(fontWeight: FontWeight.w500),
                         ),
                       ),
+                      if (task.blocked) ...[
+                        const SizedBox(width: ZebuSpacing.s2),
+                        Icon(Icons.lock_outline, size: 14, color: t.danger),
+                      ],
+                    ],
+                  ),
+                ),
+                _BodyCell(
+                  flex: _kColAssigneeFlex,
+                  child: _TextCell(
+                    text: task.assignee ?? '',
+                    emptyLabel: 'Unassigned',
+                  ),
+                ),
+                _BodyCell(
+                  flex: _kColDeptFlex,
+                  child: _TextCell(text: task.departmentName ?? ''),
+                ),
+                _BodyCell(
+                  width: _kColPriorityWidth,
+                  child: (task.priority?.name ?? '').isEmpty
+                      ? Text('—', style: ZebuTextStyles.small(context))
+                      : PriorityBadge(
+                          label: _titleCase(task.priority!.name),
+                          priority: task.priority?.name,
+                        ),
+                ),
+                _BodyCell(
+                  width: _kColStatusWidth,
+                  child: StatusBadge(
+                    label: task.overdue
+                        ? 'Overdue'
+                        : _titleCase(task.statusName),
+                    status: task.statusName,
+                    overdue: task.overdue,
+                  ),
+                ),
+                _BodyCell(
+                  width: _kColDueWidth,
+                  alignRight: true,
+                  child: Text(
+                    Fmt.date(task.duedate ?? task.created),
+                    maxLines: 1,
+                    softWrap: false,
+                    overflow: TextOverflow.clip,
+                    textAlign: TextAlign.right,
+                    style: ZebuTextStyles.small(context)
+                        .copyWith(
+                          color: t.textPrimary,
+                          fontWeight: FontWeight.w500,
+                        )
+                        .withTabularNums(),
+                  ),
+                ),
               ],
             ),
           ),
@@ -1093,8 +1084,7 @@ class _TaskTableSkeletonState extends State<_TaskTableSkeleton>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (int i = 0; i < rowCount; i++)
-                    _SkeletonRow(shade: color),
+                  for (int i = 0; i < rowCount; i++) _SkeletonRow(shade: color),
                 ],
               ),
             );
@@ -1127,30 +1117,12 @@ class _SkeletonRow extends StatelessWidget {
             // table so nothing shifts when data arrives.
             const SizedBox(width: 3),
             const SizedBox(width: _kColSelectWidth),
-            _BodyCell(
-              width: _kColNumberWidth,
-              child: _block(56),
-            ),
-            _BodyCell(
-              flex: _kColTaskFlex,
-              child: _block(260),
-            ),
-            _BodyCell(
-              flex: _kColAssigneeFlex,
-              child: _block(110),
-            ),
-            _BodyCell(
-              flex: _kColDeptFlex,
-              child: _block(90),
-            ),
-            _BodyCell(
-              width: _kColPriorityWidth,
-              child: _block(70),
-            ),
-            _BodyCell(
-              width: _kColStatusWidth,
-              child: _block(80),
-            ),
+            _BodyCell(width: _kColNumberWidth, child: _block(56)),
+            _BodyCell(flex: _kColTaskFlex, child: _block(260)),
+            _BodyCell(flex: _kColAssigneeFlex, child: _block(110)),
+            _BodyCell(flex: _kColDeptFlex, child: _block(90)),
+            _BodyCell(width: _kColPriorityWidth, child: _block(70)),
+            _BodyCell(width: _kColStatusWidth, child: _block(80)),
             _BodyCell(
               width: _kColDueWidth,
               alignRight: true,

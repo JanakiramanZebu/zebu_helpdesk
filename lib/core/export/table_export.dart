@@ -18,8 +18,7 @@ enum ExportFormat {
   excel(
     label: 'Excel',
     ext: 'xlsx',
-    mime:
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     icon: Icons.grid_on_outlined,
   );
 
@@ -143,13 +142,9 @@ Uint8List _buildExcel(
   book.rename(book.getDefaultSheet()!, sheetName);
   final sheet = book[sheetName];
 
-  sheet.appendRow([
-    for (final c in columns) xls.TextCellValue(c),
-  ]);
+  sheet.appendRow([for (final c in columns) xls.TextCellValue(c)]);
   for (final row in rows) {
-    sheet.appendRow([
-      for (final cell in row) xls.TextCellValue(cell),
-    ]);
+    sheet.appendRow([for (final cell in row) xls.TextCellValue(cell)]);
   }
 
   final bytes = book.save();

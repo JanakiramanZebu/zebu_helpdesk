@@ -180,10 +180,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
         ],
         if (f.attachments.isNotEmpty) ...[
           const SizedBox(height: ZebuSpacing.s2),
-          _SectionSubheader(
-            'Attachments',
-            trailing: '${f.attachments.length}',
-          ),
+          _SectionSubheader('Attachments', trailing: '${f.attachments.length}'),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               ZebuSpacing.s4,
@@ -193,8 +190,7 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
             ),
             child: Column(
               children: [
-                for (final a in f.attachments)
-                  AttachmentTile(attachment: a),
+                for (final a in f.attachments) AttachmentTile(attachment: a),
               ],
             ),
           ),
@@ -267,17 +263,13 @@ class _FaqDetailPanelState extends ConsumerState<FaqDetailPanel> {
         ),
         DecoratedBox(
           decoration: BoxDecoration(
-            border: Border(
-              left: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(left: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: SizedBox(
             width: _kFieldsSidebarWidth,
             child: ListView(
               padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s4),
-              children: [
-                _FieldsTable(faq: f, sidebar: true),
-              ],
+              children: [_FieldsTable(faq: f, sidebar: true)],
             ),
           ),
         ),
@@ -314,23 +306,24 @@ class _Header extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (faq == null)
-            Expanded(child: Text('Loading…', style: ZebuTextStyles.smallStrong(context)))
+            Expanded(
+              child: Text(
+                'Loading…',
+                style: ZebuTextStyles.smallStrong(context),
+              ),
+            )
           else ...[
             _NumberChip(number: '${faq!.id}'),
             const SizedBox(width: ZebuSpacing.s3),
             Expanded(
               child: Text(
-                faq!.question.trim().isEmpty
-                    ? '(untitled)'
-                    : faq!.question,
+                faq!.question.trim().isEmpty ? '(untitled)' : faq!.question,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: ZebuTextStyles.pageTitle(context),
@@ -340,9 +333,7 @@ class _Header extends StatelessWidget {
           const SizedBox(width: ZebuSpacing.s3),
           if (onToggleFullscreen != null) ...[
             _IconBtn(
-              icon: isFullscreen
-                  ? Icons.close_fullscreen
-                  : Icons.open_in_full,
+              icon: isFullscreen ? Icons.close_fullscreen : Icons.open_in_full,
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
             ),
@@ -376,10 +367,7 @@ class _NumberChip extends StatelessWidget {
       child: Text(
         '#$number',
         style: ZebuTextStyles.small(context)
-            .copyWith(
-              fontWeight: FontWeight.w600,
-              color: t.textPrimary,
-            )
+            .copyWith(fontWeight: FontWeight.w600, color: t.textPrimary)
             .withTabularNums(),
       ),
     );
@@ -411,9 +399,7 @@ class _IconBtnState extends State<_IconBtn> {
     final bg = _hover
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
-    final fg = _hover && widget.destructive
-        ? t.danger
-        : t.textPrimary;
+    final fg = _hover && widget.destructive ? t.danger : t.textPrimary;
     final child = MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -522,7 +508,9 @@ class _FieldsTable extends StatelessWidget {
               vertical: ZebuSpacing.s2,
             ),
             child: DefaultTextStyle.merge(
-              style: ZebuTextStyles.body(context).copyWith(color: t.textPrimary),
+              style: ZebuTextStyles.body(
+                context,
+              ).copyWith(color: t.textPrimary),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: rows,
@@ -580,14 +568,12 @@ class _FieldRow extends StatelessWidget {
     final t = ZebuTheme.of(context);
     final rowHeight = sidebar ? _kSidebarRowHeight : 30.0;
     final labelStyle = sidebar
-        ? ZebuTextStyles.body(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w500,
-          )
-        : ZebuTextStyles.small(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w500,
-          );
+        ? ZebuTextStyles.body(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500)
+        : ZebuTextStyles.small(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500);
     // Leading icons removed — labels alone carry the meaning and the row
     // reads cleaner without the credential glyphs.
     return SizedBox(
@@ -622,10 +608,7 @@ class _TextValue extends StatelessWidget {
       text,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
-      style: base.copyWith(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w500,
-      ),
+      style: base.copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
     );
   }
 }
@@ -663,19 +646,22 @@ class _SectionSubheader extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          top: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         children: [
           Text(
             label,
-            style: ZebuTextStyles.smallStrong(context).copyWith(color: t.textPrimary),
+            style: ZebuTextStyles.smallStrong(
+              context,
+            ).copyWith(color: t.textPrimary),
           ),
           if (trailing != null) ...[
             const SizedBox(width: ZebuSpacing.s2),
-            Text(trailing!, style: ZebuTextStyles.label(context).withTabularNums()),
+            Text(
+              trailing!,
+              style: ZebuTextStyles.label(context).withTabularNums(),
+            ),
           ],
         ],
       ),
@@ -702,10 +688,9 @@ class _BodyCard extends StatelessWidget {
       ),
       child: SelectableText(
         empty ? '—' : text,
-        style: ZebuTextStyles.body(context).copyWith(
-          color: empty ? t.textSecondary : t.textPrimary,
-          height: 1.5,
-        ),
+        style: ZebuTextStyles.body(
+          context,
+        ).copyWith(color: empty ? t.textSecondary : t.textPrimary, height: 1.5),
       ),
     );
   }

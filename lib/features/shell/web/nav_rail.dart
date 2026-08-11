@@ -292,7 +292,9 @@ class _RailTile extends StatelessWidget {
                   width: ShellTokens.railTileSize,
                   child: Center(child: leading),
                 ),
-                Expanded(child: FadeInSlot(visible: expanded, child: content)),
+                Expanded(
+                  child: FadeInSlot(visible: expanded, child: content),
+                ),
                 const SizedBox(width: 12),
               ],
             ),
@@ -552,8 +554,10 @@ class _ProfileRowState extends ConsumerState<_ProfileRow> {
     final me = ref.watch(meProvider);
     final name = me.maybeWhen(data: (m) => m.name, orElse: () => '');
     final email = me.maybeWhen(data: (m) => m.email, orElse: () => '');
-    final available =
-        me.maybeWhen(data: (m) => m.available, orElse: () => false);
+    final available = me.maybeWhen(
+      data: (m) => m.available,
+      orElse: () => false,
+    );
     final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
 
     final avatar = SizedBox(

@@ -35,15 +35,16 @@ class MoreScreenWeb extends ConsumerWidget {
           vertical: ZebuSpacing.s6,
         ),
         child: Center(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const _Hero(),
-                const SizedBox(height: ZebuSpacing.s8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _Hero(),
+              const SizedBox(height: ZebuSpacing.s8),
 
-                _SectionTitle('WORKSPACE'),
-                const SizedBox(height: ZebuSpacing.s3),
-                _CardGrid(cards: [
+              _SectionTitle('WORKSPACE'),
+              const SizedBox(height: ZebuSpacing.s3),
+              _CardGrid(
+                cards: [
                   _NavCardData(
                     svg: Assets.menuUsers,
                     title: 'Users',
@@ -56,12 +57,14 @@ class MoreScreenWeb extends ConsumerWidget {
                     subtitle: 'Company accounts',
                     onTap: () => context.push(Routes.organizations),
                   ),
-                ]),
+                ],
+              ),
 
-                const SizedBox(height: ZebuSpacing.s8),
-                _SectionTitle('CONTENT'),
-                const SizedBox(height: ZebuSpacing.s3),
-                _CardGrid(cards: [
+              const SizedBox(height: ZebuSpacing.s8),
+              _SectionTitle('CONTENT'),
+              const SizedBox(height: ZebuSpacing.s3),
+              _CardGrid(
+                cards: [
                   _NavCardData(
                     svg: Assets.menuKnowledge,
                     title: 'Knowledgebase',
@@ -86,12 +89,14 @@ class MoreScreenWeb extends ConsumerWidget {
                     subtitle: 'Volume and performance',
                     onTap: () => context.push(Routes.reports),
                   ),
-                ]),
+                ],
+              ),
 
-                const SizedBox(height: ZebuSpacing.s8),
-                _SectionTitle('ACCOUNT'),
-                const SizedBox(height: ZebuSpacing.s3),
-                _CardGrid(cards: [
+              const SizedBox(height: ZebuSpacing.s8),
+              _SectionTitle('ACCOUNT'),
+              const SizedBox(height: ZebuSpacing.s3),
+              _CardGrid(
+                cards: [
                   _NavCardData(
                     svg: Assets.profileEdit,
                     title: 'Profile & settings',
@@ -111,12 +116,13 @@ class MoreScreenWeb extends ConsumerWidget {
                     tone: t.danger,
                     onTap: () => _confirmSignOut(context, ref),
                   ),
-                ]),
+                ],
+              ),
 
-                const SizedBox(height: ZebuSpacing.s10),
-              ],
-            ),
+              const SizedBox(height: ZebuSpacing.s10),
+            ],
           ),
+        ),
       ),
     );
   }
@@ -160,7 +166,10 @@ class MoreScreenWeb extends ConsumerWidget {
                     ZebuSpacing.s5,
                     ZebuSpacing.s3,
                   ),
-                  child: Text('APPEARANCE', style: ZebuTextStyles.label(context)),
+                  child: Text(
+                    'APPEARANCE',
+                    style: ZebuTextStyles.label(context),
+                  ),
                 ),
                 for (final mode in ThemeMode.values)
                   InkWell(
@@ -181,17 +190,13 @@ class MoreScreenWeb extends ConsumerWidget {
                           Expanded(
                             child: Text(
                               _themeLabel(mode),
-                              style: ZebuTextStyles.body(context).copyWith(
-                                fontWeight: FontWeight.w500,
-                              ),
+                              style: ZebuTextStyles.body(
+                                context,
+                              ).copyWith(fontWeight: FontWeight.w500),
                             ),
                           ),
                           if (mode == current)
-                            Icon(
-                              Icons.check,
-                              size: 18,
-                              color: t.accent,
-                            ),
+                            Icon(Icons.check, size: 18, color: t.accent),
                         ],
                       ),
                     ),
@@ -375,9 +380,10 @@ class _NavCardState extends State<_NavCard> {
                       widget.data.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold).copyWith(
-                        color: widget.data.tone ?? t.textPrimary,
-                      ),
+                      style: ZebuTextStyles.bodyStrong(
+                        context,
+                        fontWeight: ZebuFonts.semiBold,
+                      ).copyWith(color: widget.data.tone ?? t.textPrimary),
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -389,11 +395,7 @@ class _NavCardState extends State<_NavCard> {
                   ],
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                size: 18,
-                color: t.textSecondary,
-              ),
+              Icon(Icons.chevron_right, size: 18, color: t.textSecondary),
             ],
           ),
         ),

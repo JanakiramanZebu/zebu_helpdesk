@@ -98,11 +98,13 @@ class NotificationGroup {
     for (final acts in byKey.values) {
       acts.sort(_newestFirst);
       final deduped = _collapseConsecutive(acts);
-      groups.add(NotificationGroup(
-        type: deduped.first.type,
-        objectId: deduped.first.objectId,
-        activities: deduped,
-      ));
+      groups.add(
+        NotificationGroup(
+          type: deduped.first.type,
+          objectId: deduped.first.objectId,
+          activities: deduped,
+        ),
+      );
     }
     groups.sort((a, b) {
       final at = a.lastActivity, bt = b.lastActivity;
@@ -136,7 +138,9 @@ class NotificationGroup {
 
   /// Drop consecutive identical activities (same event+actor+body) keeping the
   /// newest of each run — the input must already be newest-first.
-  static List<AppNotification> _collapseConsecutive(List<AppNotification> acts) {
+  static List<AppNotification> _collapseConsecutive(
+    List<AppNotification> acts,
+  ) {
     final out = <AppNotification>[];
     String? prev;
     for (final r in acts) {

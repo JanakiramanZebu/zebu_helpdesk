@@ -142,11 +142,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
 
       if (_agent != null || _team != null) {
         try {
-          await repo.assign(
-            ticket.id,
-            staffId: _agent?.id,
-            teamId: _team?.id,
-          );
+          await repo.assign(ticket.id, staffId: _agent?.id, teamId: _team?.id);
         } catch (_) {}
       }
       if (_status != null) {
@@ -248,8 +244,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
     final chosen = await showAppDropdown<int>(
       anchorContext,
       entries: [
-        for (final m in items)
-          AppDropdownItem<int>(value: m.id, label: m.name),
+        for (final m in items) AppDropdownItem<int>(value: m.id, label: m.name),
       ],
     );
     if (chosen == null) return;
@@ -307,11 +302,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
             _HeaderBar(onClose: _close),
             if (_saving) const LinearProgressIndicator(minHeight: 2),
             Expanded(child: _buildBody(t)),
-            _FooterBar(
-              saving: _saving,
-              onCancel: _close,
-              onSubmit: _submit,
-            ),
+            _FooterBar(saving: _saving, onCancel: _close, onSubmit: _submit),
           ],
         ),
       ),
@@ -377,8 +368,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                 for (final c in _collaborators)
                   _Chip(
                     label: c.name,
-                    onDelete: () =>
-                        setState(() => _collaborators.remove(c)),
+                    onDelete: () => setState(() => _collaborators.remove(c)),
                   ),
               ],
             ),
@@ -652,9 +642,7 @@ class _HeaderBar extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         children: [
@@ -697,9 +685,7 @@ class _FooterBar extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          top: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -741,9 +727,7 @@ class _IconBtnState extends State<_IconBtn> {
     final bg = _hover
         ? (widget.destructive ? t.dangerLight : t.bgHover)
         : t.bgElevated;
-    final fg = _hover && widget.destructive
-        ? t.danger
-        : t.textPrimary;
+    final fg = _hover && widget.destructive ? t.danger : t.textPrimary;
     final child = MouseRegion(
       cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
@@ -803,10 +787,9 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -908,10 +891,9 @@ class _LabeledField extends StatelessWidget {
           children: [
             Text(
               label,
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
             ),
             if (required) ...[
               const SizedBox(width: 4),
@@ -930,7 +912,10 @@ class _LabeledField extends StatelessWidget {
         child,
         if (error != null) ...[
           const SizedBox(height: 4),
-          Text(error!, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
+          Text(
+            error!,
+            style: ZebuTextStyles.small(context).copyWith(color: t.danger),
+          ),
         ],
       ],
     );
@@ -1023,9 +1008,7 @@ class _SelectFieldState extends State<_SelectField> {
                   overflow: TextOverflow.ellipsis,
                   style: ZebuTextStyles.body(context).copyWith(
                     color: textColor,
-                    fontWeight: hasValue
-                        ? FontWeight.w500
-                        : FontWeight.w400,
+                    fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
                   ),
                 ),
               ),
@@ -1117,10 +1100,7 @@ class _TextInput extends StatelessWidget {
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.accent,
-        width: 1.4,
-      ),
+      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
     );
     return TextField(
       controller: controller,
@@ -1140,7 +1120,9 @@ class _TextInput extends StatelessWidget {
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(
+          context,
+        ).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -1201,10 +1183,9 @@ class _OutlinedActionState extends State<_OutlinedAction> {
                   widget.label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: ZebuTextStyles.small(context).copyWith(
-                    color: t.accent,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: ZebuTextStyles.small(
+                    context,
+                  ).copyWith(color: t.accent, fontWeight: FontWeight.w600),
                 ),
               ),
             ],
@@ -1240,10 +1221,9 @@ class _AttachmentsBlock extends StatelessWidget {
           children: [
             Text(
               'Attachments',
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
             ),
             const Spacer(),
             _AddFilesButton(onTap: onAdd),
@@ -1347,10 +1327,9 @@ class _Chip extends StatelessWidget {
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w500,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
             ),
           ),
           const SizedBox(width: 4),
@@ -1384,11 +1363,7 @@ class _ErrorBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(
-            Icons.error_outline,
-            size: 16,
-            color: t.danger,
-          ),
+          Icon(Icons.error_outline, size: 16, color: t.danger),
           const SizedBox(width: ZebuSpacing.s2),
           Expanded(
             child: Text(
@@ -1497,7 +1472,9 @@ class _UserPickerDialogState extends ConsumerState<_UserPickerDialog> {
                     Expanded(
                       child: Text(
                         widget.title,
-                        style: ZebuTextStyles.smallStrong(context).copyWith(fontSize: 15),
+                        style: ZebuTextStyles.smallStrong(
+                          context,
+                        ).copyWith(fontSize: 15),
                       ),
                     ),
                     _IconBtn(
@@ -1573,7 +1550,10 @@ class _UserResultsList extends StatelessWidget {
         controller: controller,
         onSearch: onSearch,
         child: Center(
-          child: Text(error!, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
+          child: Text(
+            error!,
+            style: ZebuTextStyles.small(context).copyWith(color: t.danger),
+          ),
         ),
       );
     }
@@ -1581,7 +1561,9 @@ class _UserResultsList extends StatelessWidget {
       return _SearchListener(
         controller: controller,
         onSearch: onSearch,
-        child: Center(child: Text('No users found', style: ZebuTextStyles.small(context))),
+        child: Center(
+          child: Text('No users found', style: ZebuTextStyles.small(context)),
+        ),
       );
     }
     return _SearchListener(
@@ -1663,9 +1645,7 @@ class _UserRowState extends State<_UserRow> {
           ),
           decoration: BoxDecoration(
             color: _hover ? t.bgHover : t.bgElevated,
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1675,7 +1655,9 @@ class _UserRowState extends State<_UserRow> {
                 widget.user.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+                style: ZebuTextStyles.body(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 2),
               Text(
@@ -1766,7 +1748,9 @@ class _CannedPickerDialogState extends ConsumerState<_CannedPickerDialog> {
                     Expanded(
                       child: Text(
                         'Canned responses',
-                        style: ZebuTextStyles.smallStrong(context).copyWith(fontSize: 15),
+                        style: ZebuTextStyles.smallStrong(
+                          context,
+                        ).copyWith(fontSize: 15),
                       ),
                     ),
                     _IconBtn(
@@ -1791,21 +1775,26 @@ class _CannedPickerDialogState extends ConsumerState<_CannedPickerDialog> {
     }
     if (_error != null) {
       return Center(
-        child: Text(_error!, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
+        child: Text(
+          _error!,
+          style: ZebuTextStyles.small(context).copyWith(color: t.danger),
+        ),
       );
     }
     if (_items.isEmpty) {
-      return Center(child: Text('No canned responses', style: ZebuTextStyles.small(context)));
+      return Center(
+        child: Text(
+          'No canned responses',
+          style: ZebuTextStyles.small(context),
+        ),
+      );
     }
     return ListView.builder(
       padding: EdgeInsets.zero,
       itemCount: _items.length,
       itemBuilder: (_, i) {
         final c = _items[i];
-        return _CannedRow(
-          canned: c,
-          onTap: () => Navigator.of(context).pop(c),
-        );
+        return _CannedRow(canned: c, onTap: () => Navigator.of(context).pop(c));
       },
     );
   }
@@ -1842,9 +1831,7 @@ class _CannedRowState extends State<_CannedRow> {
           ),
           decoration: BoxDecoration(
             color: _hover ? t.bgHover : t.bgElevated,
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1854,7 +1841,9 @@ class _CannedRowState extends State<_CannedRow> {
                 widget.canned.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w600),
+                style: ZebuTextStyles.body(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w600),
               ),
               const SizedBox(height: 2),
               Text(

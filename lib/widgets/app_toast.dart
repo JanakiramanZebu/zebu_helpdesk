@@ -192,10 +192,7 @@ class _ToastCard extends StatelessWidget {
         child: Material(
           color: Colors.transparent,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minWidth: 280,
-              maxWidth: 380,
-            ),
+            constraints: const BoxConstraints(minWidth: 280, maxWidth: 380),
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: t.bgElevated,
@@ -220,24 +217,24 @@ class _ToastCard extends StatelessWidget {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Text(
                                       controller.title,
-                                      style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold).copyWith(
-                                        color: accent,
-                                        height: 1.2,
-                                      ),
+                                      style: ZebuTextStyles.bodyStrong(
+                                        context,
+                                        fontWeight: ZebuFonts.semiBold,
+                                      ).copyWith(color: accent, height: 1.2),
                                     ),
                                     const SizedBox(height: 2),
                                     Text(
                                       controller.message,
-                                      style: ZebuTextStyles.small(context).copyWith(
-                                        color: t.textPrimary,
-                                        height: 1.35,
-                                      ),
+                                      style: ZebuTextStyles.small(context)
+                                          .copyWith(
+                                            color: t.textPrimary,
+                                            height: 1.35,
+                                          ),
                                     ),
                                   ],
                                 ),

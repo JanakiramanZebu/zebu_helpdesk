@@ -56,7 +56,12 @@ class NavPanel extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Expanded(child: Text(title, style: ZebuTextStyles.pageTitle(context))),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: ZebuTextStyles.pageTitle(context),
+                    ),
+                  ),
                   if (onClose != null) _CloseButton(onTap: onClose!),
                 ],
               ),
@@ -207,8 +212,9 @@ class _NavPanelItemState extends State<NavPanelItem> {
                     style: TextStyle(
                       color: fg,
                       fontSize: 13.5,
-                      fontWeight:
-                          widget.selected ? FontWeight.w600 : FontWeight.w500,
+                      fontWeight: widget.selected
+                          ? FontWeight.w600
+                          : FontWeight.w500,
                     ),
                   ),
                 ),
@@ -285,11 +291,19 @@ class _NavPanelActionState extends State<NavPanelAction> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(widget.title, style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold)),
+                      Text(
+                        widget.title,
+                        style: ZebuTextStyles.bodyStrong(
+                          context,
+                          fontWeight: ZebuFonts.semiBold,
+                        ),
+                      ),
                       const SizedBox(height: 2),
                       Text(
                         widget.description,
-                        style: ZebuTextStyles.small(context).copyWith(height: 1.35),
+                        style: ZebuTextStyles.small(
+                          context,
+                        ).copyWith(height: 1.35),
                       ),
                     ],
                   ),

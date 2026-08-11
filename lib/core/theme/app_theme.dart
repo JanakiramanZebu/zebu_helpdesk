@@ -56,9 +56,7 @@ class AppTheme {
           primaryContainer: isLight
               ? _primaryContainerLight
               : _primaryContainerDark,
-          onPrimaryContainer: isLight
-              ? brandDark
-              : _onPrimaryContainerDark,
+          onPrimaryContainer: isLight ? brandDark : _onPrimaryContainerDark,
           secondary: isLight
               ? const Color(0xFF0052CC)
               : brandLight, // GH accent doubles for secondary in dark
@@ -105,9 +103,7 @@ class AppTheme {
         // Light: Mynt searchBg (`#F9F9F9`). Dark: GitHub Dark `input-bg`
         // (`#0D1117`) — same tone as the scaffold so inputs sit *in* the
         // canvas rather than as a raised chip.
-        fillColor: isLight
-            ? const Color(0xFFF9F9F9)
-            : _bgDark,
+        fillColor: isLight ? const Color(0xFFF9F9F9) : _bgDark,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide.none,
@@ -138,10 +134,7 @@ class AppTheme {
           foregroundColor: Colors.white,
           minimumSize: const Size.fromHeight(50),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: ZebuFonts.face(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: ZebuFonts.face(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -150,19 +143,13 @@ class AppTheme {
           minimumSize: const Size.fromHeight(50),
           side: BorderSide(color: scheme.outlineVariant),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-          textStyle: ZebuFonts.face(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: ZebuFonts.face(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: isLight ? brand : brandLight,
-          textStyle: ZebuFonts.face(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: ZebuFonts.face(fontSize: 14, fontWeight: FontWeight.w600),
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
@@ -182,10 +169,7 @@ class AppTheme {
         ),
         labelColor: isLight ? brand : brandLight,
         unselectedLabelColor: scheme.onSurfaceVariant,
-        labelStyle: ZebuFonts.face(
-          fontSize: 13.5,
-          fontWeight: FontWeight.w600,
-        ),
+        labelStyle: ZebuFonts.face(fontSize: 13.5, fontWeight: FontWeight.w600),
         unselectedLabelStyle: ZebuFonts.face(
           fontSize: 13.5,
           fontWeight: FontWeight.w500,

@@ -52,9 +52,9 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
 
   void _openResponse(int id) => setState(() => _openId = id);
   void _closeResponse() => setState(() {
-        _openId = null;
-        _fullscreen = false;
-      });
+    _openId = null;
+    _fullscreen = false;
+  });
   void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
 
   void _onChanged() {
@@ -149,59 +149,63 @@ class _CannedScreenWebState extends ConsumerState<CannedScreenWeb> {
                         ? _kTableMinWidth
                         : constraints.maxWidth;
                     return Scrollbar(
-                    controller: _tableHScroll,
-                    scrollbarOrientation: ScrollbarOrientation.bottom,
-                    child: SingleChildScrollView(
                       controller: _tableHScroll,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _TableHeader(scrollGutter: horizontalScroll),
-                            Expanded(
-                              child: ColoredBox(
-                                color: t.bgElevated,
-                                child: PagedListView<CannedResponse>(
-                                  padding: EdgeInsets.zero,
-                                  refreshKey: '$_search|$_refreshKey',
-                                  emptyMessage: 'No canned responses',
-                                  emptyHint: 'Create one to get started.',
-                                  emptyIcon: Icons.quickreply_outlined,
-                                  onTotalChanged: (v) {
-                                    if (mounted && v != _total) {
-                                      setState(() => _total = v);
-                                    }
-                                  },
-                                  fetch: (page) async {
-                                    final res = await repo.list(page: page);
-                                    if (_search.isEmpty) return res;
-                                    final q = _search.toLowerCase();
-                                    final filtered = res.items
-                                        .where((c) =>
-                                            c.title.toLowerCase().contains(q) ||
-                                            Fmt.stripHtml(c.body)
-                                                .toLowerCase()
-                                                .contains(q))
-                                        .toList();
-                                    return res.copyWithItems(filtered);
-                                  },
-                                  itemBuilder: (context, c) => _Row(
-                                    canned: c,
-                                    selected: _openId == c.id,
-                                    onTap: () => _openResponse(c.id),
+                      scrollbarOrientation: ScrollbarOrientation.bottom,
+                      child: SingleChildScrollView(
+                        controller: _tableHScroll,
+                        scrollDirection: Axis.horizontal,
+                        child: SizedBox(
+                          width: tableWidth,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _TableHeader(scrollGutter: horizontalScroll),
+                              Expanded(
+                                child: ColoredBox(
+                                  color: t.bgElevated,
+                                  child: PagedListView<CannedResponse>(
+                                    padding: EdgeInsets.zero,
+                                    refreshKey: '$_search|$_refreshKey',
+                                    emptyMessage: 'No canned responses',
+                                    emptyHint: 'Create one to get started.',
+                                    emptyIcon: Icons.quickreply_outlined,
+                                    onTotalChanged: (v) {
+                                      if (mounted && v != _total) {
+                                        setState(() => _total = v);
+                                      }
+                                    },
+                                    fetch: (page) async {
+                                      final res = await repo.list(page: page);
+                                      if (_search.isEmpty) return res;
+                                      final q = _search.toLowerCase();
+                                      final filtered = res.items
+                                          .where(
+                                            (c) =>
+                                                c.title.toLowerCase().contains(
+                                                  q,
+                                                ) ||
+                                                Fmt.stripHtml(
+                                                  c.body,
+                                                ).toLowerCase().contains(q),
+                                          )
+                                          .toList();
+                                      return res.copyWithItems(filtered);
+                                    },
+                                    itemBuilder: (context, c) => _Row(
+                                      canned: c,
+                                      selected: _openId == c.id,
+                                      onTap: () => _openResponse(c.id),
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -492,9 +496,7 @@ class _RowState extends State<_Row> {
             color: widget.selected
                 ? t.accentMuted
                 : (_hover ? t.bgHover : t.bgElevated),
-            border: Border(
-              bottom: BorderSide(color: t.borderSubtle, width: 1),
-            ),
+            border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: IntrinsicHeight(
             child: Row(
@@ -506,9 +508,9 @@ class _RowState extends State<_Row> {
                     c.title.trim().isEmpty ? '(untitled)' : c.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: ZebuTextStyles.body(context).copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
+                    style: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(fontWeight: FontWeight.w500),
                   ),
                 ),
                 _BodyCell(
@@ -577,11 +579,9 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: ZebuTextStyles.small(context).copyWith(
-          color: tone,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
-        ),
+        style: ZebuTextStyles.small(
+          context,
+        ).copyWith(color: tone, fontWeight: FontWeight.w600, fontSize: 12),
       ),
     );
   }

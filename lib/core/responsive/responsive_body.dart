@@ -8,11 +8,7 @@ import 'package:flutter/material.dart';
 /// On wider screens it centers the [child] inside a [SizedBox] of exactly
 /// [maxWidth], so the child fills the constrained area.
 class ResponsiveBody extends StatelessWidget {
-  const ResponsiveBody({
-    super.key,
-    required this.child,
-    this.maxWidth = 1400,
-  });
+  const ResponsiveBody({super.key, required this.child, this.maxWidth = 1400});
 
   final Widget child;
   final double maxWidth;
@@ -22,7 +18,9 @@ class ResponsiveBody extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth <= maxWidth) return child;
-        return Center(child: SizedBox(width: maxWidth, child: child));
+        return Center(
+          child: SizedBox(width: maxWidth, child: child),
+        );
       },
     );
   }

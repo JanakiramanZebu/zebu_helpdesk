@@ -88,8 +88,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: Routes.dashboard,
-                builder: (_, __) =>
-                    kIsWeb ? const DashboardScreenWeb() : const DashboardScreen(),
+                builder: (_, __) => kIsWeb
+                    ? const DashboardScreenWeb()
+                    : const DashboardScreen(),
               ),
             ],
           ),
@@ -234,8 +235,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         GoRoute(
           parentNavigatorKey: _rootKey,
           path: Routes.ticketNew,
-          builder: (_, __) =>
-              const ResponsiveBody(child: CreateTicketScreen()),
+          builder: (_, __) => const ResponsiveBody(child: CreateTicketScreen()),
         ),
       GoRoute(
         parentNavigatorKey: _rootKey,
@@ -259,9 +259,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           parentNavigatorKey: _rootKey,
           path: '/tasks/:id',
           builder: (_, s) => ResponsiveBody(
-            child: TaskDetailScreen(
-              taskId: int.parse(s.pathParameters['id']!),
-            ),
+            child: TaskDetailScreen(taskId: int.parse(s.pathParameters['id']!)),
           ),
         ),
       ],
@@ -288,9 +286,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootKey,
         path: '/users/:id',
         builder: (_, s) => ResponsiveBody(
-          child: UserDetailScreen(
-            userId: int.parse(s.pathParameters['id']!),
-          ),
+          child: UserDetailScreen(userId: int.parse(s.pathParameters['id']!)),
         ),
       ),
       // Mobile-only: /organizations pushes over the shell. On web the

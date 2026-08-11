@@ -20,11 +20,10 @@ import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
-import '../../../widgets/web/status_pill.dart';
+import '../../../widgets/web/status_badge.dart';
 import '../../../widgets/web/zebu_data_grid.dart';
 import '../../../widgets/web_filter_button.dart';
 import '../../../res/zebu_web_color_styles.dart';
-import '../../../res/zebu_status_colors.dart';
 import '../../../res/zebu_text_styles.dart';
 import 'ticket_detail_panel.dart';
 import '../../../res/zebu_theme.dart';
@@ -45,7 +44,7 @@ import '../../../res/zebu_spacing.dart';
 /// ticket like `#020817` at `bodySm` w600 plus the shared `s3` cell
 /// padding. Split out of the "Ticket" column so the number reads as its
 /// own sortable value.
-const double _kColNumberWidth = 90;
+const double _kColNumberWidth = 100;
 const int _kColTicketFlex = 5;
 const int _kColRequesterFlex = 2;
 // Bumped from 1 to 2 so "Department" doesn't wrap in the header when
@@ -58,15 +57,22 @@ const double _kColStatusWidth = 130;
 // size — the previous 100 px forced the year to wrap onto a second row.
 const double _kColCreatedWidth = 120;
 
+/// Assignee. Fixed rather than flex so it can't collapse to an initial on a
+/// narrow viewport — "who owns this" is the column an agent scans a queue by.
+const int _kColAssigneeFlex = 2;
+
+/// Last activity. Same width as Created; both hold `29 Jun 2026` on one line.
+const double _kColUpdatedWidth = 120;
+
 /// Fixed table row height, matching the Mynt Plus Web position table's
 /// `defaultRowHeight`. Uniform rows also let the layout skip a measure pass.
 const double _kRowHeight = 40;
 
 /// Minimum table width — accounts for the fixed-width columns
-/// (90 + 130 + 130 + 120 = 470), the 3 px leading accent-stripe rail, and
-/// a readable minimum for each flex column. Below this the table
+/// (100 + 130 + 130 + 120 + 120 = 600), the 3 px leading accent-stripe rail,
+/// and a readable minimum for each flex column. Below this the table
 /// horizontally scrolls instead of squeezing columns.
-const double _kTableMinWidth = 1164;
+const double _kTableMinWidth = 1434;
 
 /// Web-only tickets list.
 ///
@@ -121,6 +127,12 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
   Timer? _debounce;
   Map<String, int> _counts = const {};
   int? _openTicketId;
+
+  /// The row's own summary for the open ticket, handed to the panel so its
+  /// header can paint the number and subject on the first frame instead of
+  /// saying "Loading…" for the length of a round trip. The list already has
+  /// this data — the panel was throwing it away and refetching.
+  Ticket? _openSummary;
   bool _fullscreen = false;
 
   /// Bumped whenever the detail panel signals a mutation. Threaded into
@@ -167,20 +179,20 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
   }
 
   void _toggleChecked(int id) => setState(() {
-        if (!_selectedIds.remove(id)) _selectedIds.add(id);
-      });
+    if (!_selectedIds.remove(id)) _selectedIds.add(id);
+  });
 
   void _toggleCheckAll() => setState(() {
-        if (_allChecked) {
-          for (final t in _visibleTickets) {
-            _selectedIds.remove(t.id);
-          }
-        } else {
-          for (final t in _visibleTickets) {
-            _selectedIds.add(t.id);
-          }
-        }
-      });
+    if (_allChecked) {
+      for (final t in _visibleTickets) {
+        _selectedIds.remove(t.id);
+      }
+    } else {
+      for (final t in _visibleTickets) {
+        _selectedIds.add(t.id);
+      }
+    }
+  });
 
   void _clearSelection() => setState(_selectedIds.clear);
 
@@ -212,8 +224,10 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     if (failed == 0) {
       _toast('$verb ${ids.length} $noun', type: ToastType.success);
     } else {
-      _toast('$verb ${ids.length - failed}/${ids.length} — $failed failed',
-          type: ToastType.error);
+      _toast(
+        '$verb ${ids.length - failed}/${ids.length} — $failed failed',
+        type: ToastType.error,
+      );
     }
   }
 
@@ -236,9 +250,9 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
   }
 
   Future<void> _bulkClaim() => _bulkRun(
-        (id) async => ref.read(ticketsRepositoryProvider).claim(id),
-        verb: 'Claimed',
-      );
+    (id) async => ref.read(ticketsRepositoryProvider).claim(id),
+    verb: 'Claimed',
+  );
 
   Future<void> _bulkAssign(BuildContext anchor) async {
     final agentId = await _pickMetaId(anchor, MetaKind.agents);
@@ -286,12 +300,16 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     );
   }
 
-  void _openTicket(int id) => setState(() => _openTicketId = id);
+  void _openTicket(Ticket ticket) => setState(() {
+    _openTicketId = ticket.id;
+    _openSummary = ticket;
+  });
   // Closing the panel is a pure state change — no refetch on close.
   void _closeTicket() => setState(() {
-        _openTicketId = null;
-        _fullscreen = false;
-      });
+    _openTicketId = null;
+    _openSummary = null;
+    _fullscreen = false;
+  });
   void _toggleFullscreen() => setState(() => _fullscreen = !_fullscreen);
 
   @override
@@ -486,8 +504,9 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
 
   int _compare(Ticket a, Ticket b) {
     return switch (_sort) {
-      'updated' => (b.updated ?? b.created ?? DateTime(0))
-          .compareTo(a.updated ?? a.created ?? DateTime(0)),
+      'updated' => (b.updated ?? b.created ?? DateTime(0)).compareTo(
+        a.updated ?? a.created ?? DateTime(0),
+      ),
       'due' => _dueCompare(a.due, b.due),
       'number' => b.number.compareTo(a.number),
       _ => (b.created ?? DateTime(0)).compareTo(a.created ?? DateTime(0)),
@@ -503,7 +522,6 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
     return a.compareTo(b);
   }
 
-
   /// The grid's single column definition — the header and every row are both
   /// rendered from this list, so the two can no longer drift apart the way
   /// the old hand-written `_TableHeader` / `_TicketRow` pair could.
@@ -513,11 +531,10 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
   /// state. It is available, and editable, in the detail panel where
   /// `/tickets/{id}` carries it.
   List<ZebuGridColumn<Ticket>> _columns(BuildContext context) {
-    final t = ZebuTheme.of(context);
     return [
       ZebuGridColumn(
         width: _kColNumberWidth,
-        label: '#',
+        label: 'Ticket ID',
         cell: (ticket) => Text(
           '#${ticket.number}',
           style: ZebuTextStyles.tableCell(
@@ -530,7 +547,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
       ),
       ZebuGridColumn(
         flex: _kColTicketFlex,
-        label: 'Ticket',
+        label: 'Issue summary',
         cell: (ticket) => Text(
           ticket.subject,
           maxLines: 1,
@@ -553,25 +570,24 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
         label: 'Priority',
         cell: (ticket) => (ticket.priority ?? '').isEmpty
             ? Text('\u2014', style: ZebuTextStyles.small(context))
-            : StatusPill(
+            : PriorityBadge(
                 label: _titleCase(ticket.priority!),
-                color: zebuPriorityColor(ticket.priority, t),
-                icon: Icons.flag_rounded,
+                priority: ticket.priority,
               ),
       ),
       ZebuGridColumn(
         width: _kColStatusWidth,
         label: 'Status',
-        cell: (ticket) => StatusPill(
-          label: ticket.isOverdue
-              ? 'Overdue'
-              : _titleCase(ticket.statusName),
-          color: zebuStatusColor(
-            ticket.statusName,
-            t,
-            overdue: ticket.isOverdue,
-          ),
+        cell: (ticket) => StatusBadge(
+          label: ticket.isOverdue ? 'Overdue' : _titleCase(ticket.statusName),
+          status: ticket.statusName,
+          overdue: ticket.isOverdue,
         ),
+      ),
+      ZebuGridColumn(
+        flex: _kColAssigneeFlex,
+        label: 'Assigned to',
+        cell: (ticket) => _TextCell(text: ticket.assignee ?? ''),
       ),
       ZebuGridColumn(
         width: _kColCreatedWidth,
@@ -584,6 +600,24 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
           overflow: TextOverflow.clip,
           textAlign: TextAlign.right,
           style: ZebuTextStyles.tableCell(context).withTabularNums(),
+        ),
+      ),
+      ZebuGridColumn(
+        width: _kColUpdatedWidth,
+        label: 'Last updated',
+        alignRight: true,
+        // Relative, unlike Created's absolute date. The two answer different
+        // questions — Created is a fact you cite, Last updated is "has this
+        // gone quiet", and "3 days ago" answers that without arithmetic.
+        cell: (ticket) => Text(
+          ticket.updated == null ? '—' : Fmt.ago(ticket.updated),
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.clip,
+          textAlign: TextAlign.right,
+          style: ticket.updated == null
+              ? ZebuTextStyles.small(context)
+              : ZebuTextStyles.tableCell(context).withTabularNums(),
         ),
       ),
     ];
@@ -642,6 +676,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
       fullscreen: _fullscreen,
       panelBuilder: (context, id, close) => TicketDetailPanel(
         ticketId: id,
+        initialTicket: _openSummary?.id == id ? _openSummary : null,
         onClose: close,
         isFullscreen: _fullscreen,
         onToggleFullscreen: _toggleFullscreen,
@@ -666,14 +701,13 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                   // slot expands to the row width and the search still
                   // fits with the filter button beside it.
                   final filterAllowance = 48.0; // filter btn + gap
-                  final available =
-                      c.hasBoundedWidth ? c.maxWidth - filterAllowance : 360.0;
-                  final searchWidth =
-                      available.clamp(200.0, 360.0);
+                  final available = c.hasBoundedWidth
+                      ? c.maxWidth - filterAllowance
+                      : 360.0;
+                  final searchWidth = available.clamp(200.0, 360.0);
                   return Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                     
                       SizedBox(
                         width: searchWidth,
                         child: ListSearchInput(
@@ -683,7 +717,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                       ),
                       const SizedBox(width: ZebuSpacing.s3),
 
-                       WebFilterButton(
+                      WebFilterButton(
                         filters: _quickFilters(),
                         sort: WebSortControl(
                           options: _sortItems,
@@ -692,8 +726,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                         ),
                         dateRange: WebDateRangeControl(
                           value: _dateRange,
-                          onChanged: (r) =>
-                              setState(() => _dateRange = r),
+                          onChanged: (r) => setState(() => _dateRange = r),
                         ),
                         facets: _facetControls(),
                         // Always pass the reset callback — the popover
@@ -788,7 +821,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                       selected: _openTicketId == ticket.id,
                       checked: _selectedIds.contains(ticket.id),
                       onToggleChecked: () => _toggleChecked(ticket.id),
-                      onTap: () => _openTicket(ticket.id),
+                      onTap: () => _openTicket(ticket),
                     ),
                   ),
                 ),
@@ -808,17 +841,11 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
 // so the grid aligns pixel-for-pixel.
 // ---------------------------------------------------------------------------
 
-
-
-
 // ---------------------------------------------------------------------------
 // Ticket row — one single-line row per ticket, columns aligned with
 // `_TableHeader`. Hover tint and selected-accent-tint match the shell
 // treatment (subtle bg fill, no border shift).
 // ---------------------------------------------------------------------------
-
-
-
 
 String _titleCase(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
@@ -843,9 +870,3 @@ class _TextCell extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-

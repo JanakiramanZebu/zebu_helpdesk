@@ -56,66 +56,67 @@ class _ListSearchInputState extends State<ListSearchInput> {
           border: Border.all(color: t.borderSubtle, width: 1),
         ),
         child: SizedBox(
-        height: 40,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SvgIcon(Assets.search, size: 16, color: t.textSecondary),
-            // const SizedBox(width: 4),
-            Expanded(
-              child: TextField(
-                controller: _controller,
-                focusNode: _focus,
-                autofocus: widget.autofocus,
-                onChanged: (v) {
-                  widget.onChanged(v);
-                  setState(() {});
-                },
-                textAlign: TextAlign.start,
-                // Center the text baseline in the input box so it lines
-                // up with the leading icon's optical center. Left to its
-                // default the field would draw text a couple of pixels
-                // above center.
-                textAlignVertical: TextAlignVertical.center,
-                style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
-                decoration: InputDecoration(
-                  isCollapsed: true,
-                  // The global inputDecorationTheme fills every TextField with
-                  // grey `#F9F9F9` and paints an `enabledBorder` — great for
-                  // full-page forms, wrong here because the outer
-                  // AnimatedContainer already owns the border. Override all
-                  // four border slots + filled so the field paints as a plain
-                  // transparent text run inside the container.
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  disabledBorder: InputBorder.none,
-                  errorBorder: InputBorder.none,
-                  focusedErrorBorder: InputBorder.none,
-                  filled: false,
-                  fillColor: Colors.transparent,
-                  hoverColor: Colors.transparent,
-                  hintText: widget.hintText,
-                  hintStyle: ZebuTextStyles.body(context).copyWith(
-                    color: t.textSecondary,
-                    letterSpacing: -0.1,
+          height: 40,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s3),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SvgIcon(Assets.search, size: 16, color: t.textSecondary),
+                // const SizedBox(width: 4),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    focusNode: _focus,
+                    autofocus: widget.autofocus,
+                    onChanged: (v) {
+                      widget.onChanged(v);
+                      setState(() {});
+                    },
+                    textAlign: TextAlign.start,
+                    // Center the text baseline in the input box so it lines
+                    // up with the leading icon's optical center. Left to its
+                    // default the field would draw text a couple of pixels
+                    // above center.
+                    textAlignVertical: TextAlignVertical.center,
+                    style: ZebuTextStyles.body(
+                      context,
+                    ).copyWith(fontWeight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      isCollapsed: true,
+                      // The global inputDecorationTheme fills every TextField with
+                      // grey `#F9F9F9` and paints an `enabledBorder` — great for
+                      // full-page forms, wrong here because the outer
+                      // AnimatedContainer already owns the border. Override all
+                      // four border slots + filled so the field paints as a plain
+                      // transparent text run inside the container.
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      disabledBorder: InputBorder.none,
+                      errorBorder: InputBorder.none,
+                      focusedErrorBorder: InputBorder.none,
+                      filled: false,
+                      fillColor: Colors.transparent,
+                      hoverColor: Colors.transparent,
+                      hintText: widget.hintText,
+                      hintStyle: ZebuTextStyles.body(
+                        context,
+                      ).copyWith(color: t.textSecondary, letterSpacing: -0.1),
+                    ),
                   ),
                 ),
-              ),
+                if (_controller.text.isNotEmpty)
+                  _ClearButton(
+                    onTap: () {
+                      _controller.clear();
+                      widget.onChanged('');
+                      setState(() {});
+                    },
+                  ),
+              ],
             ),
-            if (_controller.text.isNotEmpty)
-              _ClearButton(
-                onTap: () {
-                  _controller.clear();
-                  widget.onChanged('');
-                  setState(() {});
-                },
-              ),
-          ],
-        ),
-        ),
+          ),
         ),
       ),
     );
@@ -150,11 +151,7 @@ class _ClearButtonState extends State<_ClearButton> {
             color: _hover ? t.bgHover : Colors.transparent,
             borderRadius: BorderRadius.circular(ZebuRadius.rFull),
           ),
-          child: Icon(
-            Icons.close_rounded,
-            size: 14,
-            color: t.textSecondary,
-          ),
+          child: Icon(Icons.close_rounded, size: 14, color: t.textSecondary),
         ),
       ),
     );

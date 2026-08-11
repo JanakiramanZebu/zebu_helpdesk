@@ -39,7 +39,10 @@ class MenuSection extends StatelessWidget {
               ZebuSpacing.s3 + 4,
               ZebuSpacing.s1,
             ),
-            child: Text(title!.toUpperCase(), style: ZebuTextStyles.eyebrow(context)),
+            child: Text(
+              title!.toUpperCase(),
+              style: ZebuTextStyles.eyebrow(context),
+            ),
           ),
         ...children,
         if (showDivider)
@@ -89,8 +92,7 @@ class _MenuRowState extends State<MenuRow> {
     final disabled = widget.onTap == null;
     final tone = widget.destructive ? t.danger : t.textPrimary;
     return MouseRegion(
-      cursor:
-          disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -117,10 +119,9 @@ class _MenuRowState extends State<MenuRow> {
               Expanded(
                 child: Text(
                   widget.label,
-                  style: ZebuTextStyles.body(context).copyWith(
-                    color: tone,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: ZebuTextStyles.body(
+                    context,
+                  ).copyWith(color: tone, fontWeight: FontWeight.w500),
                 ),
               ),
               if (widget.trailing != null) widget.trailing!,

@@ -18,20 +18,15 @@ class CannedEditorDialog extends ConsumerStatefulWidget {
   final CannedResponse? existing;
 
   @override
-  ConsumerState<CannedEditorDialog> createState() =>
-      _CannedEditorDialogState();
+  ConsumerState<CannedEditorDialog> createState() => _CannedEditorDialogState();
 }
 
 class _CannedEditorDialogState extends ConsumerState<CannedEditorDialog> {
-  late final _title = TextEditingController(
-    text: widget.existing?.title ?? '',
-  );
+  late final _title = TextEditingController(text: widget.existing?.title ?? '');
   late final _response = TextEditingController(
     text: widget.existing?.body ?? '',
   );
-  late final _notes = TextEditingController(
-    text: widget.existing?.notes ?? '',
-  );
+  late final _notes = TextEditingController(text: widget.existing?.notes ?? '');
   late bool _enabled = widget.existing?.isEnabled ?? true;
 
   bool _saving = false;
@@ -218,10 +213,9 @@ class _FieldLabel extends StatelessWidget {
     final t = ZebuTheme.of(context);
     return Text(
       text,
-      style: ZebuTextStyles.small(context).copyWith(
-        color: t.textPrimary,
-        fontWeight: FontWeight.w600,
-      ),
+      style: ZebuTextStyles.small(
+        context,
+      ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
     );
   }
 }
@@ -255,10 +249,7 @@ class _ThemedTextField extends StatelessWidget {
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.accent,
-        width: 1.4,
-      ),
+      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
     );
     return TextField(
       controller: controller,
@@ -294,18 +285,13 @@ class _EnabledToggle extends StatelessWidget {
     final t = ZebuTheme.of(context);
     return Row(
       children: [
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: t.accent,
-        ),
+        Switch(value: value, onChanged: onChanged, activeThumbColor: t.accent),
         const SizedBox(width: ZebuSpacing.s2),
         Text(
           value ? 'Enabled' : 'Disabled',
-          style: ZebuTextStyles.body(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w600,
-          ),
+          style: ZebuTextStyles.body(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
         ),
       ],
     );
@@ -363,9 +349,7 @@ class _CloseIconBtnState extends State<_CloseIconBtn> {
     return Tooltip(
       message: 'Close',
       child: MouseRegion(
-        cursor: disabled
-            ? SystemMouseCursors.basic
-            : SystemMouseCursors.click,
+        cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
         onEnter: (_) => setState(() => _hover = true),
         onExit: (_) => setState(() => _hover = false),
         child: GestureDetector(
@@ -404,9 +388,7 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
     final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return MouseRegion(
-      cursor: disabled
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -424,10 +406,9 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -463,9 +444,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
         ? Color.lerp(base, Colors.black, 0.08) ?? base
         : base;
     return MouseRegion(
-      cursor: disabled
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(

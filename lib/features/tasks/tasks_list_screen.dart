@@ -315,8 +315,12 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
           await _runBulk('Updated', (t) => repo.edit(t, priorityId: id));
         }
       case 'transfer':
-        final id = await _pickMeta(MetaKind.departments, 'Transfer to department');
-        if (id != null) await _runBulk('Transferred', (t) => repo.transfer(t, id));
+        final id = await _pickMeta(
+          MetaKind.departments,
+          'Transfer to department',
+        );
+        if (id != null)
+          await _runBulk('Transferred', (t) => repo.transfer(t, id));
     }
   }
 
@@ -343,9 +347,9 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
     try {
       // Export exactly what's visible: the view's rows, narrowed by the active
       // search.
-      final tasks = (await _gatherAll(_query))
-          .where((t) => _matches(t, meName))
-          .toList();
+      final tasks = (await _gatherAll(
+        _query,
+      )).where((t) => _matches(t, meName)).toList();
       if (tasks.isEmpty) {
         _toast('No tasks to export');
         return;
@@ -518,8 +522,14 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
                 onSelected: _onBulkMenu,
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: 'reopen', child: Text('Reopen')),
-                  PopupMenuItem(value: 'assign', child: Text('Assign to agent…')),
-                  PopupMenuItem(value: 'priority', child: Text('Set priority…')),
+                  PopupMenuItem(
+                    value: 'assign',
+                    child: Text('Assign to agent…'),
+                  ),
+                  PopupMenuItem(
+                    value: 'priority',
+                    child: Text('Set priority…'),
+                  ),
                   PopupMenuItem(
                     value: 'transfer',
                     child: Text('Transfer department…'),
@@ -644,7 +654,8 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
           Expanded(
             child: PagedListView(
               fabClearance: !_selectionMode,
-              refreshKey: '$_view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
+              refreshKey:
+                  '$_view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
               itemFilter: (t) => _matches(t, meName),
               itemSort: _sort == 'thread' ? null : _compare,
               onItems: _onItems,

@@ -183,17 +183,16 @@ class _KpiTileState extends State<KpiTile> {
               // --- Value + label ------------------------------------------
               Text(
                 widget.value,
-                style: ZebuTextStyles.hero(context)
-                    .withTabularNums()
-                    .copyWith(fontSize: 30, letterSpacing: -0.8),
+                style: ZebuTextStyles.hero(
+                  context,
+                ).withTabularNums().copyWith(fontSize: 30, letterSpacing: -0.8),
               ),
               const SizedBox(height: 2),
               Text(
                 widget.label,
-                style: ZebuTextStyles.body(context).copyWith(
-                  color: t.textSecondary,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: ZebuTextStyles.body(
+                  context,
+                ).copyWith(color: t.textSecondary, fontWeight: FontWeight.w500),
               ),
 
               if (showRatio) ...[
@@ -280,10 +279,9 @@ class _RatioStrip extends StatelessWidget {
             const SizedBox(width: 8),
             Text(
               '$pct%',
-              style: ZebuTextStyles.caption(context).copyWith(
-                color: tone,
-                fontWeight: FontWeight.w600,
-              ),
+              style: ZebuTextStyles.caption(
+                context,
+              ).copyWith(color: tone, fontWeight: FontWeight.w600),
             ),
           ],
         ),

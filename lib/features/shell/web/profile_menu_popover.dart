@@ -47,8 +47,10 @@ Future<void> showProfileMenu(BuildContext anchorContext) async {
   final anchorSize = box.size;
   final viewport = overlayBox.size;
 
-  final menuLeft = (anchorTopLeft.dx + anchorSize.width - _kMenuWidth)
-      .clamp(8.0, (viewport.width - _kMenuWidth - 8.0).clamp(8.0, viewport.width));
+  final menuLeft = (anchorTopLeft.dx + anchorSize.width - _kMenuWidth).clamp(
+    8.0,
+    (viewport.width - _kMenuWidth - 8.0).clamp(8.0, viewport.width),
+  );
 
   // Open on whichever side of the anchor has more room, and cap the menu to
   // that space so it can never run off an edge. The anchor used to be the
@@ -59,8 +61,10 @@ Future<void> showProfileMenu(BuildContext anchorContext) async {
   final spaceBelow = viewport.height - belowTop - 8;
   final spaceAbove = anchorTopLeft.dy - 8;
   final openUp = spaceAbove > spaceBelow;
-  final maxHeight = (openUp ? spaceAbove : spaceBelow)
-      .clamp(120.0, (viewport.height - 16).clamp(120.0, viewport.height));
+  final maxHeight = (openUp ? spaceAbove : spaceBelow).clamp(
+    120.0,
+    (viewport.height - 16).clamp(120.0, viewport.height),
+  );
 
   final completer = Completer<void>();
   late OverlayEntry entry;
@@ -148,8 +152,7 @@ class _ProfileMenuContentState extends ConsumerState<_ProfileMenuContent> {
     // removes the popover's OverlayEntry, which unmounts this widget and
     // invalidates `context`. The root Navigator's context stays valid because
     // it lives above the popover, so we can still open the profile dialog.
-    final navigatorContext =
-        Navigator.of(context, rootNavigator: true).context;
+    final navigatorContext = Navigator.of(context, rootNavigator: true).context;
     widget.onDismiss();
     await showProfileDialog(navigatorContext);
   }
@@ -162,8 +165,7 @@ class _ProfileMenuContentState extends ConsumerState<_ProfileMenuContent> {
     // dialog and the logout call.
     final router = GoRouter.of(context);
     final auth = ref.read(authControllerProvider.notifier);
-    final navigatorContext =
-        Navigator.of(context, rootNavigator: true).context;
+    final navigatorContext = Navigator.of(context, rootNavigator: true).context;
 
     // Dismiss the popover first so the confirm dialog appears on the
     // clean page bg (matches how `_openProfile` sequences it). Then show
@@ -265,7 +267,10 @@ class _Header extends StatelessWidget {
                         me.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold),
+                        style: ZebuTextStyles.bodyStrong(
+                          context,
+                          fontWeight: ZebuFonts.semiBold,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -273,8 +278,9 @@ class _Header extends StatelessWidget {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color:
-                            me.available ? ZebuTheme.success : t.textSecondary,
+                        color: me.available
+                            ? ZebuTheme.success
+                            : t.textSecondary,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -341,7 +347,9 @@ class _AvailabilityRowState extends State<_AvailabilityRow> {
               Expanded(
                 child: Text(
                   widget.value ? 'Available' : 'Away',
-                  style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+                  style: ZebuTextStyles.body(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w500),
                 ),
               ),
               // Compact Switch: sized down so it fits the 36 px row cleanly.

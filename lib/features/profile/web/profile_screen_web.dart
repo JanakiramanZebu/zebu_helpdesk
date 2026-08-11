@@ -87,7 +87,8 @@ class _ProfileScreenWebState extends ConsumerState<ProfileScreenWeb> {
       barrierDismissible: false,
       builder: (_) => const _ChangePasswordDialog(),
     );
-    if (changed == true && mounted) _toast('Password changed', type: ToastType.success);
+    if (changed == true && mounted)
+      _toast('Password changed', type: ToastType.success);
   }
 
   @override
@@ -124,10 +125,8 @@ class _ProfileScreenWebState extends ConsumerState<ProfileScreenWeb> {
                     ZebuSpacing.s5,
                   ),
                   child: me.when(
-                    loading: () => const SizedBox(
-                      height: 240,
-                      child: LoadingView(),
-                    ),
+                    loading: () =>
+                        const SizedBox(height: 240, child: LoadingView()),
                     error: (e, _) => SizedBox(
                       height: 240,
                       child: ErrorView(
@@ -213,7 +212,10 @@ class _AccountSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: ZebuSpacing.s1, bottom: ZebuSpacing.s2),
+          padding: const EdgeInsets.only(
+            left: ZebuSpacing.s1,
+            bottom: ZebuSpacing.s2,
+          ),
           child: const _SectionTitle('Account'),
         ),
         Container(
@@ -298,7 +300,9 @@ class _IdentityCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '@${me.username}',
-                      style: ZebuTextStyles.small(context).copyWith(fontWeight: FontWeight.w500),
+                      style: ZebuTextStyles.small(
+                        context,
+                      ).copyWith(fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -329,11 +333,7 @@ class _IdentityCard extends StatelessWidget {
               value: mobile,
             ),
           if (timezone.isNotEmpty)
-            _InfoRow(
-              icon: Icons.public,
-              label: 'Timezone',
-              value: timezone,
-            ),
+            _InfoRow(icon: Icons.public, label: 'Timezone', value: timezone),
         ],
       ),
     );
@@ -368,10 +368,9 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: ZebuTextStyles.small(context).copyWith(
-                color: t.textPrimary,
-                fontWeight: FontWeight.w500,
-              ),
+              style: ZebuTextStyles.small(
+                context,
+              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -389,7 +388,10 @@ class _Tag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    return Text(label, style: ZebuTextStyles.label(context).copyWith(color: t.textSecondary));
+    return Text(
+      label,
+      style: ZebuTextStyles.label(context).copyWith(color: t.textSecondary),
+    );
   }
 }
 
@@ -412,9 +414,7 @@ class _AvailabilityRow extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         children: [
@@ -434,10 +434,15 @@ class _AvailabilityRow extends StatelessWidget {
               children: [
                 Text(
                   'Available',
-                  style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w600),
+                  style: ZebuTextStyles.body(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 2),
-                Text('Accept new ticket assignments', style: ZebuTextStyles.small(context)),
+                Text(
+                  'Accept new ticket assignments',
+                  style: ZebuTextStyles.small(context),
+                ),
               ],
             ),
           ),
@@ -481,9 +486,7 @@ class _ActionRowState extends State<_ActionRow> {
     final t = ZebuTheme.of(context);
     final disabled = widget.onTap == null;
     return MouseRegion(
-      cursor: disabled
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.click,
+      cursor: disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -499,9 +502,7 @@ class _ActionRowState extends State<_ActionRow> {
             color: (_hover && !disabled) ? t.bgHover : t.bgElevated,
             border: widget.last
                 ? null
-                : Border(
-                    bottom: BorderSide(color: t.borderSubtle, width: 1),
-                  ),
+                : Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
           ),
           child: Row(
             children: [
@@ -510,14 +511,12 @@ class _ActionRowState extends State<_ActionRow> {
               Expanded(
                 child: Text(
                   widget.label,
-                  style: ZebuTextStyles.body(context).copyWith(fontWeight: FontWeight.w500),
+                  style: ZebuTextStyles.body(
+                    context,
+                  ).copyWith(fontWeight: FontWeight.w500),
                 ),
               ),
-              Icon(
-                Icons.chevron_right,
-                size: 18,
-                color: t.textSecondary,
-              ),
+              Icon(Icons.chevron_right, size: 18, color: t.textSecondary),
             ],
           ),
         ),
@@ -618,10 +617,9 @@ class _SecondaryButtonState extends State<_SecondaryButton> {
           ),
           child: Text(
             widget.label,
-            style: ZebuTextStyles.small(context).copyWith(
-              color: t.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.small(
+              context,
+            ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
           ),
         ),
       ),
@@ -687,11 +685,7 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
 // ---------------------------------------------------------------------------
 
 class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.child,
-    this.error,
-  });
+  const _LabeledField({required this.label, required this.child, this.error});
 
   final String label;
   final Widget child;
@@ -705,16 +699,18 @@ class _LabeledField extends StatelessWidget {
       children: [
         Text(
           label,
-          style: ZebuTextStyles.small(context).copyWith(
-            color: t.textPrimary,
-            fontWeight: FontWeight.w600,
-          ),
+          style: ZebuTextStyles.small(
+            context,
+          ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 6),
         child,
         if (error != null) ...[
           const SizedBox(height: 4),
-          Text(error!, style: ZebuTextStyles.small(context).copyWith(color: t.danger)),
+          Text(
+            error!,
+            style: ZebuTextStyles.small(context).copyWith(color: t.danger),
+          ),
         ],
       ],
     );
@@ -752,10 +748,7 @@ class _TextInput extends StatelessWidget {
     );
     final focusedBorder = OutlineInputBorder(
       borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.accent,
-        width: 1.4,
-      ),
+      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
     );
     return TextField(
       controller: controller,
@@ -777,7 +770,9 @@ class _TextInput extends StatelessWidget {
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(
+          context,
+        ).copyWith(color: t.textSecondary),
       ),
     );
   }
@@ -826,24 +821,25 @@ class _EditProfileDialog extends ConsumerStatefulWidget {
   final String email;
 
   @override
-  ConsumerState<_EditProfileDialog> createState() =>
-      _EditProfileDialogState();
+  ConsumerState<_EditProfileDialog> createState() => _EditProfileDialogState();
 }
 
 class _EditProfileDialogState extends ConsumerState<_EditProfileDialog> {
-  late final _firstname =
-      TextEditingController(text: widget.profile.firstname ?? '');
-  late final _lastname =
-      TextEditingController(text: widget.profile.lastname ?? '');
+  late final _firstname = TextEditingController(
+    text: widget.profile.firstname ?? '',
+  );
+  late final _lastname = TextEditingController(
+    text: widget.profile.lastname ?? '',
+  );
   late final _email = TextEditingController(text: widget.email);
-  late final _phone =
-      TextEditingController(text: widget.profile.phone ?? '');
-  late final _mobile =
-      TextEditingController(text: widget.profile.mobile ?? '');
-  late final _timezone =
-      TextEditingController(text: widget.profile.timezone ?? '');
-  late final _signature =
-      TextEditingController(text: widget.profile.signature ?? '');
+  late final _phone = TextEditingController(text: widget.profile.phone ?? '');
+  late final _mobile = TextEditingController(text: widget.profile.mobile ?? '');
+  late final _timezone = TextEditingController(
+    text: widget.profile.timezone ?? '',
+  );
+  late final _signature = TextEditingController(
+    text: widget.profile.signature ?? '',
+  );
 
   bool _saving = false;
   Map<String, String> _fieldErrors = const {};
@@ -1071,7 +1067,9 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
       _fieldErrors = const {};
     });
     try {
-      await ref.read(meRepositoryProvider).changePassword(
+      await ref
+          .read(meRepositoryProvider)
+          .changePassword(
             currentPassword: _current.text,
             newPassword: _next.text,
           );
@@ -1128,12 +1126,14 @@ class _ChangePasswordDialogState extends ConsumerState<_ChangePasswordDialog> {
                       ],
                       _LabeledField(
                         label: 'Current password',
-                        error: _fieldErrors['current_password'] ??
+                        error:
+                            _fieldErrors['current_password'] ??
                             _fieldErrors['password'],
                         child: _TextInput(
                           controller: _current,
                           obscureText: true,
-                          hasError: (_fieldErrors['current_password'] ??
+                          hasError:
+                              (_fieldErrors['current_password'] ??
                                   _fieldErrors['password']) !=
                               null,
                         ),
@@ -1184,19 +1184,13 @@ class _DialogHeader extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          bottom: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         children: [
           Text(title, style: ZebuTextStyles.hero(context)),
           const Spacer(),
-          _IconBtn(
-            icon: Icons.close,
-            tooltip: 'Close',
-            onTap: onClose,
-          ),
+          _IconBtn(icon: Icons.close, tooltip: 'Close', onTap: onClose),
         ],
       ),
     );
@@ -1224,9 +1218,7 @@ class _DialogFooter extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: t.bgElevated,
-        border: Border(
-          top: BorderSide(color: t.borderSubtle, width: 1),
-        ),
+        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,

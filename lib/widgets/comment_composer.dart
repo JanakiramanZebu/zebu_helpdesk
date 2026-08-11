@@ -51,7 +51,8 @@ class CommentComposer extends StatefulWidget {
     required bool asNote,
     required String bodyHtml,
     required List<MultipartFile> files,
-  }) onSend;
+  })
+  onSend;
 
   final ComposerScope scope;
   final bool allowAttachments;
@@ -187,10 +188,7 @@ class _CommentComposerState extends State<CommentComposer> {
     // Submit-based flow: the popover only reports back on Apply. Esc /
     // outside-tap discards. That way accidental keystrokes in the picker
     // don't rewrite the document until the user explicitly commits.
-    final res = await _showLinkPicker(
-      ctx,
-      initialText: initialText,
-    );
+    final res = await _showLinkPicker(ctx, initialText: initialText);
     if (res == null) {
       // Cancelled — leave the document untouched, restore editor focus.
       _focus.requestFocus();
@@ -207,9 +205,7 @@ class _CommentComposerState extends State<CommentComposer> {
         extentOffset: start + text.length,
       ),
     );
-    _controller.formatSelection(
-      ParchmentAttribute.link.fromString(res.url),
-    );
+    _controller.formatSelection(ParchmentAttribute.link.fromString(res.url));
     _controller.updateSelection(
       TextSelection.collapsed(offset: start + text.length),
     );
@@ -326,9 +322,9 @@ class _CommentComposerState extends State<CommentComposer> {
                           child: IgnorePointer(
                             child: Text(
                               hint,
-                              style: ZebuTextStyles.body(context).copyWith(
-                                color: t.textSecondary,
-                              ),
+                              style: ZebuTextStyles.body(
+                                context,
+                              ).copyWith(color: t.textSecondary),
                             ),
                           ),
                         ),
@@ -386,9 +382,7 @@ class _CommentComposerState extends State<CommentComposer> {
                         builder: (btnCtx) => _MiniIconButton(
                           icon: Icons.emoji_emotions_outlined,
                           tooltip: 'Emoji',
-                          onTap: locked
-                              ? null
-                              : () => _openEmojiPicker(btnCtx),
+                          onTap: locked ? null : () => _openEmojiPicker(btnCtx),
                         ),
                       ),
                       if (widget.allowAttachments)
@@ -448,11 +442,11 @@ class _FormattingToolbar extends StatelessWidget {
       controller: controller,
       childBuilder: (context, attr, ic, isToggled, onPressed) =>
           _MiniIconButton(
-        icon: ic,
-        tooltip: tooltip,
-        active: isToggled,
-        onTap: (disabled || onPressed == null) ? null : onPressed,
-      ),
+            icon: ic,
+            tooltip: tooltip,
+            active: isToggled,
+            onTap: (disabled || onPressed == null) ? null : onPressed,
+          ),
     );
   }
 
@@ -559,8 +553,8 @@ class _MiniIconButtonState extends State<_MiniIconButton> {
     final fg = disabled
         ? t.textSecondary.withValues(alpha: 0.4)
         : widget.active
-            ? t.accent
-            : (_hover ? t.textPrimary : t.textSecondary);
+        ? t.accent
+        : (_hover ? t.textPrimary : t.textSecondary);
     final child = MouseRegion(
       cursor: disabled
           ? SystemMouseCursors.forbidden
@@ -628,11 +622,13 @@ class _ModeSegmented extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
     return Container(
-      padding: const EdgeInsets.all(2),
+      // Recessed track, no border: the fill alone reads as a well, and a
+      // hairline around it made the control look like a bordered button
+      // group with an odd grey inside rather than one switch.
+      padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: t.isLight ? const Color(0xFFF5F6F9 ) : t.surfaceMuted,
-        border: Border.all(color: t.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(_kFlatRadius),
+        color: t.isLight ? const Color(0xFFF2F4F7) : t.surfaceMuted,
+        borderRadius: BorderRadius.circular(9),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -684,10 +680,7 @@ class _ModeSegmentState extends State<_ModeSegment> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           curve: Curves.easeOut,
-          padding: const EdgeInsets.symmetric(
-            horizontal: ZebuSpacing.s4,
-            vertical: 6,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
           decoration: BoxDecoration(
             // The selected half lifts to an elevated surface inside the
             // recessed track — the standard segmented-control read. Idle
@@ -697,8 +690,18 @@ class _ModeSegmentState extends State<_ModeSegment> {
             color: widget.active
                 ? t.bgElevated
                 : t.bgElevated.withValues(alpha: 0),
-            borderRadius: BorderRadius.circular(_kFlatRadius - 2),
-            boxShadow: widget.active ? ZebuElevation.shadowXs : null,
+            borderRadius: BorderRadius.circular(6),
+            // A touch heavier than shadowXs — the lift has to survive being
+            // read against a grey track rather than a white page.
+            boxShadow: widget.active
+                ? const [
+                    BoxShadow(
+                      color: Color(0x1A101828),
+                      blurRadius: 2,
+                      offset: Offset(0, 1),
+                    ),
+                  ]
+                : null,
           ),
           child: Text(
             widget.label,
@@ -752,7 +755,9 @@ class _FileChipState extends State<_FileChip> {
                 widget.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: ZebuTextStyles.small(context).copyWith(fontWeight: FontWeight.w500),
+                style: ZebuTextStyles.small(
+                  context,
+                ).copyWith(fontWeight: FontWeight.w500),
               ),
             ),
             if (widget.onRemove != null) ...[
@@ -761,11 +766,7 @@ class _FileChipState extends State<_FileChip> {
                 onTap: widget.onRemove,
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
-                  child: Icon(
-                    Icons.close,
-                    size: 12,
-                    color: t.textSecondary,
-                  ),
+                  child: Icon(Icons.close, size: 12, color: t.textSecondary),
                 ),
               ),
             ],
@@ -864,14 +865,70 @@ class _SendButtonState extends State<_SendButton> {
 // ---------------------------------------------------------------------------
 
 const List<String> _kEmojis = [
-  '😀', '😁', '😂', '🤣', '😃', '😄', '😅', '😊',
-  '😉', '😍', '🥰', '😘', '🤗', '🤔', '🤨', '😐',
-  '😑', '😶', '🙄', '😏', '😴', '🤯', '😳', '🥺',
-  '😢', '😭', '😤', '😠', '😡', '🤬', '🤢', '🤧',
-  '👍', '👎', '👏', '🙏', '🤝', '💪', '✌️', '🤞',
-  '👌', '👋', '🙌', '🤲', '🙈', '🙉', '🙊', '💬',
-  '❤️', '💔', '💯', '🔥', '⭐', '✨', '⚡', '💡',
-  '✅', '❌', '⚠️', '❓', '❗', '📌', '🔔', '🎉',
+  '😀',
+  '😁',
+  '😂',
+  '🤣',
+  '😃',
+  '😄',
+  '😅',
+  '😊',
+  '😉',
+  '😍',
+  '🥰',
+  '😘',
+  '🤗',
+  '🤔',
+  '🤨',
+  '😐',
+  '😑',
+  '😶',
+  '🙄',
+  '😏',
+  '😴',
+  '🤯',
+  '😳',
+  '🥺',
+  '😢',
+  '😭',
+  '😤',
+  '😠',
+  '😡',
+  '🤬',
+  '🤢',
+  '🤧',
+  '👍',
+  '👎',
+  '👏',
+  '🙏',
+  '🤝',
+  '💪',
+  '✌️',
+  '🤞',
+  '👌',
+  '👋',
+  '🙌',
+  '🤲',
+  '🙈',
+  '🙉',
+  '🙊',
+  '💬',
+  '❤️',
+  '💔',
+  '💯',
+  '🔥',
+  '⭐',
+  '✨',
+  '⚡',
+  '💡',
+  '✅',
+  '❌',
+  '⚠️',
+  '❓',
+  '❗',
+  '📌',
+  '🔔',
+  '🎉',
 ];
 
 Future<String?> showEmojiPicker(BuildContext anchorContext) async {
@@ -887,8 +944,10 @@ Future<String?> showEmojiPicker(BuildContext anchorContext) async {
   const menuWidth = 280.0;
   const menuHeight = 224.0;
 
-  final menuLeft = (anchorTopLeft.dx + anchorSize.width - menuWidth)
-      .clamp(8.0, viewport.width - menuWidth - 8.0);
+  final menuLeft = (anchorTopLeft.dx + anchorSize.width - menuWidth).clamp(
+    8.0,
+    viewport.width - menuWidth - 8.0,
+  );
   // Prefer above the anchor since the composer sits at the bottom of the
   // panel; fall back to below when there's no room upwards.
   final aboveTop = anchorTopLeft.dy - menuHeight - 6;
@@ -1101,10 +1160,7 @@ Future<_LinkResult?> _showLinkPicker(
 }
 
 class _LinkCard extends StatefulWidget {
-  const _LinkCard({
-    required this.initialText,
-    required this.onApply,
-  });
+  const _LinkCard({required this.initialText, required this.onApply});
 
   /// Text currently occupying the range being linked — primes the Text
   /// field so users see (and can edit) what will be turned into a link.
@@ -1174,10 +1230,7 @@ class _LinkCardState extends State<_LinkCard> {
   void _apply() {
     if (!_canApply) return;
     widget.onApply(
-      _LinkResult(
-        url: _normalize(_url.text),
-        text: _text.text.trim(),
-      ),
+      _LinkResult(url: _normalize(_url.text), text: _text.text.trim()),
     );
   }
 
@@ -1225,9 +1278,7 @@ class _LinkCardState extends State<_LinkCard> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  _ApplyButton(
-                    onTap: _canApply ? _apply : null,
-                  ),
+                  _ApplyButton(onTap: _canApply ? _apply : null),
                 ],
               ),
             ],
@@ -1273,7 +1324,9 @@ class _PopoverField extends StatelessWidget {
           vertical: 10,
         ),
         hintText: hint,
-        hintStyle: ZebuTextStyles.body(context).copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(
+          context,
+        ).copyWith(color: t.textSecondary),
         prefixIcon: prefixIcon == null
             ? null
             : Padding(
@@ -1316,13 +1369,9 @@ class _ApplyButtonState extends State<_ApplyButton> {
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
     final enabled = widget.onTap != null;
-    final fg = enabled
-        ? t.accent
-        : t.textSecondary.withValues(alpha: 0.4);
+    final fg = enabled ? t.accent : t.textSecondary.withValues(alpha: 0.4);
     return MouseRegion(
-      cursor: enabled
-          ? SystemMouseCursors.click
-          : SystemMouseCursors.forbidden,
+      cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.forbidden,
       onEnter: (_) => setState(() => _hover = true),
       onExit: (_) => setState(() => _hover = false),
       child: GestureDetector(
@@ -1339,10 +1388,9 @@ class _ApplyButtonState extends State<_ApplyButton> {
           ),
           child: Text(
             'Apply',
-            style: ZebuTextStyles.body(context).copyWith(
-              color: fg,
-              fontWeight: FontWeight.w600,
-            ),
+            style: ZebuTextStyles.body(
+              context,
+            ).copyWith(color: fg, fontWeight: FontWeight.w600),
           ),
         ),
       ),

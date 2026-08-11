@@ -22,29 +22,61 @@ class _Swatch {
 /// Eight hues, each clearly separable from the other seven at 32 px.
 const _kSwatches = <_Swatch>[
   // blue
-  _Swatch(Color(0xFFEFF4FF), Color(0xFF175CD3), Color(0xFF172A45),
-      Color(0xFF7CB0FF)),
+  _Swatch(
+    Color(0xFFEFF4FF),
+    Color(0xFF175CD3),
+    Color(0xFF172A45),
+    Color(0xFF7CB0FF),
+  ),
   // violet
-  _Swatch(Color(0xFFF4F0FF), Color(0xFF5B3FBF), Color(0xFF241D3D),
-      Color(0xFFB49CFF)),
+  _Swatch(
+    Color(0xFFF4F0FF),
+    Color(0xFF5B3FBF),
+    Color(0xFF241D3D),
+    Color(0xFFB49CFF),
+  ),
   // green
-  _Swatch(Color(0xFFECFDF5), Color(0xFF027A48), Color(0xFF10291F),
-      Color(0xFF5DD6A0)),
+  _Swatch(
+    Color(0xFFECFDF5),
+    Color(0xFF027A48),
+    Color(0xFF10291F),
+    Color(0xFF5DD6A0),
+  ),
   // amber
-  _Swatch(Color(0xFFFFF4ED), Color(0xFFB54708), Color(0xFF2E2113),
-      Color(0xFFF0B266)),
+  _Swatch(
+    Color(0xFFFFF4ED),
+    Color(0xFFB54708),
+    Color(0xFF2E2113),
+    Color(0xFFF0B266),
+  ),
   // pink
-  _Swatch(Color(0xFFFDF2F8), Color(0xFFB4297A), Color(0xFF2E1826),
-      Color(0xFFF08CC4)),
+  _Swatch(
+    Color(0xFFFDF2F8),
+    Color(0xFFB4297A),
+    Color(0xFF2E1826),
+    Color(0xFFF08CC4),
+  ),
   // teal
-  _Swatch(Color(0xFFEFFCFB), Color(0xFF0E7490), Color(0xFF10272B),
-      Color(0xFF5CC8D8)),
+  _Swatch(
+    Color(0xFFEFFCFB),
+    Color(0xFF0E7490),
+    Color(0xFF10272B),
+    Color(0xFF5CC8D8),
+  ),
   // red
-  _Swatch(Color(0xFFFEF3F2), Color(0xFFB42318), Color(0xFF2E1A19),
-      Color(0xFFF08A82)),
+  _Swatch(
+    Color(0xFFFEF3F2),
+    Color(0xFFB42318),
+    Color(0xFF2E1A19),
+    Color(0xFFF08A82),
+  ),
   // slate
-  _Swatch(Color(0xFFF2F4F7), Color(0xFF475467), Color(0xFF21262D),
-      Color(0xFFA9B4C4)),
+  _Swatch(
+    Color(0xFFF2F4F7),
+    Color(0xFF475467),
+    Color(0xFF21262D),
+    Color(0xFFA9B4C4),
+  ),
 ];
 
 /// Picks a swatch from a name. Deterministic, so the same actor keeps the same
@@ -72,10 +104,22 @@ Color zebuAvatarTone(String name, ZebuTheme t) {
 /// the ticket, task, org, and user detail panels — all four were identical,
 /// and all four drifted from the design system in the same way.
 class ZebuAvatar extends StatelessWidget {
-  const ZebuAvatar({super.key, required this.name, this.size = 32});
+  const ZebuAvatar({
+    super.key,
+    required this.name,
+    this.size = 32,
+    this.fill,
+    this.ink,
+  });
 
   final String name;
   final double size;
+
+  /// Overrides the hashed identity colours. For contexts where the swatch has
+  /// to say something other than *who* — an internal note tints its avatar
+  /// warm because "this is private" outranks "this is Venkat".
+  final Color? fill;
+  final Color? ink;
 
   static String _initials(String s) {
     final parts = s.trim().split(RegExp(r'\s+'));
@@ -94,14 +138,14 @@ class ZebuAvatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: t.isLight ? s.fillLight : s.fillDark,
+        color: fill ?? (t.isLight ? s.fillLight : s.fillDark),
         shape: BoxShape.circle,
       ),
       child: Text(
         _initials(name),
         style: ZebuTextStyles.small(
           context,
-          color: t.isLight ? s.textLight : s.textDark,
+          color: ink ?? (t.isLight ? s.textLight : s.textDark),
           fontWeight: ZebuFonts.semiBold,
           // Scales with the circle so a larger avatar isn't a big ring around
           // small initials.

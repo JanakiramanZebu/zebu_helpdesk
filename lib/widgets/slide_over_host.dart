@@ -43,7 +43,7 @@ class SlideOverHost extends StatelessWidget {
   /// changes to a new non-null value — the returned widget is keyed by the
   /// id so its state resets between different items.
   final Widget Function(BuildContext context, int id, VoidCallback onClose)
-      panelBuilder;
+  panelBuilder;
 
   /// When true the panel takes the full viewport width and the list
   /// underneath is pushed off to the left. The panel's own header renders
@@ -61,8 +61,10 @@ class SlideOverHost extends StatelessWidget {
         } else if (width < _kSplitBreakpoint) {
           panelWidth = width;
         } else {
-          panelWidth = (width * _kPanelRatio)
-              .clamp(_kPanelMinWidth, _kPanelMaxWidth);
+          panelWidth = (width * _kPanelRatio).clamp(
+            _kPanelMinWidth,
+            _kPanelMaxWidth,
+          );
         }
         final isOpen = openId != null;
         // Split-pane layout: the underlying content's right edge animates
@@ -140,7 +142,7 @@ class _PanelSlot extends StatefulWidget {
   final int? openId;
   final VoidCallback onClose;
   final Widget Function(BuildContext context, int id, VoidCallback onClose)
-      panelBuilder;
+  panelBuilder;
 
   @override
   State<_PanelSlot> createState() => _PanelSlotState();

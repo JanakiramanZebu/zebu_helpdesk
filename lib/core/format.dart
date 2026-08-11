@@ -9,6 +9,8 @@ class Fmt {
   static final _date = DateFormat('d MMM yyyy');
   static final _dateTime = DateFormat('d MMM yyyy, h:mm a');
   static final _time = DateFormat('h:mm a');
+  static final _dayLabel = DateFormat('d MMMM yyyy');
+  static final _dayTime = DateFormat('d MMM, h:mm a');
   static final _apiDate = DateFormat('yyyy-MM-dd');
   static final _apiDateTime = DateFormat('yyyy-MM-dd HH:mm:ss');
   static final _compact = NumberFormat.compact(locale: 'en_US');
@@ -18,6 +20,23 @@ class Fmt {
   static String count(int n) => n.abs() < 1000 ? '$n' : _compact.format(n);
 
   static String date(DateTime? d) => d == null ? '—' : _date.format(d);
+
+  /// Day heading for a thread's date divider — `Today`, `Yesterday`, or
+  /// `1 July 2026`. Render it uppercased; the words stay cased here so the
+  /// string is reusable anywhere a heading isn't wanted.
+  static String dayLabel(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    return _dayLabel.format(d);
+  }
+
+  /// Clock time with the day but no year — `10 Aug, 4:02 PM`. For entries
+  /// that already sit under a date divider, which supplies the rest.
+  static String dayTime(DateTime? d) => d == null ? '—' : _dayTime.format(d);
   static String dateTime(DateTime? d) => d == null ? '—' : _dateTime.format(d);
   static String time(DateTime? d) => d == null ? '—' : _time.format(d);
 
@@ -38,11 +57,18 @@ class Fmt {
     const units = ['B', 'KB', 'MB', 'GB'];
     var size = bytes.toDouble();
     var i = 0;
-    while (size >= 1024 && i < units.length - 1) {
+    // Roll over at 1000 rather than 1024. "1008.0 KB" is arithmetically
+    // correct and completely unreadable — nobody thinks in four-digit
+    // kilobytes, and the reader has to divide in their head to know it's
+    // about a megabyte.
+    while (size >= 1000 && i < units.length - 1) {
       size /= 1024;
       i++;
     }
-    return '${size.toStringAsFixed(i == 0 ? 0 : 1)} ${units[i]}';
+    // A decimal only earns its place while there are few enough significant
+    // digits for it to mean something: "1.0 MB" is useful, "720.3 KB" is not.
+    final decimals = i == 0 || size >= 100 ? 0 : 1;
+    return '${size.toStringAsFixed(decimals)} ${units[i]}';
   }
 
   /// First/last initials from a display name.

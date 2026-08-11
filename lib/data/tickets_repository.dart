@@ -82,27 +82,27 @@ class TicketQuery {
 
   TicketQuery copyWith({int? page, String? q, String? view, int? limit}) =>
       TicketQuery(
-    queue: queue,
-    view: view ?? this.view,
-    statusId: statusId,
-    deptId: deptId,
-    assigneeId: assigneeId,
-    teamId: teamId,
-    topicId: topicId,
-    priorityId: priorityId,
-    tagId: tagId,
-    overdue: overdue,
-    answered: answered,
-    unassigned: unassigned,
-    createdFrom: createdFrom,
-    createdTo: createdTo,
-    q: q ?? this.q,
-    sort: sort,
-    order: order,
-    page: page ?? this.page,
-    limit: limit ?? this.limit,
-    extra: extra,
-  );
+        queue: queue,
+        view: view ?? this.view,
+        statusId: statusId,
+        deptId: deptId,
+        assigneeId: assigneeId,
+        teamId: teamId,
+        topicId: topicId,
+        priorityId: priorityId,
+        tagId: tagId,
+        overdue: overdue,
+        answered: answered,
+        unassigned: unassigned,
+        createdFrom: createdFrom,
+        createdTo: createdTo,
+        q: q ?? this.q,
+        sort: sort,
+        order: order,
+        page: page ?? this.page,
+        limit: limit ?? this.limit,
+        extra: extra,
+      );
 }
 
 /// Queue counters from `GET /tickets/stats`.

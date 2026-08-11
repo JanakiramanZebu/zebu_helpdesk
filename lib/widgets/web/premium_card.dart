@@ -66,7 +66,10 @@ class PremiumCard extends StatelessWidget {
                       children: [
                         Text(
                           title!,
-                          style: ZebuTextStyles.bodyStrong(context, fontWeight: ZebuFonts.semiBold),
+                          style: ZebuTextStyles.bodyStrong(
+                            context,
+                            fontWeight: ZebuFonts.semiBold,
+                          ),
                           overflow: TextOverflow.ellipsis,
                           maxLines: 1,
                         ),
