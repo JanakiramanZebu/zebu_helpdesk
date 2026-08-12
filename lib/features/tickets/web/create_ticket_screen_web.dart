@@ -17,6 +17,8 @@ import '../../../widgets/app_toast.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
+import '../../../widgets/web/zebu_dialog.dart';
+import '../../../widgets/web/zebu_select.dart';
 
 /// Ticket source options (the `source` param), mirroring the web dropdown.
 const _sources = ['Phone', 'Email', 'Web', 'Other'];
@@ -27,19 +29,16 @@ const _kFlatRadius = 8.0;
 /// sidebar's "+ New Ticket" button on web. Blocks outside-click dismiss so
 /// half-filled form data doesn't disappear on a stray click.
 Future<void> showCreateTicketDialog(BuildContext context) {
-  return showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogContext) => Dialog(
-      insetPadding: const EdgeInsets.all(40),
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720, maxHeight: 820),
-        child: CreateTicketScreenWeb(
-          onClose: () => Navigator.of(dialogContext).pop(),
-        ),
-      ),
+  return showZebuDialog<void>(
+    context,
+    barrierLabel: 'New ticket',
+    // Outside-click stays disabled: this form holds enough half-typed work
+    // that a stray click on the page behind it must not discard it. `Esc`
+    // and the close button both still work.
+    dismissible: false,
+    child: Builder(
+      builder: (ctx) =>
+          CreateTicketScreenWeb(onClose: () => Navigator.of(ctx).pop()),
     ),
   );
 }
@@ -288,35 +287,35 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    return Container(
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        border: Border.all(color: t.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
-      ),
-      child: AbsorbPointer(
-        absorbing: _saving,
-        child: Column(
-          children: [
-            _HeaderBar(onClose: _close),
-            if (_saving) const LinearProgressIndicator(minHeight: 2),
-            Expanded(child: _buildBody(t)),
-            _FooterBar(saving: _saving, onCancel: _close, onSubmit: _submit),
-          ],
+    return ZebuDialogShell(
+      title: 'New ticket',
+      // Wider than a confirm — this is a real form with two-up rows.
+      maxWidth: 720,
+      onDismiss: _close,
+      onSubmit: _saving ? null : _submit,
+      // The action is pinned in a footer here, not placed in the body as the
+      // short dialogs do: this form scrolls, and a submit button that scrolls
+      // out of view is one an agent has to hunt back down for.
+      actions: [
+        ZebuDialogPrimaryBtn(
+          label: 'Create ticket',
+          busyLabel: 'Creating\u2026',
+          busy: _saving,
+          onTap: _submit,
         ),
-      ),
+      ],
+      body: AbsorbPointer(absorbing: _saving, child: _buildBody(t)),
     );
   }
 
   Widget _buildBody(ZebuTheme t) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-        ZebuSpacing.s6,
-        ZebuSpacing.s4,
-        ZebuSpacing.s6,
-        ZebuSpacing.s5,
-      ),
+      // padding: const EdgeInsets.fromLTRB(
+      //   ZebuSpacing.s6,
+      //   ZebuSpacing.s4,
+      //   ZebuSpacing.s6,
+      //   ZebuSpacing.s5,
+      // ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -328,36 +327,46 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
           // --- USER & COLLABORATORS --------------------------------------
           _SectionTitle('User & collaborators'),
           const SizedBox(height: ZebuSpacing.s3),
-          _LabeledField(
-            label: 'Requester',
-            required: true,
-            error: _fieldErrors['user_id'],
-            child: Builder(
-              builder: (anchorContext) => _SelectField(
-                icon: Icons.person_outline,
-                value: _user?.name,
-                placeholder: 'Select a requester',
-                onTap: () => _pickRequester(),
-                anchorContext: anchorContext,
-                hasError: _fieldErrors['user_id'] != null,
+          // Two-up: both name people, they are read together, and stacking
+          // them full-width made the form taller than the dialog for no gain.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: _LabeledField(
+                  label: 'Requester',
+                  error: _fieldErrors['user_id'],
+                  child: Builder(
+                    builder: (anchorContext) => _SelectField(
+                      icon: Icons.person_outline,
+                      value: _user?.name,
+                      placeholder: 'Select a requester',
+                      onTap: () => _pickRequester(),
+                      anchorContext: anchorContext,
+                      hasError: _fieldErrors['user_id'] != null,
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-          const SizedBox(height: ZebuSpacing.s4),
-          _LabeledField(
-            label: 'Collaborators (Cc)',
-            child: Builder(
-              builder: (anchorContext) => _SelectField(
-                icon: Icons.group_outlined,
-                value: _collaborators.isEmpty
-                    ? null
-                    : '${_collaborators.length} added',
-                placeholder: 'Add collaborators (optional)',
-                trailingIcon: Icons.add,
-                onTap: () => _pickCollaborator(),
-                anchorContext: anchorContext,
+              const SizedBox(width: ZebuSpacing.s3),
+              Expanded(
+                child: _LabeledField(
+                  label: 'Collaborators (Cc)',
+                  child: Builder(
+                    builder: (anchorContext) => _SelectField(
+                      icon: Icons.group_outlined,
+                      value: _collaborators.isEmpty
+                          ? null
+                          : '${_collaborators.length} added',
+                      placeholder: 'Add collaborators',
+                      trailingIcon: Icons.add,
+                      onTap: () => _pickCollaborator(),
+                      anchorContext: anchorContext,
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
           if (_collaborators.isNotEmpty) ...[
             const SizedBox(height: ZebuSpacing.s2),
@@ -381,7 +390,6 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
           const SizedBox(height: ZebuSpacing.s3),
           _LabeledField(
             label: 'Subject',
-            required: true,
             error: _fieldErrors['subject'],
             child: _TextInput(
               controller: _subject,
@@ -400,7 +408,6 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
           const SizedBox(height: ZebuSpacing.s4),
           _LabeledField(
             label: 'Message',
-            required: true,
             error: _fieldErrors['message'],
             child: _TextInput(
               controller: _message,
@@ -447,7 +454,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                     builder: (anchorContext) => _SelectField(
                       icon: Icons.topic_outlined,
                       value: _topic?.name,
-                      placeholder: 'Not set',
+                      placeholder: 'None',
                       onTap: () => _pickMeta(
                         anchorContext,
                         MetaKind.topics,
@@ -474,7 +481,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                     builder: (anchorContext) => _SelectField(
                       icon: Icons.apartment_outlined,
                       value: _department?.name,
-                      placeholder: 'Not set',
+                      placeholder: 'None',
                       onTap: () => _pickMeta(
                         anchorContext,
                         MetaKind.departments,
@@ -496,7 +503,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                     builder: (anchorContext) => _SelectField(
                       icon: Icons.flag_outlined,
                       value: _priority?.name,
-                      placeholder: 'Not set',
+                      placeholder: 'None',
                       onTap: () => _pickMeta(
                         anchorContext,
                         MetaKind.priorities,
@@ -522,7 +529,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                   child: _SelectField(
                     icon: Icons.event_outlined,
                     value: _due == null ? null : Fmt.dateTime(_due),
-                    placeholder: 'Not set',
+                    placeholder: 'None',
                     onTap: _pickDue,
                     onClear: _due == null
                         ? null
@@ -538,7 +545,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                     builder: (anchorContext) => _SelectField(
                       icon: Icons.label_outline,
                       value: _status?.name,
-                      placeholder: 'Not set',
+                      placeholder: 'None',
                       onTap: () => _pickMeta(
                         anchorContext,
                         MetaKind.statuses,
@@ -565,7 +572,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                     builder: (anchorContext) => _SelectField(
                       icon: Icons.assignment_ind_outlined,
                       value: _agent?.name,
-                      placeholder: 'Not set',
+                      placeholder: 'None',
                       onTap: () => _pickMeta(
                         anchorContext,
                         MetaKind.agents,
@@ -587,7 +594,7 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
                     builder: (anchorContext) => _SelectField(
                       icon: Icons.groups_outlined,
                       value: _team?.name,
-                      placeholder: 'Not set',
+                      placeholder: 'None',
                       onTap: () => _pickMeta(
                         anchorContext,
                         MetaKind.teams,
@@ -628,79 +635,9 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
 // Header — X close + title, with a bottom border. Actions moved to footer.
 // ---------------------------------------------------------------------------
 
-class _HeaderBar extends StatelessWidget {
-  const _HeaderBar({required this.onClose});
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: ZebuSpacing.s5,
-        vertical: ZebuSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
-      ),
-      child: Row(
-        children: [
-          Text('New ticket', style: ZebuTextStyles.hero(context)),
-          const Spacer(),
-          _IconBtn(
-            icon: Icons.close_rounded,
-            tooltip: 'Close',
-            destructive: true,
-            onTap: onClose,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Footer — Cancel + Create ticket, right-aligned, top border.
 // ---------------------------------------------------------------------------
-
-class _FooterBar extends StatelessWidget {
-  const _FooterBar({
-    required this.saving,
-    required this.onCancel,
-    required this.onSubmit,
-  });
-
-  final bool saving;
-  final VoidCallback onCancel;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: ZebuSpacing.s5,
-        vertical: ZebuSpacing.s3,
-      ),
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          _SecondaryButton(label: 'Cancel', onTap: onCancel),
-          const SizedBox(width: ZebuSpacing.s2),
-          _PrimaryButton(
-            label: saving ? 'Creating…' : 'Create ticket',
-            onTap: saving ? null : onSubmit,
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _IconBtn extends StatefulWidget {
   const _IconBtn({
@@ -869,16 +806,10 @@ class _SectionTitle extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.child,
-    this.required = false,
-    this.error,
-  });
+  const _LabeledField({required this.label, required this.child, this.error});
 
   final String label;
   final Widget child;
-  final bool required;
   final String? error;
 
   @override
@@ -887,34 +818,40 @@ class _LabeledField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: ZebuTextStyles.small(
-                context,
-              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
-            ),
-            if (required) ...[
-              const SizedBox(width: 4),
-              Text(
-                '*',
-                style: TextStyle(
-                  color: t.danger,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+        // Same label as [ZebuDialogField]: 12 px semibold in the slate tone,
+        // 6 px above the control. The form had its own — primary ink, its own
+        // asterisk — so a field here looked different from a field in the
+        // subtask dialog two clicks away.
+        // No required asterisk. It marks fields before anyone has done
+        // anything wrong, and submit validation says which field is missing
+        // far more precisely, at the moment it actually matters.
+        Text(
+          label,
+          style: ZebuTextStyles.body(
+            context,
+            color: t.textSlate,
+            fontWeight: ZebuFonts.medium,
+          ),
+        ),
+        const SizedBox(height: 8),
+        child,
+        if (error != null) ...[
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(Icons.error_outline_rounded, size: 12, color: t.danger),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  error!,
+                  style: ZebuTextStyles.eyebrow(
+                    context,
+                    color: t.danger,
+                    fontWeight: ZebuFonts.medium,
+                  ),
                 ),
               ),
             ],
-          ],
-        ),
-        const SizedBox(height: 6),
-        child,
-        if (error != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            error!,
-            style: ZebuTextStyles.small(context).copyWith(color: t.danger),
           ),
         ],
       ],
@@ -929,7 +866,10 @@ class _LabeledField extends StatelessWidget {
 // lands under the field, not under the [_SelectField] state.
 // ---------------------------------------------------------------------------
 
-class _SelectField extends StatefulWidget {
+/// Thin adapter over the shared [ZebuSelect] so this form's ten call sites
+/// keep their existing shape. The box itself — fill, border, hover, open
+/// state, chevron — now lives in one place for the whole app.
+class _SelectField extends StatelessWidget {
   const _SelectField({
     required this.onTap,
     this.icon,
@@ -945,86 +885,26 @@ class _SelectField extends StatefulWidget {
   final IconData? icon;
   final String? value;
   final String? placeholder;
-
-  /// Override the default trailing chevron (e.g. `Icons.add` for the
-  /// collaborators field).
   final IconData? trailingIcon;
-
-  /// When non-null and a value is set, a small hover-red X sits after the
-  /// value so the user can clear the selection inline.
   final VoidCallback? onClear;
 
-  /// Kept for reference — the caller can attach its own [Builder] context
-  /// so a popup dropdown lands under the field. Not read directly here;
-  /// [onTap] closes over it.
+  /// Retained for call sites that anchor their own overlay; [ZebuSelect]
+  /// supplies its own context to `onTap` for the ones that don't.
   final BuildContext? anchorContext;
 
   final bool hasError;
 
   @override
-  State<_SelectField> createState() => _SelectFieldState();
-}
-
-class _SelectFieldState extends State<_SelectField> {
-  bool _hover = false;
-
-  @override
   Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final hasValue = widget.value != null && widget.value!.isNotEmpty;
-    final borderColor = widget.hasError
-        ? t.danger
-        : (_hover ? t.accent : t.borderSubtle);
-    final textColor = hasValue ? t.textPrimary : t.textSecondary;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          padding: const EdgeInsets.symmetric(
-            horizontal: ZebuSpacing.s3,
-            vertical: 10,
-          ),
-          decoration: BoxDecoration(
-            color: t.bgElevated,
-            border: Border.all(color: borderColor, width: 1),
-            borderRadius: BorderRadius.circular(_kFlatRadius),
-          ),
-          child: Row(
-            children: [
-              if (widget.icon != null) ...[
-                Icon(widget.icon, size: 16, color: t.textSecondary),
-                const SizedBox(width: ZebuSpacing.s2),
-              ],
-              Expanded(
-                child: Text(
-                  hasValue ? widget.value! : (widget.placeholder ?? 'Select…'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZebuTextStyles.body(context).copyWith(
-                    color: textColor,
-                    fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-                  ),
-                ),
-              ),
-              if (widget.onClear != null && hasValue) ...[
-                _MiniIcon(icon: Icons.close, onTap: widget.onClear!),
-                const SizedBox(width: 2),
-              ],
-              Icon(
-                widget.trailingIcon ?? Icons.keyboard_arrow_down,
-                size: 18,
-                color: t.textSecondary,
-              ),
-            ],
-          ),
-        ),
-      ),
+    final has = value != null && value!.isNotEmpty;
+    return ZebuSelect(
+      label: has ? value! : (placeholder ?? 'Select…'),
+      isPlaceholder: !has,
+      leadingIcon: icon,
+      trailingIcon: trailingIcon,
+      onClear: onClear,
+      hasError: hasError,
+      onTap: (_) async => onTap(),
     );
   }
 }
@@ -1091,17 +971,16 @@ class _TextInput extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.borderSubtle,
-        width: 1,
-      ),
+    // Accent border at rest, matching [ZebuSelect] — a field and a select
+    // are the same kind of thing, so a blue-outlined picker beside a grey
+    // input would say they behave differently when they don't. Focus
+    // deepens rather than introducing the colour.
+    OutlineInputBorder outline(Color c, [double w = 1]) => OutlineInputBorder(
+      borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+      borderSide: BorderSide(color: c, width: w),
     );
-    final focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
-    );
+    final border = outline(hasError ? t.danger : t.accent);
+    final focusedBorder = outline(hasError ? t.danger : t.accentHover, 1.4);
     return TextField(
       controller: controller,
       minLines: minLines,
@@ -1120,9 +999,7 @@ class _TextInput extends StatelessWidget {
           vertical: 12,
         ),
         hintText: hint,
-        hintStyle: ZebuTextStyles.body(
-          context,
-        ).copyWith(color: t.textSecondary),
+        hintStyle: ZebuTextStyles.body(context, color: t.textSlateMuted),
       ),
     );
   }

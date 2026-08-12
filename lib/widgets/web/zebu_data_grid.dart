@@ -387,3 +387,32 @@ class _GridRowState<T> extends State<_GridRow<T>> {
     child: c.cell(widget.item),
   );
 }
+
+/// Plain text in a grid cell, with a lighter placeholder when empty.
+///
+/// Shared so the two list screens can't disagree about cell type size — they
+/// already had: tickets rendered `tableCell` (14, medium) while tasks used
+/// `small` (12, w500), so the same column read two sizes on two screens.
+class ZebuGridTextCell extends StatelessWidget {
+  const ZebuGridTextCell({super.key, required this.text, this.emptyLabel});
+
+  final String text;
+
+  /// Shown when [text] is blank — "Unassigned" reads better than an em-dash
+  /// where the absence itself is meaningful. Defaults to an em-dash.
+  final String? emptyLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final empty = text.trim().isEmpty;
+    return Text(
+      empty ? (emptyLabel ?? '\u2014') : text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      // Placeholders read lighter than real values.
+      style: empty
+          ? ZebuTextStyles.small(context)
+          : ZebuTextStyles.tableCell(context),
+    );
+  }
+}

@@ -21,6 +21,7 @@ import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
 import '../../../widgets/web/thread_view.dart';
+import '../../../widgets/web/zebu_dialog.dart';
 import 'task_relations.dart';
 
 /// Web-only task-detail slide-over panel — visual parity with
@@ -252,30 +253,36 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   }
 
   Future<void> _addSubtask() async {
-    final result = await showDialog<({String title, String description})>(
-      context: context,
-      builder: (_) => const TaskSubtaskDialog(),
+    final task = _task;
+    if (task == null) return;
+    // The dialog owns the create so it can stay open on failure — and so
+    // "Create another" can fire it repeatedly without reopening.
+    final created = await showZebuDialog<bool>(
+      context,
+      barrierLabel: 'Add subtask',
+      child: TaskSubtaskDialog(
+        taskNumber: task.number,
+        taskTitle: task.title,
+        onCreate: (draft) =>
+            ref.read(tasksRepositoryProvider).createSubtask(widget.taskId, {
+              'title': draft.title,
+              if (draft.description != null) 'description': draft.description,
+            }),
+      ),
     );
-    if (result == null) return;
-    setState(() => _acting = true);
-    try {
-      await ref.read(tasksRepositoryProvider).createSubtask(widget.taskId, {
-        'title': result.title,
-        if (result.description.isNotEmpty) 'description': result.description,
-      });
-      _toast('Subtask created', type: ToastType.success);
-      await _load();
-    } on ApiException catch (e) {
-      _toast(e.message, type: ToastType.error);
-    } finally {
-      if (mounted) setState(() => _acting = false);
-    }
+    if (created == true) await _load();
   }
 
   Future<void> _addDependency() async {
-    final id = await showDialog<int>(
-      context: context,
-      builder: (_) => const TaskDependencyDialog(),
+    final task = _task;
+    if (task == null) return;
+    final id = await showZebuDialog<int>(
+      context,
+      barrierLabel: 'Add dependency',
+      child: TaskDependencyDialog(
+        taskNumber: task.number,
+        taskTitle: task.title,
+      ),
     );
     if (id == null) return;
     setState(() => _acting = true);
@@ -568,39 +575,41 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
   /// two-column split, kept for the sub-780 px slot the panel gets when the
   /// list underneath is still visible on smaller viewports.
   Widget _buildNarrow(ZebuTheme t, Task task, _TaskCaps caps) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        const SizedBox(height: ZebuSpacing.s3),
-        _FieldsTable(
-          task: task,
-          sidebar: false,
-          statusRowKey: _statusRowKey,
-          priorityRowKey: _priorityRowKey,
-          assigneeRowKey: _assigneeRowKey,
-          departmentRowKey: _departmentRowKey,
-          onStatusTap: caps.canClose ? _pickTaskStatus : null,
-          onPriorityTap: caps.canEdit ? _pickTaskPriority : null,
-          onAssigneeTap: caps.canAssign ? _pickTaskAssignee : null,
-          onDepartmentTap: caps.canTransfer ? _pickTaskDepartment : null,
-        ),
-        const SizedBox(height: ZebuSpacing.s2),
-        const _ActivityHeader(),
-        if (_thread.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s6),
-            child: Center(
-              child: Text(
-                'No messages yet',
-                style: ZebuTextStyles.small(context),
-              ),
-            ),
-          )
-        else ...[
-          ...zebuThreadItems(_thread),
+    return SelectionArea(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
           const SizedBox(height: ZebuSpacing.s3),
+          _FieldsTable(
+            task: task,
+            sidebar: false,
+            statusRowKey: _statusRowKey,
+            priorityRowKey: _priorityRowKey,
+            assigneeRowKey: _assigneeRowKey,
+            departmentRowKey: _departmentRowKey,
+            onStatusTap: caps.canClose ? _pickTaskStatus : null,
+            onPriorityTap: caps.canEdit ? _pickTaskPriority : null,
+            onAssigneeTap: caps.canAssign ? _pickTaskAssignee : null,
+            onDepartmentTap: caps.canTransfer ? _pickTaskDepartment : null,
+          ),
+          const SizedBox(height: ZebuSpacing.s2),
+          const _ActivityHeader(),
+          if (_thread.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s6),
+              child: Center(
+                child: Text(
+                  'No messages yet',
+                  style: ZebuTextStyles.small(context),
+                ),
+              ),
+            )
+          else ...[
+            ...zebuThreadItems(_thread),
+            const SizedBox(height: ZebuSpacing.s3),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -614,25 +623,29 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              if (_thread.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s8),
-                  child: Center(
-                    child: Text(
-                      'No messages yet',
-                      style: ZebuTextStyles.small(context),
+          child: SelectionArea(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                if (_thread.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: ZebuSpacing.s8,
                     ),
-                  ),
-                )
-              else ...[
-                const SizedBox(height: ZebuSpacing.s3),
-                ...zebuThreadItems(_thread),
-                const SizedBox(height: ZebuSpacing.s3),
+                    child: Center(
+                      child: Text(
+                        'No messages yet',
+                        style: ZebuTextStyles.body(context),
+                      ),
+                    ),
+                  )
+                else ...[
+                  const SizedBox(height: ZebuSpacing.s3),
+                  ...zebuThreadItems(_thread),
+                  const SizedBox(height: ZebuSpacing.s3),
+                ],
               ],
-            ],
+            ),
           ),
         ),
         if (!_detailsCollapsed)
@@ -724,6 +737,45 @@ class _TaskDetailPanelState extends ConsumerState<TaskDetailPanel> {
 // Header
 // ---------------------------------------------------------------------------
 
+/// The Actions menu for a task — same gating rule as the ticket panel's:
+/// every entry mirrors the permission its `/tasks` endpoint enforces.
+List<AppDropdownEntry<String>> _taskActions(Task task, _TaskCaps caps) {
+  return [
+    const AppDropdownHeader<String>('Task actions'),
+    if (caps.canClose)
+      if (task.isOpen)
+        const AppDropdownItem(
+          value: 'close',
+          label: 'Close task',
+          svgAsset: Assets.actClose,
+        )
+      else
+        const AppDropdownItem(
+          value: 'reopen',
+          label: 'Reopen task',
+          svgAsset: Assets.actReopen,
+        ),
+    if (caps.canEdit)
+      const AppDropdownItem(
+        value: 'priority',
+        label: 'Set priority',
+        svgAsset: Assets.actPriority,
+      ),
+    if (caps.canAssign)
+      const AppDropdownItem(
+        value: 'assign',
+        label: 'Assign',
+        svgAsset: Assets.actAssign,
+      ),
+    if (caps.canTransfer)
+      const AppDropdownItem(
+        value: 'transfer',
+        label: 'Transfer dept',
+        svgAsset: Assets.actTransfer,
+      ),
+  ];
+}
+
 class _Header extends StatelessWidget {
   const _Header({
     required this.task,
@@ -758,12 +810,7 @@ class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (task == null)
-            Expanded(
-              child: Text(
-                'Loading…',
-                style: ZebuTextStyles.smallStrong(context),
-              ),
-            )
+            const Expanded(child: ZebuPanelTitleSkeleton())
           else
             Expanded(
               child: ZebuPanelTitle(
@@ -774,181 +821,26 @@ class _Header extends StatelessWidget {
             ),
           const SizedBox(width: ZebuSpacing.s3),
           if (task != null && onMenu != null && caps.hasHeaderAction) ...[
-            _ActionsBtn(task: task!, caps: caps, onSelected: onMenu!),
+            ZebuPanelActionsBtn(
+              onSelected: onMenu!,
+              entries: _taskActions(task!, caps),
+            ),
             const SizedBox(width: ZebuSpacing.s2),
           ],
           if (onToggleFullscreen != null) ...[
-            _IconBtn(
+            ZebuPanelIconBtn(
               icon: isFullscreen ? Icons.close_fullscreen : Icons.open_in_full,
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
             ),
             const SizedBox(width: ZebuSpacing.s2),
           ],
-          _IconBtn(
-            icon: Icons.close_rounded,
-            tooltip: 'Close',
-            destructive: true,
-            onTap: onClose,
-          ),
+          // Not destructive — a red hover belongs to actions that lose
+          // something. Dismissing the panel discards nothing.
+          ZebuPanelIconBtn(icon: Icons.close, tooltip: 'Close', onTap: onClose),
         ],
       ),
     );
-  }
-}
-
-class _ActionsBtn extends StatefulWidget {
-  const _ActionsBtn({
-    required this.task,
-    required this.caps,
-    required this.onSelected,
-  });
-  final Task task;
-  final _TaskCaps caps;
-  final Future<void> Function(String value) onSelected;
-
-  @override
-  State<_ActionsBtn> createState() => _ActionsBtnState();
-}
-
-class _ActionsBtnState extends State<_ActionsBtn> {
-  bool _hover = false;
-
-  Future<void> _open() async {
-    final task = widget.task;
-    final caps = widget.caps;
-    // Only surface actions the agent may actually perform — each gated by the
-    // same permission the matching /tasks endpoint enforces (checkStaffPerm).
-    final chosen = await showAppDropdown<String>(
-      context,
-      entries: [
-        const AppDropdownHeader<String>('Task actions'),
-        if (caps.canClose)
-          if (task.isOpen)
-            const AppDropdownItem(
-              value: 'close',
-              label: 'Close task',
-              svgAsset: Assets.actClose,
-            )
-          else
-            const AppDropdownItem(
-              value: 'reopen',
-              label: 'Reopen task',
-              svgAsset: Assets.actReopen,
-            ),
-        if (caps.canEdit)
-          const AppDropdownItem(
-            value: 'priority',
-            label: 'Set priority',
-            svgAsset: Assets.actPriority,
-          ),
-        if (caps.canAssign)
-          const AppDropdownItem(
-            value: 'assign',
-            label: 'Assign',
-            svgAsset: Assets.actAssign,
-          ),
-        if (caps.canTransfer)
-          const AppDropdownItem(
-            value: 'transfer',
-            label: 'Transfer dept',
-            svgAsset: Assets.actTransfer,
-          ),
-      ],
-    );
-    if (chosen != null) await widget.onSelected(chosen);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Tooltip(
-      message: 'Actions',
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _open,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: _hover ? t.bgHover : t.bgElevated,
-              border: Border.all(color: t.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Actions',
-                  style: ZebuTextStyles.small(
-                    context,
-                  ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(width: 4),
-                Icon(Icons.expand_more, size: 16, color: t.textPrimary),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _IconBtn extends StatefulWidget {
-  const _IconBtn({
-    required this.icon,
-    required this.onTap,
-    this.tooltip,
-    this.destructive = false,
-  });
-  final IconData icon;
-  final VoidCallback onTap;
-  final String? tooltip;
-  final bool destructive;
-
-  @override
-  State<_IconBtn> createState() => _IconBtnState();
-}
-
-class _IconBtnState extends State<_IconBtn> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final bg = _hover
-        ? (widget.destructive ? t.dangerLight : t.bgHover)
-        : t.bgElevated;
-    final fg = _hover && widget.destructive ? t.danger : t.textPrimary;
-    final child = MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: bg,
-            border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
-          ),
-          child: Icon(widget.icon, size: 16, color: fg),
-        ),
-      ),
-    );
-    return widget.tooltip == null
-        ? child
-        : Tooltip(message: widget.tooltip!, child: child);
   }
 }
 

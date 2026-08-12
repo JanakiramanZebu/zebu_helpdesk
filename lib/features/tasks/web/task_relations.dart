@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../../models/task.dart';
 import '../../../res/zebu_spacing.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
+import '../../../widgets/web/detail_fields.dart';
 import '../../../widgets/web/status_badge.dart';
+import '../../../widgets/web/zebu_dialog.dart';
 
 /// Subtasks and dependencies for a task, as detail-panel sidebar sections.
 ///
@@ -14,49 +17,6 @@ import '../../../widgets/web/status_badge.dart';
 /// `/tasks/{id}/subtasks` and `/tasks/{id}/dependencies` were reachable only
 /// by typing a URL. Moving them here is what let that screen be deleted
 /// rather than restyled.
-
-/// Section heading with a count and an optional add affordance.
-class _RelationHeader extends StatelessWidget {
-  const _RelationHeader({required this.label, required this.count, this.onAdd});
-  final String label;
-  final int count;
-  final VoidCallback? onAdd;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(
-        left: ZebuSpacing.s2,
-        top: ZebuSpacing.s4,
-        bottom: ZebuSpacing.s2,
-      ),
-      child: Row(
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: ZebuTextStyles.eyebrow(
-              context,
-              color: t.textSlateMuted,
-            ).copyWith(letterSpacing: 0.6),
-          ),
-          if (count > 0) ...[
-            const SizedBox(width: ZebuSpacing.s2),
-            Text(
-              '$count',
-              style: ZebuTextStyles.eyebrow(
-                context,
-                color: t.textSlateMuted,
-              ).withTabularNums(),
-            ),
-          ],
-          const Spacer(),
-          if (onAdd != null) _AddLink(onTap: onAdd!),
-        ],
-      ),
-    );
-  }
-}
 
 class _AddLink extends StatefulWidget {
   const _AddLink({required this.onTap});
@@ -115,10 +75,10 @@ class TaskSubtasksSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _RelationHeader(
-          label: 'Subtasks',
+        ZebuFieldGroupLabel(
+          'Subtasks',
           count: subtasks.length,
-          onAdd: onAdd,
+          trailing: onAdd == null ? null : _AddLink(onTap: onAdd!),
         ),
         if (subtasks.isEmpty)
           Padding(
@@ -169,10 +129,10 @@ class TaskDependenciesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _RelationHeader(
-          label: 'Blocked by',
+        ZebuFieldGroupLabel(
+          'Blocked by',
           count: dependencies.length,
-          onAdd: onAdd,
+          trailing: onAdd == null ? null : _AddLink(onTap: onAdd!),
         ),
         if (dependencies.isEmpty)
           Padding(
@@ -317,9 +277,28 @@ class _RelationRowState extends State<_RelationRow> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Dialogs
+// ---------------------------------------------------------------------------
+
+/// What [TaskSubtaskDialog] hands back to its creator.
+typedef SubtaskDraft = ({String title, String? description});
+
 /// Asks for a new subtask's title and optional description.
 class TaskSubtaskDialog extends StatefulWidget {
-  const TaskSubtaskDialog({super.key});
+  const TaskSubtaskDialog({
+    super.key,
+    required this.taskNumber,
+    required this.taskTitle,
+    required this.onCreate,
+  });
+
+  final String taskNumber;
+  final String taskTitle;
+
+  /// Performs the create. Throwing keeps the dialog open with an error rather
+  /// than dismissing and losing what the agent typed.
+  final Future<void> Function(SubtaskDraft draft) onCreate;
 
   @override
   State<TaskSubtaskDialog> createState() => _TaskSubtaskDialogState();
@@ -328,64 +307,134 @@ class TaskSubtaskDialog extends StatefulWidget {
 class _TaskSubtaskDialogState extends State<TaskSubtaskDialog> {
   final _title = TextEditingController();
   final _description = TextEditingController();
+  final _titleFocus = FocusNode();
+
+  bool _submitting = false;
+  String? _titleError;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _titleFocus.requestFocus(),
+    );
+  }
 
   @override
   void dispose() {
     _title.dispose();
     _description.dispose();
+    _titleFocus.dispose();
     super.dispose();
+  }
+
+  void _dismiss() {
+    if (_submitting) return;
+    Navigator.of(context).maybePop();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final title = _title.text.trim();
+    if (title.isEmpty) {
+      setState(() => _titleError = 'A subtask needs a title');
+      _titleFocus.requestFocus();
+      return;
+    }
+    final desc = _description.text.trim();
+    setState(() {
+      _titleError = null;
+      _submitting = true;
+    });
+    try {
+      await widget.onCreate((
+        title: title,
+        description: desc.isEmpty ? null : desc,
+      ));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _titleError = 'Could not create the subtask. Try again.';
+      });
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add subtask'),
-      content: SizedBox(
-        width: 420,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
+    return ZebuDialogShell(
+      title: 'Add subtask',
+      // subtitle: dropped. The parent task is on the panel directly behind
+      // this dialog, so naming it again was a line that told the agent
+      // nothing they weren't already looking at.
+      // ],
+      // ),
+      // ),
+      onDismiss: _dismiss,
+      onSubmit: _submit,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ZebuDialogField(
+            label: 'Title',
+            errorText: _titleError,
+            child: ZebuDialogInput(
               controller: _title,
-              autofocus: true,
-              decoration: const InputDecoration(labelText: 'Title'),
+              focusNode: _titleFocus,
+              // Instructive, not an invented example: the old hint described
+              // a payout scenario on whatever task you happened to open.
+              hint: 'What needs to be done',
+              enabled: !_submitting,
+              hasError: _titleError != null,
+              onChanged: (_) {
+                if (_titleError != null) setState(() => _titleError = null);
+              },
+              onSubmitted: (_) => _submit(),
             ),
-            const SizedBox(height: 12),
-            TextField(
+          ),
+          const SizedBox(height: 16),
+          ZebuDialogField(
+            label: 'Description',
+            child: ZebuDialogInput(
               controller: _description,
+              hint: 'Anything the assignee needs to know',
+              enabled: !_submitting,
               minLines: 3,
               maxLines: 6,
-              decoration: const InputDecoration(
-                labelText: 'Description (optional)',
-              ),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: ZebuSpacing.s5),
+          // In the body, full width — the same shape the confirm dialogs
+          // use. A footer strip for a single button made two zones out of a
+          // card that asks one thing.
+          ZebuDialogPrimaryBtn(
+            label: 'Add',
+            busyLabel: 'Adding…',
+            busy: _submitting,
+            fullWidth: true,
+            onTap: _submit,
+          ),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            final title = _title.text.trim();
-            if (title.isEmpty) return;
-            Navigator.pop(context, (
-              title: title,
-              description: _description.text.trim(),
-            ));
-          },
-          child: const Text('Create'),
-        ),
-      ],
+      actions: const [],
     );
   }
 }
 
 /// Asks for the id of the task that blocks this one.
 class TaskDependencyDialog extends StatefulWidget {
-  const TaskDependencyDialog({super.key});
+  const TaskDependencyDialog({
+    super.key,
+    required this.taskNumber,
+    required this.taskTitle,
+  });
+
+  final String taskNumber;
+  final String taskTitle;
 
   @override
   State<TaskDependencyDialog> createState() => _TaskDependencyDialogState();
@@ -393,11 +442,19 @@ class TaskDependencyDialog extends StatefulWidget {
 
 class _TaskDependencyDialogState extends State<TaskDependencyDialog> {
   final _controller = TextEditingController();
+  final _focus = FocusNode();
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _focus.requestFocus());
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -405,36 +462,44 @@ class _TaskDependencyDialogState extends State<TaskDependencyDialog> {
     final id = int.tryParse(_controller.text.trim());
     if (id == null) {
       setState(() => _error = 'Enter a numeric task ID');
+      _focus.requestFocus();
       return;
     }
-    Navigator.pop(context, id);
+    Navigator.of(context).pop(id);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Add dependency'),
-      content: SizedBox(
-        width: 320,
-        child: TextField(
-          controller: _controller,
-          keyboardType: TextInputType.number,
-          autofocus: true,
-          decoration: InputDecoration(
-            labelText: 'Blocker task ID',
-            hintText: 'e.g. 123',
+    return ZebuDialogShell(
+      title: 'Add dependency',
+      maxWidth: 420,
+      // subtitle: dropped, as on the subtask dialog.
+      onDismiss: () => Navigator.of(context).maybePop(),
+      onSubmit: _submit,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ZebuDialogField(
+            label: 'Blocker task ID',
             errorText: _error,
+            child: ZebuDialogInput(
+              controller: _controller,
+              focusNode: _focus,
+              hint: 'The task number that has to finish first',
+              hasError: _error != null,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onChanged: (_) {
+                if (_error != null) setState(() => _error = null);
+              },
+              onSubmitted: (_) => _submit(),
+            ),
           ),
-          onSubmitted: (_) => _submit(),
-        ),
+          const SizedBox(height: ZebuSpacing.s5),
+          ZebuDialogPrimaryBtn(label: 'Add', fullWidth: true, onTap: _submit),
+        ],
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('Add')),
-      ],
+      actions: const [],
     );
   }
 }

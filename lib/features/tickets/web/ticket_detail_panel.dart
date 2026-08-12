@@ -552,39 +552,41 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
   /// two-column split, kept for the sub-780 px slot the panel gets when the
   /// list underneath is still visible on smaller viewports.
   Widget _buildNarrow(ZebuTheme t, Ticket ticket, _TicketCaps caps) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        const SizedBox(height: ZebuSpacing.s3),
-        _FieldsTable(
-          ticket: ticket,
-          sidebar: false,
-          statusRowKey: _statusRowKey,
-          priorityRowKey: _priorityRowKey,
-          assigneeRowKey: _assigneeRowKey,
-          departmentRowKey: _departmentRowKey,
-          onStatusTap: caps.canChangeStatus ? _pickTicketStatus : null,
-          onPriorityTap: caps.canEdit ? _pickTicketPriority : null,
-          onAssigneeTap: caps.canAssign ? _pickTicketAssignee : null,
-          onDepartmentTap: caps.canTransfer ? _pickTicketDepartment : null,
-        ),
-        const SizedBox(height: ZebuSpacing.s2),
-        const _ActivityHeader(),
-        if (_thread.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s6),
-            child: Center(
-              child: Text(
-                'No messages yet',
-                style: ZebuTextStyles.small(context),
-              ),
-            ),
-          )
-        else ...[
-          ...zebuThreadItems(_thread),
+    return SelectionArea(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
           const SizedBox(height: ZebuSpacing.s3),
+          _FieldsTable(
+            ticket: ticket,
+            sidebar: false,
+            statusRowKey: _statusRowKey,
+            priorityRowKey: _priorityRowKey,
+            assigneeRowKey: _assigneeRowKey,
+            departmentRowKey: _departmentRowKey,
+            onStatusTap: caps.canChangeStatus ? _pickTicketStatus : null,
+            onPriorityTap: caps.canEdit ? _pickTicketPriority : null,
+            onAssigneeTap: caps.canAssign ? _pickTicketAssignee : null,
+            onDepartmentTap: caps.canTransfer ? _pickTicketDepartment : null,
+          ),
+          const SizedBox(height: ZebuSpacing.s2),
+          const _ActivityHeader(),
+          if (_thread.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: ZebuSpacing.s6),
+              child: Center(
+                child: Text(
+                  'No messages yet',
+                  style: ZebuTextStyles.small(context),
+                ),
+              ),
+            )
+          else ...[
+            ...zebuThreadItems(_thread),
+            const SizedBox(height: ZebuSpacing.s3),
+          ],
         ],
-      ],
+      ),
     );
   }
 
@@ -605,27 +607,29 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
           // without needing a heavier divider.
           child: ColoredBox(
             color: t.threadCanvas,
-            child: ListView(
-              padding: EdgeInsets.zero,
-              children: [
-                if (_thread.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: ZebuSpacing.s8,
-                    ),
-                    child: Center(
-                      child: Text(
-                        'No messages yet',
-                        style: ZebuTextStyles.small(context),
+            child: SelectionArea(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  if (_thread.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: ZebuSpacing.s8,
                       ),
-                    ),
-                  )
-                else ...[
-                  const SizedBox(height: ZebuSpacing.s3),
-                  ...zebuThreadItems(_thread),
-                  const SizedBox(height: ZebuSpacing.s3),
+                      child: Center(
+                        child: Text(
+                          'No messages yet',
+                          style: ZebuTextStyles.small(context),
+                        ),
+                      ),
+                    )
+                  else ...[
+                    const SizedBox(height: ZebuSpacing.s3),
+                    ...zebuThreadItems(_thread),
+                    const SizedBox(height: ZebuSpacing.s3),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -690,6 +694,61 @@ class _TicketDetailPanelState extends ConsumerState<TicketDetailPanel> {
 // then a title row below with the `#{number}` chip in front of the subject.
 // ---------------------------------------------------------------------------
 
+/// The Actions menu for a ticket.
+///
+/// Only surfaces what the agent may actually do — each entry gated by the
+/// same permission the matching `/tickets` endpoint enforces
+/// (`checkStaffPerm`), so the menu never offers a 403.
+List<AppDropdownEntry<String>> _ticketActions(Ticket ticket, _TicketCaps caps) {
+  final assigned = (ticket.assignee ?? '').isNotEmpty;
+  // Claim (self-assign) needs assign perm and only shows when unassigned;
+  // Release needs release perm and only shows when assigned.
+  final showClaim = !assigned && caps.canAssign;
+  final showRelease = assigned && caps.canRelease;
+  return [
+    const AppDropdownHeader<String>('Ticket actions'),
+    if (caps.canChangeStatus)
+      const AppDropdownItem(
+        value: 'status',
+        label: 'Change status',
+        svgAsset: Assets.actStatus,
+      ),
+    if (caps.canEdit)
+      const AppDropdownItem(
+        value: 'priority',
+        label: 'Set priority',
+        svgAsset: Assets.actPriority,
+      ),
+    if (caps.canAssign)
+      const AppDropdownItem(
+        value: 'assign',
+        label: 'Assign',
+        svgAsset: Assets.actAssign,
+      ),
+    if (caps.canTransfer)
+      const AppDropdownItem(
+        value: 'transfer',
+        label: 'Transfer dept',
+        svgAsset: Assets.actTransfer,
+      ),
+    if (showClaim || showRelease) ...[
+      if (caps.hasTopAction) const AppDropdownDivider<String>(),
+      if (showClaim)
+        const AppDropdownItem(
+          value: 'claim',
+          label: 'Claim',
+          svgAsset: Assets.actClaim,
+        )
+      else
+        const AppDropdownItem(
+          value: 'release',
+          label: 'Release',
+          svgAsset: Assets.actRelease,
+        ),
+    ],
+  ];
+}
+
 class _Header extends StatelessWidget {
   const _Header({
     required this.ticket,
@@ -728,12 +787,7 @@ class _Header extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           if (ticket == null)
-            Expanded(
-              child: Text(
-                'Loading…',
-                style: ZebuTextStyles.smallStrong(context),
-              ),
-            )
+            const Expanded(child: ZebuPanelTitleSkeleton())
           else
             Expanded(
               child: ZebuPanelTitle(
@@ -751,11 +805,14 @@ class _Header extends StatelessWidget {
               caps.actionsAvailable(
                 assigned: (ticket!.assignee ?? '').isNotEmpty,
               )) ...[
-            _ActionsBtn(ticket: ticket!, caps: caps, onSelected: onMenu!),
+            ZebuPanelActionsBtn(
+              onSelected: onMenu!,
+              entries: _ticketActions(ticket!, caps),
+            ),
             const SizedBox(width: ZebuSpacing.s2),
           ],
           if (onToggleFullscreen != null) ...[
-            _IconBtn(
+            ZebuPanelIconBtn(
               icon: isFullscreen ? Icons.close_fullscreen : Icons.open_in_full,
               tooltip: isFullscreen ? 'Exit fullscreen' : 'Fullscreen',
               onTap: onToggleFullscreen!,
@@ -765,174 +822,10 @@ class _Header extends StatelessWidget {
           // Not `destructive` — that paints a red hover fill, which belongs
           // to actions that lose something (Delete, Ban). Dismissing the
           // panel discards nothing, so it hovers like its neighbours.
-          _IconBtn(icon: Icons.close, tooltip: 'Close', onTap: onClose),
+          ZebuPanelIconBtn(icon: Icons.close, tooltip: 'Close', onTap: onClose),
         ],
       ),
     );
-  }
-}
-
-/// Actions button — outlined ghost pill with `Actions ⌄` label. Same
-/// visual language as the neighbouring [_IconBtn] cluster (subtle border,
-/// bgHover fill on hover) instead of the previous solid-accent default,
-/// so the header reads as one calm control group.
-class _ActionsBtn extends StatefulWidget {
-  const _ActionsBtn({
-    required this.ticket,
-    required this.caps,
-    required this.onSelected,
-  });
-  final Ticket ticket;
-  final _TicketCaps caps;
-  final Future<void> Function(String value) onSelected;
-
-  @override
-  State<_ActionsBtn> createState() => _ActionsBtnState();
-}
-
-class _ActionsBtnState extends State<_ActionsBtn> {
-  bool _hover = false;
-
-  Future<void> _open() async {
-    final ticket = widget.ticket;
-    final caps = widget.caps;
-    final assigned = (ticket.assignee ?? '').isNotEmpty;
-    // Claim (self-assign) needs assign perm and only shows when unassigned;
-    // Release needs release perm and only shows when assigned.
-    final showClaim = !assigned && caps.canAssign;
-    final showRelease = assigned && caps.canRelease;
-    // Only surface actions the agent may actually perform — each gated by the
-    // same permission the matching /tickets endpoint enforces (checkStaffPerm).
-    final chosen = await showAppDropdown<String>(
-      context,
-      entries: [
-        const AppDropdownHeader<String>('Ticket actions'),
-        if (caps.canChangeStatus)
-          const AppDropdownItem(
-            value: 'status',
-            label: 'Change status',
-            svgAsset: Assets.actStatus,
-          ),
-        if (caps.canEdit)
-          const AppDropdownItem(
-            value: 'priority',
-            label: 'Set priority',
-            svgAsset: Assets.actPriority,
-          ),
-        if (caps.canAssign)
-          const AppDropdownItem(
-            value: 'assign',
-            label: 'Assign',
-            svgAsset: Assets.actAssign,
-          ),
-        if (caps.canTransfer)
-          const AppDropdownItem(
-            value: 'transfer',
-            label: 'Transfer dept',
-            svgAsset: Assets.actTransfer,
-          ),
-        if (showClaim || showRelease) ...[
-          if (caps.hasTopAction) const AppDropdownDivider<String>(),
-          if (showClaim)
-            const AppDropdownItem(
-              value: 'claim',
-              label: 'Claim',
-              svgAsset: Assets.actClaim,
-            )
-          else
-            const AppDropdownItem(
-              value: 'release',
-              label: 'Release',
-              svgAsset: Assets.actRelease,
-            ),
-        ],
-      ],
-    );
-    if (chosen != null) await widget.onSelected(chosen);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Tooltip(
-      message: 'Actions',
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _open,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            height: 32,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(
-              color: _hover ? t.bgHover : t.bgElevated,
-              border: Border.all(color: t.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(5),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Actions',
-                  style: ZebuTextStyles.body(
-                    context,
-                  ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(width: 4),
-                Icon(Icons.expand_more, size: 16, color: t.textPrimary),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _IconBtn extends StatefulWidget {
-  const _IconBtn({required this.icon, required this.onTap, this.tooltip});
-  final IconData icon;
-  final VoidCallback onTap;
-  final String? tooltip;
-
-  @override
-  State<_IconBtn> createState() => _IconBtnState();
-}
-
-class _IconBtnState extends State<_IconBtn> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final bg = _hover ? t.bgHover : t.bgElevated;
-    final fg = t.textPrimary;
-    final child = MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: 32,
-          height: 32,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: bg,
-            // border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
-          ),
-          child: Icon(widget.icon, size: 18, color: fg),
-        ),
-      ),
-    );
-    return widget.tooltip == null
-        ? child
-        : Tooltip(message: widget.tooltip!, child: child);
   }
 }
 

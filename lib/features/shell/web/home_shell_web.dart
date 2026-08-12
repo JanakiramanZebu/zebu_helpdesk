@@ -13,6 +13,7 @@ import 'nav_rail.dart';
 import 'profile_menu_popover.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_text_styles.dart';
+import 'create_fab.dart';
 
 /// Web-only top-level shell. Replaces `HomeShell` on the web target.
 ///
@@ -324,6 +325,21 @@ class _HomeShellWebState extends ConsumerState<HomeShellWeb> {
               //           setState(() => _panelCollapsed = !_panelCollapsed),
               //     ),
               //   ),
+
+              // Create floats over the workspace rather than living as a
+              // rail row that opened a 240 px pane to offer two choices.
+              // Before the rail in the stack, so the rail's hover-expand
+              // still paints over it.
+              Positioned(
+                left: ShellTokens.railWidth,
+                top: 0,
+                right: 0,
+                bottom: 0,
+                child: CreateFab(
+                  onNewTicket: () => showCreateTicketDialog(context),
+                  onNewTask: () => showCreateTaskDialog(context),
+                ),
+              ),
 
               // --- Floating rail -----------------------------------------
               Positioned(

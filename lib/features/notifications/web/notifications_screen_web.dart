@@ -11,12 +11,15 @@ import '../../../widgets/app_dialog.dart';
 import '../../../widgets/app_toast.dart';
 import '../../../widgets/slide_over_host.dart';
 import '../../../widgets/states.dart';
+import '../../../widgets/web/bulk_action_bar.dart';
+import '../../../widgets/web/dots_loader.dart';
 import '../../../widgets/web/list_search_input.dart';
 import '../../../widgets/web/list_table_shell.dart';
 import '../../../widgets/web/page_header.dart';
 import '../../../widgets/web/segmented_tab_bar.dart';
 import '../../../widgets/web/select_checkbox.dart';
 import '../../../widgets/web/status_pill.dart';
+import '../../../widgets/web/zebu_data_grid.dart';
 import '../../../widgets/web_filter_button.dart';
 import '../../tasks/web/task_detail_panel.dart';
 import '../../tickets/web/ticket_detail_panel.dart';
@@ -30,13 +33,11 @@ import '../../../res/zebu_spacing.dart';
 /// Leading fixed-width select column. Holds the per-row checkbox that
 /// drives the bulk mark-read / delete actions.
 const double _kColSelectWidth = 44;
-const double _kColTypeWidth = 90;
+const double _kColTypeWidth = 108;
 const int _kColTitleFlex = 5;
 const int _kColActorFlex = 2;
 const double _kColRefWidth = 100;
-const double _kColStatusWidth = 100;
 const double _kColReceivedWidth = 110;
-const double _kColActionWidth = 44;
 
 /// Fixed table row height — uniform, Asana-style rows matching the tickets &
 /// tasks lists. Replaces `IntrinsicHeight` so every row is the same height and
@@ -47,7 +48,7 @@ const double _kRowHeight = 48;
 /// (44 + 90 + 100 + 100 + 110 + 44 = 488), the 3 px leading accent-stripe
 /// rail, and a readable minimum for each flex column. Below this the
 /// table horizontally scrolls instead of squeezing columns.
-const double _kTableMinWidth = 1084;
+const double _kTableMinWidth = 984;
 
 const _views = <({String key, String label, IconData icon})>[
   (key: 'all', label: 'All', icon: Icons.all_inbox_outlined),
@@ -219,6 +220,20 @@ class _NotificationsScreenWebState
     super.dispose();
   }
 
+  /// Pulls the next page while the list is too short to scroll.
+  ///
+  /// Infinite scroll assumes a full viewport; grouping breaks that assumption
+  /// because one page of notifications can collapse to three rows. Without
+  /// this the list stops at whatever the first page happened to group into,
+  /// and no amount of scrolling asks for more — there is nothing to scroll.
+  void _fillViewport() {
+    if (!_hasMore || _loadingPage) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_vScroll.hasClients) return;
+      if (_vScroll.position.maxScrollExtent <= 0) _loadPage();
+    });
+  }
+
   void _onVScroll() {
     if (_vScroll.position.pixels >= _vScroll.position.maxScrollExtent - 320) {
       _loadPage();
@@ -255,6 +270,7 @@ class _NotificationsScreenWebState
         _page += 1;
         _initialLoad = false;
       });
+      _fillViewport();
     } catch (e) {
       if (!mounted) return;
       setState(() => _pageError = e);
@@ -283,8 +299,10 @@ class _NotificationsScreenWebState
   Future<void> _deleteAll() async {
     final ok = await showAppConfirmDialog(
       context,
-      title: 'Delete all notifications?',
-      message: 'This cannot be undone.',
+      title: 'Delete all',
+      message:
+          'Are you sure you want to delete every notification? '
+          'This cannot be undone.',
       confirmLabel: 'Delete all',
       destructive: true,
     );
@@ -303,8 +321,10 @@ class _NotificationsScreenWebState
   Future<void> _deleteGroup(NotificationGroup g) async {
     final ok = await showAppConfirmDialog(
       context,
-      title: 'Delete notifications for this ${g.type}?',
-      message: 'This cannot be undone.',
+      title: 'Delete',
+      message:
+          'Are you sure you want to delete the notifications for this '
+          '${g.type}? This cannot be undone.',
       confirmLabel: 'Delete',
       destructive: true,
     );
@@ -378,9 +398,11 @@ class _NotificationsScreenWebState
     if (keys.isEmpty) return;
     final ok = await showAppConfirmDialog(
       context,
-      title:
-          'Delete notifications for ${keys.length} ${keys.length == 1 ? 'object' : 'objects'}?',
-      message: 'This cannot be undone.',
+      title: 'Delete',
+      message:
+          'Are you sure you want to delete the notifications for '
+          '${keys.length} ${keys.length == 1 ? 'item' : 'items'}? '
+          'This cannot be undone.',
       confirmLabel: 'Delete',
       destructive: true,
     );
@@ -575,7 +597,7 @@ class _NotificationsScreenWebState
   /// The scrolling list of grouped object rows (or skeleton / error / empty).
   Widget _buildGroupedBody(List<NotificationGroup> groups) {
     if (_initialLoad && _loadingPage) {
-      return const _NotificationTableSkeleton();
+      return const DotsLoader();
     }
     if (_pageError != null && _all.isEmpty) {
       return ErrorView(
@@ -593,18 +615,17 @@ class _NotificationsScreenWebState
     return ListView.builder(
       controller: _vScroll,
       padding: EdgeInsets.zero,
-      itemCount: groups.length + (_hasMore ? 1 : 0),
+      // The trailing spinner tracks an in-flight fetch, not the mere
+      // possibility of more. Keyed off `_hasMore` it sat there permanently:
+      // grouping collapses 25 notifications into a handful of object rows, so
+      // the list is rarely tall enough to scroll, the scroll trigger never
+      // fires, and nothing ever clears it.
+      itemCount: groups.length + (_hasMore && _loadingPage ? 1 : 0),
       itemBuilder: (context, index) {
         if (index >= groups.length) {
           return const Padding(
-            padding: EdgeInsets.all(16),
-            child: Center(
-              child: SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(strokeWidth: 2.2),
-              ),
-            ),
+            padding: EdgeInsets.all(ZebuSpacing.s4),
+            child: DotsLoader(),
           );
         }
         final g = groups[index];
@@ -615,7 +636,6 @@ class _NotificationsScreenWebState
           // can label the bulk button Mark read / Mark unread.
           onToggleSelected: () => _toggleSelected(g.key, !g.hasUnread),
           onTap: () => _open(g),
-          onDelete: () => _deleteGroup(g),
         );
       },
     );
@@ -666,10 +686,11 @@ class _NotificationsScreenWebState
                     // column. Threshold `640` matches the [PageHeader]
                     // stack breakpoint so the switch happens exactly when
                     // the header stops fitting side-by-side.
-                    final compact = c.hasBoundedWidth && c.maxWidth < 640;
-                    // Labelled ghosts (~260) + filter (~48) + gaps → 360;
-                    // icon-only ghosts (~40 each) + filter (~48) → 140.
-                    final actionsAllowance = compact ? 140.0 : 360.0;
+                    // Only the filter button sits beside the search field
+                    // now — the two whole-list ghosts moved to the floating
+                    // bar, so the reserve drops from 360 to just the filter
+                    // plus its gap.
+                    const actionsAllowance = 60.0;
                     final available = c.hasBoundedWidth
                         ? c.maxWidth - actionsAllowance
                         : 320.0;
@@ -677,14 +698,6 @@ class _NotificationsScreenWebState
                     return Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        WebFilterButton(
-                          filters: _quickFilters(),
-                          // Always pass the reset callback — the popover
-                          // decides visibility itself from its live local
-                          // state.
-                          onClear: () => setState(_typeFlags.clear),
-                        ),
-                        const SizedBox(width: ZebuSpacing.s3),
                         SizedBox(
                           width: searchWidth,
                           child: ListSearchInput(
@@ -693,51 +706,13 @@ class _NotificationsScreenWebState
                           ),
                         ),
                         const SizedBox(width: ZebuSpacing.s3),
-                        // When one or more rows are selected the two ghost
-                        // buttons switch to *bulk-on-selection* mode:
-                        // "Mark all read" → "Mark read (N)" or "Mark
-                        // unread (N)" depending on whether every selected
-                        // row is currently read (captured at click time
-                        // in `_selectedReadState`), and "Delete all" →
-                        // "Delete (N)". No selection → they behave as
-                        // "act on the entire list" (original behaviour).
-                        Builder(
-                          builder: (_) {
-                            final selCount = _selectedReadState.length;
-                            if (selCount == 0) {
-                              return _GhostAction(
-                                icon: Icons.done_all_rounded,
-                                label: 'Mark all read',
-                                compact: compact,
-                                onTap: _markAllRead,
-                              );
-                            }
-                            final allRead = _allSelectedRead;
-                            return _GhostAction(
-                              icon: allRead
-                                  ? Icons.mark_email_unread_outlined
-                                  : Icons.done_all_rounded,
-                              label: allRead
-                                  ? 'Mark unread ($selCount)'
-                                  : 'Mark read ($selCount)',
-                              compact: compact,
-                              onTap: allRead
-                                  ? _markSelectedUnread
-                                  : _markSelectedRead,
-                            );
-                          },
-                        ),
-                        const SizedBox(width: ZebuSpacing.s2),
-                        _GhostAction(
-                          icon: Icons.delete_outline_rounded,
-                          label: _selectedReadState.isEmpty
-                              ? 'Delete all'
-                              : 'Delete (${_selectedReadState.length})',
-                          compact: compact,
-                          tone: t.danger,
-                          onTap: _selectedReadState.isEmpty
-                              ? _deleteAll
-                              : _deleteSelected,
+
+                        WebFilterButton(
+                          filters: _quickFilters(),
+                          // Always pass the reset callback — the popover
+                          // decides visibility itself from its live local
+                          // state.
+                          onClear: () => setState(_typeFlags.clear),
                         ),
                       ],
                     );
@@ -758,52 +733,91 @@ class _NotificationsScreenWebState
                 }),
               ),
               Expanded(
-                child: ListTableShell(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final horizontalScroll =
-                          constraints.maxWidth <= _kTableMinWidth;
-                      final tableWidth = horizontalScroll
-                          ? _kTableMinWidth
-                          : constraints.maxWidth;
-                      return Scrollbar(
-                        controller: _tableHScroll,
-                        scrollbarOrientation: ScrollbarOrientation.bottom,
-                        child: SingleChildScrollView(
-                          controller: _tableHScroll,
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: tableWidth,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                _TableHeader(
-                                  scrollGutter: horizontalScroll,
-                                  allChecked:
-                                      _visibleKeys.isNotEmpty &&
-                                      _selectedReadState.keys
-                                          .toSet()
-                                          .containsAll(_visibleKeys),
-                                  someChecked:
-                                      _selectedReadState.isNotEmpty &&
-                                      !_selectedReadState.keys
-                                          .toSet()
-                                          .containsAll(_visibleKeys),
-                                  onToggleAll: _toggleSelectAll,
+                child: Stack(
+                  children: [
+                    ListTableShell(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final horizontalScroll =
+                              constraints.maxWidth <= _kTableMinWidth;
+                          final tableWidth = horizontalScroll
+                              ? _kTableMinWidth
+                              : constraints.maxWidth;
+                          return Scrollbar(
+                            controller: _tableHScroll,
+                            scrollbarOrientation: ScrollbarOrientation.bottom,
+                            child: SingleChildScrollView(
+                              controller: _tableHScroll,
+                              scrollDirection: Axis.horizontal,
+                              child: SizedBox(
+                                width: tableWidth,
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    _TableHeader(
+                                      scrollGutter: horizontalScroll,
+                                      allChecked:
+                                          _visibleKeys.isNotEmpty &&
+                                          _selectedReadState.keys
+                                              .toSet()
+                                              .containsAll(_visibleKeys),
+                                      someChecked:
+                                          _selectedReadState.isNotEmpty &&
+                                          !_selectedReadState.keys
+                                              .toSet()
+                                              .containsAll(_visibleKeys),
+                                      onToggleAll: _toggleSelectAll,
+                                    ),
+                                    Expanded(
+                                      child: ColoredBox(
+                                        color: t.bgElevated,
+                                        child: _buildGroupedBody(groups),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                Expanded(
-                                  child: ColoredBox(
-                                    color: t.bgElevated,
-                                    child: _buildGroupedBody(groups),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
+                          );
+                        },
+                      ),
+                    ),
+                    if (_selectedReadState.isNotEmpty)
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 32,
+                        child: WebBulkBar(
+                          count: _selectedReadState.length,
+                          onClear: () => setState(_selectedReadState.clear),
+                          actions: [
+                            WebBulkAction(
+                              icon: _allSelectedRead
+                                  ? Icons.mark_email_unread_outlined
+                                  : Icons.done_all_rounded,
+                              label: _allSelectedRead
+                                  ? 'Mark unread'
+                                  : 'Mark read',
+                              primary: true,
+                              onTap: (_) => _allSelectedRead
+                                  ? _markSelectedUnread()
+                                  : _markSelectedRead(),
+                            ),
+                            WebBulkAction(
+                              icon: Icons.delete_outline_rounded,
+                              label: 'Delete',
+                              // Inline, not behind ⋯: with only two actions
+                              // the menu hid half the bar's contents behind
+                              // an extra click.
+                              primary: true,
+                              destructive: true,
+                              onTap: (_) => _deleteSelected(),
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ],
@@ -864,9 +878,14 @@ class _GhostActionState extends State<_GhostAction> {
               const SizedBox(width: 6),
               Text(
                 widget.label,
-                style: ZebuTextStyles.small(
+                // Matches the panel header's Actions pill — 14 px medium.
+                // At 12 px semibold these read as a different control from
+                // every other ghost button in the app.
+                style: ZebuTextStyles.body(
                   context,
-                ).copyWith(color: fg, fontWeight: FontWeight.w600),
+                  color: fg,
+                  fontWeight: ZebuFonts.medium,
+                ),
               ),
             ],
           );
@@ -878,7 +897,7 @@ class _GhostActionState extends State<_GhostAction> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 100),
-          height: 40,
+          height: 32,
           // Square-ish icon button in compact mode; roomier padding when
           // the label is visible.
           padding: EdgeInsets.symmetric(horizontal: iconOnly ? 10 : 12),
@@ -892,7 +911,7 @@ class _GhostActionState extends State<_GhostAction> {
                   : t.borderSubtle,
               width: 1,
             ),
-            borderRadius: BorderRadius.circular(ZebuRadius.rSm),
+            borderRadius: BorderRadius.circular(5),
           ),
           child: child,
         ),
@@ -965,17 +984,15 @@ class _TableHeader extends StatelessWidget {
                 ),
               ),
             ),
-            const _HeaderCell(width: _kColTypeWidth, label: 'Type'),
-            const _HeaderCell(flex: _kColTitleFlex, label: 'Notification'),
-            const _HeaderCell(flex: _kColActorFlex, label: 'Actor'),
             const _HeaderCell(width: _kColRefWidth, label: 'Reference'),
-            const _HeaderCell(width: _kColStatusWidth, label: 'Status'),
+            const _HeaderCell(flex: _kColTitleFlex, label: 'Notification'),
+            const _HeaderCell(width: _kColTypeWidth, label: 'Type'),
+            const _HeaderCell(flex: _kColActorFlex, label: 'Actor'),
             const _HeaderCell(
               width: _kColReceivedWidth,
               label: 'Received',
               alignRight: true,
             ),
-            const _HeaderCell(width: _kColActionWidth, label: ''),
             if (scrollGutter) const SizedBox(width: 10),
           ],
         ),
@@ -1072,7 +1089,6 @@ class _NotificationGroupRow extends StatefulWidget {
   const _NotificationGroupRow({
     required this.group,
     required this.onTap,
-    required this.onDelete,
     required this.selected,
     required this.onToggleSelected,
   });
@@ -1080,7 +1096,6 @@ class _NotificationGroupRow extends StatefulWidget {
   /// One collapsed object (all of an agent's notifications for a ticket/task).
   final NotificationGroup group;
   final VoidCallback onTap;
-  final VoidCallback onDelete;
 
   /// True when the row's leading checkbox is ticked. Drives the object-level
   /// bulk-action selection on the parent screen.
@@ -1112,8 +1127,14 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
 
   /// Tone the Type-column icon + label by object type (Task = green,
   /// Ticket = accent blue) so the column scans as two colour bands.
-  Color _typeTone(ZebuTheme t) =>
-      widget.group.type == 'task' ? ZebuTheme.success : t.accent;
+  /// One hue per type, so the column is legible from the icon alone.
+  ///
+  /// Tickets take the product accent — they are the primary object here.
+  /// Tasks take teal, which is far enough round the wheel to separate at
+  /// 13 px and is already in the avatar palette, so it is not a new colour.
+  Color _typeTone(ZebuTheme t) => widget.group.type == 'task'
+      ? (t.isLight ? const Color(0xFF0E7490) : const Color(0xFF5CC8D8))
+      : t.accent;
 
   @override
   Widget build(BuildContext context) {
@@ -1166,45 +1187,92 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
                   ),
                 ),
                 _BodyCell(
-                  width: _kColTypeWidth,
-                  child: StatusPill(
-                    label: isTask ? 'Task' : 'Ticket',
-                    color: typeTone,
-                    icon: _eventIcon,
-                    fontWeight: FontWeight.w600,
+                  width: _kColRefWidth,
+                  child: Text(
+                    '#${g.objectId}',
+                    style: ZebuTextStyles.tableCell(
+                      context,
+                      color: t.accent,
+                      fontWeight: ZebuFonts.semiBold,
+                    ).withTabularNums(),
                   ),
                 ),
                 _BodyCell(
                   flex: _kColTitleFlex,
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: ZebuTextStyles.small(context).copyWith(
-                      color: t.textPrimary,
-                      fontWeight: unread ? FontWeight.w600 : FontWeight.w500,
-                    ),
+                  // Unread is carried by the row itself — a bold title beside
+                  // an accent dot, plus the row's tinted fill. A whole column
+                  // spelling out "Unread" / "Read" repeated on every line what
+                  // the line already showed.
+                  child: Row(
+                    children: [
+                      if (unread) ...[
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: t.accent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: ZebuSpacing.s2),
+                      ],
+                      Expanded(
+                        child: Text(
+                          title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ZebuTextStyles.tableCell(
+                            context,
+                            fontWeight: unread
+                                ? ZebuFonts.semiBold
+                                : ZebuFonts.medium,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                _BodyCell(
+                  width: _kColTypeWidth,
+                  // Icon plus a coloured word, not a filled chip. Every row
+                  // carries this cell, so a pill on each one banded the whole
+                  // table — and the column only ever holds two values, which
+                  // an outline glyph separates on its own.
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Glyph in a tinted tile, label in ordinary ink — the
+                      // same device the ticket sidebar uses for its field
+                      // icons. Colouring the word as well made the column
+                      // read as a link.
+                      Icon(
+                        isTask
+                            ? Icons.assignment_outlined
+                            : Icons.confirmation_number_outlined,
+                        size: 16,
+                        color: typeTone,
+                      ),
+                      const SizedBox(width: ZebuSpacing.s2),
+                      // Flexible so a narrow viewport ellipsises the word
+                      // instead of overflowing the cell — "Ticket" at 14 px
+                      // beside a 22 px tile was 0.7 px over the old width.
+                      Flexible(
+                        child: Text(
+                          isTask ? 'Task' : 'Ticket',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: ZebuTextStyles.tableCell(
+                            context,
+                            fontWeight: ZebuFonts.medium,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 _BodyCell(
                   flex: _kColActorFlex,
-                  child: _TextCell(text: latest.actor ?? ''),
-                ),
-                _BodyCell(
-                  width: _kColRefWidth,
-                  child: Text(
-                    '#${g.objectId}',
-                    style: ZebuTextStyles.small(context)
-                        .copyWith(fontWeight: FontWeight.w600, color: t.accent)
-                        .withTabularNums(),
-                  ),
-                ),
-                _BodyCell(
-                  width: _kColStatusWidth,
-                  child: StatusPill(
-                    label: unread ? 'Unread' : 'Read',
-                    color: unread ? t.accent : t.textSecondary,
-                  ),
+                  child: ZebuGridTextCell(text: latest.actor ?? ''),
                 ),
                 _BodyCell(
                   width: _kColReceivedWidth,
@@ -1215,17 +1283,8 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
                     softWrap: false,
                     overflow: TextOverflow.clip,
                     textAlign: TextAlign.right,
-                    style: ZebuTextStyles.small(context)
-                        .copyWith(
-                          color: t.textPrimary,
-                          fontWeight: FontWeight.w500,
-                        )
-                        .withTabularNums(),
+                    style: ZebuTextStyles.tableCell(context).withTabularNums(),
                   ),
-                ),
-                _BodyCell(
-                  width: _kColActionWidth,
-                  child: _DeleteButton(visible: _hover, onTap: widget.onDelete),
                 ),
               ],
             ),
@@ -1240,70 +1299,6 @@ class _NotificationGroupRowState extends State<_NotificationGroupRow> {
 // Cell primitives
 // ---------------------------------------------------------------------------
 
-class _TextCell extends StatelessWidget {
-  const _TextCell({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final empty = text.trim().isEmpty;
-    return Text(
-      empty ? '—' : text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: ZebuTextStyles.small(context).copyWith(
-        color: empty ? t.textSecondary : t.textPrimary,
-        fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
-      ),
-    );
-  }
-}
-
-class _DeleteButton extends StatefulWidget {
-  const _DeleteButton({required this.visible, required this.onTap});
-  final bool visible;
-  final VoidCallback onTap;
-
-  @override
-  State<_DeleteButton> createState() => _DeleteButtonState();
-}
-
-class _DeleteButtonState extends State<_DeleteButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return AnimatedOpacity(
-      opacity: widget.visible ? 1 : 0,
-      duration: const Duration(milliseconds: 120),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          onTap: widget.visible ? widget.onTap : null,
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: _hover ? t.dangerLight : Colors.transparent,
-              borderRadius: BorderRadius.circular(ZebuRadius.rSm),
-            ),
-            child: Icon(
-              Icons.delete_outline,
-              size: 18,
-              color: _hover ? t.danger : t.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Skeleton loader — rendered by [PagedListView.loadingBuilder] on the first
 // paint before notification rows arrive. Mirrors the real row's column grid
@@ -1311,119 +1306,3 @@ class _DeleteButtonState extends State<_DeleteButton> {
 // jump. A single shared pulse controller drives the greyscale opacity across
 // every placeholder block for a synchronised "one heartbeat" feel.
 // ---------------------------------------------------------------------------
-
-class _NotificationTableSkeleton extends StatefulWidget {
-  const _NotificationTableSkeleton();
-
-  @override
-  State<_NotificationTableSkeleton> createState() =>
-      _NotificationTableSkeletonState();
-}
-
-class _NotificationTableSkeletonState extends State<_NotificationTableSkeleton>
-    with SingleTickerProviderStateMixin {
-  static const double _kApproxRowHeight = 32;
-
-  late final AnimationController _pulse;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulse = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat(reverse: true);
-  }
-
-  @override
-  void dispose() {
-    _pulse.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final rowCount = constraints.maxHeight.isFinite
-            ? (constraints.maxHeight / _kApproxRowHeight).ceil().clamp(6, 40)
-            : 12;
-        return AnimatedBuilder(
-          animation: _pulse,
-          builder: (context, _) {
-            final color = Color.lerp(t.bgTertiary, t.bgHover, _pulse.value)!;
-            return ColoredBox(
-              color: t.bgElevated,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (int i = 0; i < rowCount; i++) _SkeletonRow(shade: color),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-}
-
-class _SkeletonRow extends StatelessWidget {
-  const _SkeletonRow({required this.shade});
-  final Color shade;
-
-  Widget _block(double width) => _SkeletonBlock(width: width, color: shade);
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Leading spacer that matches the real row's accent-stripe
-            // width — keeps content columns pixel-aligned with the live
-            // table so nothing shifts when data arrives.
-            const SizedBox(width: 3),
-            _BodyCell(width: _kColSelectWidth, child: const SizedBox.shrink()),
-            _BodyCell(width: _kColTypeWidth, child: _block(60)),
-            _BodyCell(flex: _kColTitleFlex, child: _block(320)),
-            _BodyCell(flex: _kColActorFlex, child: _block(110)),
-            _BodyCell(width: _kColRefWidth, child: _block(50)),
-            _BodyCell(width: _kColStatusWidth, child: _block(60)),
-            _BodyCell(
-              width: _kColReceivedWidth,
-              alignRight: true,
-              child: _block(56),
-            ),
-            _BodyCell(width: _kColActionWidth, child: const SizedBox.shrink()),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SkeletonBlock extends StatelessWidget {
-  const _SkeletonBlock({required this.width, required this.color});
-  final double width;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      height: 12,
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(4),
-      ),
-    );
-  }
-}

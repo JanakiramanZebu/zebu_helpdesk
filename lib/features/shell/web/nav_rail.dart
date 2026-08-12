@@ -91,19 +91,6 @@ class NavRail extends ConsumerWidget {
               const SizedBox(height: 12),
               _BrandSlot(expanded: expanded),
               const SizedBox(height: 14),
-              // Create is a peer of the destinations, not a coloured CTA.
-              // A solid fill at 44 px reads as a *filled tile*, which is the
-              // vocabulary the selected state already owns — two loud marks
-              // and the louder one wasn't the state. Colour in this rail now
-              // means one thing only: you are here. While the Create panel is
-              // open you *are* here, so it takes the same selected treatment.
-              _NavRow(
-                icon: Icons.add_rounded,
-                label: 'Create',
-                expanded: expanded,
-                selected: createOpen,
-                onTap: onCreate,
-              ),
               _NavRow(
                 asset: Assets.navDashboard,
                 label: 'Dashboard',

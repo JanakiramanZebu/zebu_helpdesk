@@ -10,6 +10,7 @@ import '../res/zebu_text_styles.dart';
 import 'list_controls.dart' show DateRange;
 import 'svg_icon.dart';
 import 'web/select_checkbox.dart';
+import 'web/zebu_select.dart';
 
 /// One selectable quick-filter chip shown inside the [WebFilterButton]'s
 /// popover.
@@ -715,8 +716,6 @@ class _FilterDropdown<T> extends StatefulWidget {
 }
 
 class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
-  bool _hover = false;
-
   Future<void> _open(BuildContext ctx) async {
     final box = ctx.findRenderObject();
     if (box is! RenderBox || !box.attached) return;
@@ -781,58 +780,8 @@ class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Builder(
-      builder: (btnCtx) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        onEnter: (_) => setState(() => _hover = true),
-        onExit: (_) => setState(() => _hover = false),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => _open(btnCtx),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 100),
-            width: double.infinity,
-            height: 40,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            // Scalper's grey field, but a neutral hairline rather than its
-            // brand-blue outline: scalper has two dropdowns in a dialog, this
-            // panel has seven stacked two-up, and seven blue boxes read as a
-            // grid of alerts. The fill alone carries "this is a control".
-            decoration: BoxDecoration(
-              color: _hover ? t.bgHover : t.bgTertiary,
-              border: Border.all(color: t.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.label,
-                    style: ZebuTextStyles.body(
-                      context,
-                      color: t.textPrimary,
-                      fontWeight: ZebuFonts.medium,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  Icons.keyboard_arrow_down,
-                  size: 20,
-                  color: t.textSecondary,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      ZebuSelect(label: widget.label, onTap: _open);
 }
 
 class _DropdownMenu<T> extends StatelessWidget {

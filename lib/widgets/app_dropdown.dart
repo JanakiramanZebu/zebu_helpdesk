@@ -129,10 +129,17 @@ Future<T?> showAppDropdown<T>(
     8.0,
     (viewport.width - menuWidth - 8.0).clamp(8.0, viewport.width),
   );
-  final menuTop = anchorTopLeft.dy + anchorSize.height + 6;
-  // If the anchor is near the bottom edge, cap the menu height instead of
-  // flipping upward. 24 px keeps the menu clear of the viewport bottom.
-  final maxMenuHeight = (viewport.height - menuTop - 24).clamp(120.0, 480.0);
+  // Room on each side of the anchor, keeping 24 px clear of the viewport.
+  final belowTop = anchorTopLeft.dy + anchorSize.height + 6;
+  final spaceBelow = viewport.height - belowTop - 24;
+  final spaceAbove = anchorTopLeft.dy - 6 - 24;
+
+  // Flip up when the anchor sits near the bottom edge. Capping the height
+  // instead — which is what this used to do — still opened downward, so a
+  // menu anchored to a control at the foot of the page ran straight off the
+  // screen with only its first row visible.
+  final openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+  final maxMenuHeight = (openUp ? spaceAbove : spaceBelow).clamp(120.0, 480.0);
 
   final completer = Completer<T?>();
   late OverlayEntry entry;
@@ -158,7 +165,10 @@ Future<T?> showAppDropdown<T>(
           ),
           Positioned(
             left: menuLeft,
-            top: menuTop,
+            // Anchored by its bottom edge when flipped, so the menu grows
+            // upward from the control rather than needing its height known.
+            top: openUp ? null : belowTop,
+            bottom: openUp ? viewport.height - anchorTopLeft.dy + 6 : null,
             width: menuWidth,
             child: ConstrainedBox(
               constraints: BoxConstraints(maxHeight: maxMenuHeight),

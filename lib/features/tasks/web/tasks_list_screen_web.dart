@@ -537,7 +537,7 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
       ZebuGridColumn(
         flex: _kColDeptFlex,
         label: 'Department',
-        cell: (task) => _TextCell(text: task.departmentName ?? ''),
+        cell: (task) => ZebuGridTextCell(text: task.departmentName ?? ''),
       ),
       ZebuGridColumn(
         width: _kColPriorityWidth,
@@ -561,8 +561,10 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
       ZebuGridColumn(
         flex: _kColAssigneeFlex,
         label: 'Assigned to',
-        cell: (task) =>
-            _TextCell(text: task.assignee ?? '', emptyLabel: 'Unassigned'),
+        cell: (task) => ZebuGridTextCell(
+          text: task.assignee ?? '',
+          emptyLabel: 'Unassigned',
+        ),
       ),
       ZebuGridColumn(
         width: _kColDueWidth,
@@ -731,78 +733,91 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
                 _selectedIds.clear();
               }),
             ),
-            if (_selectedIds.isNotEmpty)
-              WebBulkBar(
-                count: _selectedIds.length,
-                onClear: _clearSelection,
-                actions: [
-                  WebBulkButton(
-                    icon: Icons.check_circle_outline,
-                    label: 'Complete',
-                    onTap: (_) => _bulkComplete(),
-                  ),
-                  WebBulkButton(
-                    icon: Icons.replay,
-                    label: 'Reopen',
-                    onTap: (_) => _bulkReopen(),
-                  ),
-                  WebBulkButton(
-                    icon: Icons.assignment_ind_outlined,
-                    label: 'Assign',
-                    hasMenu: true,
-                    onTap: _bulkAssign,
-                  ),
-                  WebBulkButton(
-                    icon: Icons.flag_outlined,
-                    label: 'Priority',
-                    hasMenu: true,
-                    onTap: _bulkPriority,
-                  ),
-                  WebBulkButton(
-                    icon: Icons.business_outlined,
-                    label: 'Transfer',
-                    hasMenu: true,
-                    onTap: _bulkTransfer,
-                  ),
-                ],
-              ),
+            // Bulk actions float over the table (see the Stack below), so nothing
+            // is inserted here — ticking a box must not move the rows.
             Expanded(
-              child: ListTableShell(
-                child: ZebuDataGrid<Task>(
-                  columns: _columns(context),
-                  minWidth: _kTableMinWidth,
-                  rowHeight: _kRowHeight,
-                  selection: ZebuGridSelection(
-                    allChecked: _allChecked,
-                    someChecked: _someChecked,
-                    onToggleAll: _toggleCheckAll,
-                  ),
-                  body: (context, row) => PagedListView<Task>(
-                    padding: EdgeInsets.zero,
-                    refreshKey: '$_view|$_search|$_refreshSeq',
-                    filterKey: filterKey,
-                    itemFilter: (task) => _matches(
-                      task,
-                      meNameLower: meNameLower,
-                      bounds: dateBounds,
-                      needle: searchNeedle,
-                      facetNeedles: facetNeedles,
+              child: Stack(
+                children: [
+                  ListTableShell(
+                    child: ZebuDataGrid<Task>(
+                      columns: _columns(context),
+                      minWidth: _kTableMinWidth,
+                      rowHeight: _kRowHeight,
+                      selection: ZebuGridSelection(
+                        allChecked: _allChecked,
+                        someChecked: _someChecked,
+                        onToggleAll: _toggleCheckAll,
+                      ),
+                      body: (context, row) => PagedListView<Task>(
+                        padding: EdgeInsets.zero,
+                        refreshKey: '$_view|$_search|$_refreshSeq',
+                        filterKey: filterKey,
+                        itemFilter: (task) => _matches(
+                          task,
+                          meNameLower: meNameLower,
+                          bounds: dateBounds,
+                          needle: searchNeedle,
+                          facetNeedles: facetNeedles,
+                        ),
+                        itemSort: _compare,
+                        emptyMessage: 'No tasks',
+                        emptyHint: 'Try a different filter or search.',
+                        fetch: (page) => repo.list(query.copyWith(page: page)),
+                        loadingBuilder: (_) => const DotsLoader(),
+                        onItems: _onVisibleTasks,
+                        itemBuilder: (context, task) => row(
+                          task,
+                          selected: _openTaskId == task.id,
+                          checked: _selectedIds.contains(task.id),
+                          onToggleChecked: () => _toggleChecked(task.id),
+                          onTap: () => _openTask(task),
+                        ),
+                      ),
                     ),
-                    itemSort: _compare,
-                    emptyMessage: 'No tasks',
-                    emptyHint: 'Try a different filter or search.',
-                    fetch: (page) => repo.list(query.copyWith(page: page)),
-                    loadingBuilder: (_) => const DotsLoader(),
-                    onItems: _onVisibleTasks,
-                    itemBuilder: (context, task) => row(
-                      task,
-                      selected: _openTaskId == task.id,
-                      checked: _selectedIds.contains(task.id),
-                      onToggleChecked: () => _toggleChecked(task.id),
-                      onTap: () => _openTask(task),
-                    ),
                   ),
-                ),
+                  if (_selectedIds.isNotEmpty)
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 32,
+                      child: WebBulkBar(
+                        count: _selectedIds.length,
+                        onClear: _clearSelection,
+                        actions: [
+                          WebBulkAction(
+                            icon: Icons.check_circle_outline,
+                            label: 'Complete',
+                            primary: true,
+                            onTap: (_) => _bulkComplete(),
+                          ),
+                          WebBulkAction(
+                            icon: Icons.replay,
+                            label: 'Reopen',
+                            primary: true,
+                            onTap: (_) => _bulkReopen(),
+                          ),
+                          WebBulkAction(
+                            icon: Icons.assignment_ind_outlined,
+                            label: 'Assign',
+                            hasMenu: true,
+                            onTap: _bulkAssign,
+                          ),
+                          WebBulkAction(
+                            icon: Icons.flag_outlined,
+                            label: 'Priority',
+                            hasMenu: true,
+                            onTap: _bulkPriority,
+                          ),
+                          WebBulkAction(
+                            icon: Icons.business_outlined,
+                            label: 'Transfer',
+                            hasMenu: true,
+                            onTap: _bulkTransfer,
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -824,31 +839,5 @@ class _TasksListScreenWebState extends ConsumerState<TasksListScreenWeb> {
 // `_TableHeader`. Hover tint and selected-accent-tint match the tickets
 // treatment (subtle bg fill, no border shift).
 // ---------------------------------------------------------------------------
-
-class _TextCell extends StatelessWidget {
-  const _TextCell({required this.text, this.emptyLabel});
-
-  final String text;
-
-  /// Placeholder shown when [text] is empty (e.g. "Unassigned" for the
-  /// assignee cell). If omitted, an em-dash is used.
-  final String? emptyLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final empty = text.trim().isEmpty;
-    final display = empty ? (emptyLabel ?? '—') : text;
-    return Text(
-      display,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: ZebuTextStyles.small(context).copyWith(
-        color: empty ? t.textSecondary : t.textPrimary,
-        fontWeight: empty ? FontWeight.w400 : FontWeight.w500,
-      ),
-    );
-  }
-}
 
 // ---------------------------------------------------------------------------

@@ -558,12 +558,12 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
       ZebuGridColumn(
         flex: _kColRequesterFlex,
         label: 'Requester',
-        cell: (ticket) => _TextCell(text: ticket.requester ?? ''),
+        cell: (ticket) => ZebuGridTextCell(text: ticket.requester ?? ''),
       ),
       ZebuGridColumn(
         flex: _kColDeptFlex,
         label: 'Department',
-        cell: (ticket) => _TextCell(text: ticket.departmentName ?? ''),
+        cell: (ticket) => ZebuGridTextCell(text: ticket.departmentName ?? ''),
       ),
       ZebuGridColumn(
         width: _kColPriorityWidth,
@@ -587,7 +587,7 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
       ZebuGridColumn(
         flex: _kColAssigneeFlex,
         label: 'Assigned to',
-        cell: (ticket) => _TextCell(text: ticket.assignee ?? ''),
+        cell: (ticket) => ZebuGridTextCell(text: ticket.assignee ?? ''),
       ),
       ZebuGridColumn(
         width: _kColCreatedWidth,
@@ -752,79 +752,90 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
                 _selectedIds.clear();
               }),
             ),
-            if (_selectedIds.isNotEmpty)
-              WebBulkBar(
-                count: _selectedIds.length,
-                onClear: _clearSelection,
-                actions: [
-                  WebBulkButton(
-                    icon: Icons.person_pin_circle_outlined,
-                    label: 'Assign to me',
-                    onTap: (_) => _bulkClaim(),
-                  ),
-                  WebBulkButton(
-                    icon: Icons.assignment_ind_outlined,
-                    label: 'Assign',
-                    hasMenu: true,
-                    onTap: _bulkAssign,
-                  ),
-                  WebBulkButton(
-                    icon: Icons.label_outline,
-                    label: 'Status',
-                    hasMenu: true,
-                    onTap: _bulkStatus,
-                  ),
-                  WebBulkButton(
-                    icon: Icons.flag_outlined,
-                    label: 'Priority',
-                    hasMenu: true,
-                    onTap: _bulkPriority,
-                  ),
-                  WebBulkButton(
-                    icon: Icons.delete_outline,
-                    label: 'Delete',
-                    tone: t.danger,
-                    onTap: (_) => _bulkDelete(),
-                  ),
-                ],
-              ),
+            // Bulk actions float over the table (see the Stack below), so
+            // nothing is inserted here — ticking a box must not move the rows.
             Expanded(
-              child: ListTableShell(
-                child: ZebuDataGrid<Ticket>(
-                  columns: _columns(context),
-                  minWidth: _kTableMinWidth,
-                  rowHeight: _kRowHeight,
-                  selection: ZebuGridSelection(
-                    allChecked: _allChecked,
-                    someChecked: _someChecked,
-                    onToggleAll: _toggleCheckAll,
-                  ),
-                  body: (context, row) => PagedListView<Ticket>(
-                    padding: EdgeInsets.zero,
-                    refreshKey: '$_view|$_search|$_panelChangeSeq',
-                    filterKey: filterKey,
-                    itemFilter: (ticket) => _matches(
-                      ticket,
-                      meNameLower: meNameLower,
-                      bounds: dateBounds,
-                      needle: searchNeedle,
-                      facetNeedles: facetNeedles,
+              child: Stack(
+                children: [
+                  ListTableShell(
+                    child: ZebuDataGrid<Ticket>(
+                      columns: _columns(context),
+                      minWidth: _kTableMinWidth,
+                      rowHeight: _kRowHeight,
+                      selection: ZebuGridSelection(
+                        allChecked: _allChecked,
+                        someChecked: _someChecked,
+                        onToggleAll: _toggleCheckAll,
+                      ),
+                      body: (context, row) => PagedListView<Ticket>(
+                        padding: EdgeInsets.zero,
+                        refreshKey: '$_view|$_search|$_panelChangeSeq',
+                        filterKey: filterKey,
+                        itemFilter: (ticket) => _matches(
+                          ticket,
+                          meNameLower: meNameLower,
+                          bounds: dateBounds,
+                          needle: searchNeedle,
+                          facetNeedles: facetNeedles,
+                        ),
+                        itemSort: _compare,
+                        emptyMessage: 'No tickets',
+                        emptyHint: 'Try a different filter or search.',
+                        fetch: (page) => repo.list(query.copyWith(page: page)),
+                        loadingBuilder: (_) => const DotsLoader(),
+                        onItems: _onVisibleTickets,
+                        itemBuilder: (context, ticket) => row(
+                          ticket,
+                          selected: _openTicketId == ticket.id,
+                          checked: _selectedIds.contains(ticket.id),
+                          onToggleChecked: () => _toggleChecked(ticket.id),
+                          onTap: () => _openTicket(ticket),
+                        ),
+                      ),
                     ),
-                    itemSort: _compare,
-                    emptyMessage: 'No tickets',
-                    emptyHint: 'Try a different filter or search.',
-                    fetch: (page) => repo.list(query.copyWith(page: page)),
-                    loadingBuilder: (_) => const DotsLoader(),
-                    onItems: _onVisibleTickets,
-                    itemBuilder: (context, ticket) => row(
-                      ticket,
-                      selected: _openTicketId == ticket.id,
-                      checked: _selectedIds.contains(ticket.id),
-                      onToggleChecked: () => _toggleChecked(ticket.id),
-                      onTap: () => _openTicket(ticket),
-                    ),
                   ),
-                ),
+                  if (_selectedIds.isNotEmpty)
+                    WebBulkBar(
+                      count: _selectedIds.length,
+                      onClear: _clearSelection,
+                      actions: [
+                        WebBulkAction(
+                          icon: Icons.person_pin_circle_outlined,
+                          label: 'Assign to me',
+                          primary: true,
+                          onTap: (_) => _bulkClaim(),
+                        ),
+                        WebBulkAction(
+                          icon: Icons.label_outline,
+                          label: 'Status',
+                          hasMenu: true,
+                          primary: true,
+                          onTap: _bulkStatus,
+                        ),
+                        WebBulkAction(
+                          icon: Icons.assignment_ind_outlined,
+                          label: 'Assign',
+                          hasMenu: true,
+                          onTap: _bulkAssign,
+                        ),
+                        WebBulkAction(
+                          icon: Icons.flag_outlined,
+                          label: 'Priority',
+                          hasMenu: true,
+                          onTap: _bulkPriority,
+                        ),
+                        // Destructive, so it stays behind the overflow rather
+                        // than sitting a pixel away from Status on a bar that
+                        // can act on fifty tickets at once.
+                        WebBulkAction(
+                          icon: Icons.delete_outline,
+                          label: 'Delete',
+                          destructive: true,
+                          onTap: (_) => _bulkDelete(),
+                        ),
+                      ],
+                    ),
+                ],
               ),
             ),
           ],
@@ -849,24 +860,3 @@ class _TicketsListScreenWebState extends ConsumerState<TicketsListScreenWeb> {
 
 String _titleCase(String s) =>
     s.isEmpty ? s : s[0].toUpperCase() + s.substring(1).toLowerCase();
-
-class _TextCell extends StatelessWidget {
-  const _TextCell({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final empty = text.trim().isEmpty;
-    final display = empty ? '—' : text;
-    return Text(
-      display,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      // Placeholder dashes read lighter than real values.
-      style: empty
-          ? ZebuTextStyles.small(context)
-          : ZebuTextStyles.tableCell(context),
-    );
-  }
-}

@@ -105,8 +105,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   Future<void> _deleteAll() async {
     final ok = await showAppConfirmDialog(
       context,
-      title: 'Delete all notifications?',
-      message: 'This cannot be undone.',
+      title: 'Delete all',
+      message:
+          'Are you sure you want to delete every notification? '
+          'This cannot be undone.',
       confirmLabel: 'Delete all',
       destructive: true,
     );

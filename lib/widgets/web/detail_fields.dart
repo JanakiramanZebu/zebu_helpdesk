@@ -220,8 +220,20 @@ class _ZebuFieldRowState extends State<ZebuFieldRow> {
 /// related but not why. Rendered without that design's blue rule and tinted
 /// icon tiles — at 360 px wide the chrome competed with the values.
 class ZebuFieldGroupLabel extends StatelessWidget {
-  const ZebuFieldGroupLabel(this.label, {super.key, this.first = false});
+  const ZebuFieldGroupLabel(
+    this.label, {
+    super.key,
+    this.first = false,
+    this.count,
+    this.trailing,
+  });
   final String label;
+
+  /// Optional count shown after the label, for groups that hold a list.
+  final int? count;
+
+  /// Optional action on the group's right edge — an add button, usually.
+  final Widget? trailing;
 
   /// Skips the top divider on the first group, which would otherwise sit
   /// directly under the panel header.
@@ -244,9 +256,24 @@ class ZebuFieldGroupLabel extends StatelessWidget {
             Divider(height: 1, thickness: 1, color: t.dividerSlate),
             const SizedBox(height: ZebuSpacing.s4),
           ],
-          Text(
-            label,
-            style: ZebuTextStyles.eyebrow(context, color: t.textSlateMuted),
+          Row(
+            children: [
+              Text(
+                label,
+                style: ZebuTextStyles.eyebrow(context, color: t.textSlateMuted),
+              ),
+              if (count != null && count! > 0) ...[
+                const SizedBox(width: ZebuSpacing.s2),
+                Text(
+                  '$count',
+                  style: ZebuTextStyles.eyebrow(
+                    context,
+                    color: t.textSlateMuted,
+                  ).withTabularNums(),
+                ),
+              ],
+              if (trailing != null) ...[const Spacer(), trailing!],
+            ],
           ),
         ],
       ),

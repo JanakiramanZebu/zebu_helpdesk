@@ -82,8 +82,13 @@ bool _isAttachmentEcho(String plain, List<Attachment> files) {
   return s.isEmpty;
 }
 
-/// Reveals an entry's exact timestamp on hover. The header only carries a
-/// relative time ("a day ago"), and grouped follow-ups have no header at all.
+/// Reveals an entry's exact timestamp on hovering *the clock*.
+///
+/// It used to wrap the whole message body, which meant pointing anywhere in a
+/// paragraph popped a date panel on top of the sentence being read — and the
+/// tooltip's gesture layer also swallowed the drag that selects text. The
+/// clock is the part of the row that is about time, so it is the part that
+/// should answer questions about it.
 class _Dated extends StatelessWidget {
   const _Dated({required this.created, required this.child});
   final DateTime? created;
@@ -394,9 +399,8 @@ class ZebuThreadRow extends StatelessWidget {
       final gap =
           _measureWidth(context, clockText, clockStyle) + ZebuSpacing.s3;
       return IntrinsicWidth(
-        child: _Dated(
-          created: entry.created,
-          child: Stack(
+        child: Builder(
+          builder: (context) => Stack(
             children: [
               Text.rich(
                 TextSpan(
@@ -412,7 +416,10 @@ class ZebuThreadRow extends StatelessWidget {
               Positioned(
                 right: 0,
                 bottom: 1,
-                child: Text(clockText, style: clockStyle),
+                child: _Dated(
+                  created: entry.created,
+                  child: Text(clockText, style: clockStyle),
+                ),
               ),
             ],
           ),
@@ -434,20 +441,13 @@ class ZebuThreadRow extends StatelessWidget {
           // osTicket writes "Attachment: <name>" as the body when a file is
           // sent with no message. Rendering that *and* the chip prints the same
           // filename twice, one line apart, which reads as a stutter.
-          if (!echo) ...[
-            // The exact timestamp hangs off the body text alone, not the whole
-            // surface — wrapping the surface meant hovering an attachment
-            // popped the date tooltip over the thing you were trying to see.
-            _Dated(
-              created: entry.created,
-              child: plain.trim().isEmpty
-                  ? Text('(no content)', style: ZebuTextStyles.small(context))
-                  : html.contains('<')
-                  ? ZebuHtmlBody(html: html)
-                  : Text(plain, style: bodyStyle),
-            ),
-            if (hasFiles) const SizedBox(height: ZebuSpacing.s3),
-          ],
+          if (!echo)
+            plain.trim().isEmpty
+                ? Text('(no content)', style: ZebuTextStyles.small(context))
+                : html.contains('<')
+                ? ZebuHtmlBody(html: html)
+                : Text(plain, style: bodyStyle),
+          if (!echo) ...[if (hasFiles) const SizedBox(height: ZebuSpacing.s3)],
           if (hasFiles)
             Wrap(
               spacing: ZebuSpacing.s2,
@@ -462,7 +462,10 @@ class ZebuThreadRow extends StatelessWidget {
               padding: const EdgeInsets.only(top: 2),
               child: Align(
                 alignment: Alignment.bottomRight,
-                child: Text(clockText, style: clockStyle),
+                child: _Dated(
+                  created: entry.created,
+                  child: Text(clockText, style: clockStyle),
+                ),
               ),
             ),
         ],
