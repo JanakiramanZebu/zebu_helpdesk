@@ -11,8 +11,14 @@ import '../../../data/tasks_repository.dart';
 import '../../../models/meta.dart';
 import '../../../models/task.dart';
 import '../../../providers.dart';
-import '../../../widgets/app_dropdown.dart';
 import '../../../widgets/app_toast.dart';
+import '../../../widgets/web/attachment_list.dart';
+import '../../../widgets/web/form_fields.dart';
+import '../../../widgets/web/property_menu.dart';
+import '../../../widgets/web/property_rows.dart';
+import '../../../widgets/web/zebu_dialog.dart';
+import '../../../widgets/web/zebu_date_picker.dart';
+import '../../../res/zebu_status_style.dart';
 import '../../../res/zebu_text_styles.dart';
 import '../../../res/zebu_theme.dart';
 import '../../../res/zebu_spacing.dart';
@@ -24,19 +30,16 @@ const _kFlatRadius = 8.0;
 /// "New task" entry on web. Blocks outside-click dismiss so half-filled
 /// form data doesn't disappear on a stray click.
 Future<void> showCreateTaskDialog(BuildContext context) {
-  return showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogContext) => Dialog(
-      insetPadding: const EdgeInsets.all(40),
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 640, maxHeight: 760),
-        child: CreateTaskScreenWeb(
-          onClose: () => Navigator.of(dialogContext).pop(),
-        ),
-      ),
+  return showZebuDialog<void>(
+    context,
+    barrierLabel: 'New task',
+    // Outside-click stays disabled: this form holds enough half-typed work
+    // that a stray click on the page behind it must not discard it. `Esc`
+    // and the close button both still work.
+    dismissible: false,
+    child: Builder(
+      builder: (ctx) =>
+          CreateTaskScreenWeb(onClose: () => Navigator.of(ctx).pop()),
     ),
   );
 }
@@ -59,6 +62,10 @@ class CreateTaskScreenWeb extends ConsumerStatefulWidget {
   ConsumerState<CreateTaskScreenWeb> createState() =>
       _CreateTaskScreenWebState();
 }
+
+/// Menu value standing for "clear this field". Meta ids are always positive,
+/// so a negative sentinel can never collide with a real one.
+const int _kNoValue = -1;
 
 class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
   final _title = TextEditingController();
@@ -93,13 +100,28 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
     }
   }
 
+  /// Drops one field's error as soon as it is being corrected.
+  void _clearError(String field) {
+    if (!_fieldErrors.containsKey(field)) return;
+    setState(() => _fieldErrors = {..._fieldErrors}..remove(field));
+  }
+
   Future<void> _submit() async {
-    if (_department == null) {
-      setState(() => _error = 'Pick a department first');
-      return;
-    }
-    if (_title.text.trim().isEmpty || _description.text.trim().isEmpty) {
-      setState(() => _error = 'Title and description are required');
+    // Per field, not one banner at the top. A banner names the problem a
+    // scroll away from the control that has it, and with three possible
+    // causes it cannot say which — so it reported the first failure and hid
+    // the rest, one submit at a time.
+    final errors = <String, String>{
+      if (_title.text.trim().isEmpty) 'title': 'A task needs a title',
+      if (_description.text.trim().isEmpty)
+        'description': 'Say what needs doing',
+      if (_department == null) 'dept_id': 'Pick a department',
+    };
+    if (errors.isNotEmpty) {
+      setState(() {
+        _fieldErrors = errors;
+        _error = null;
+      });
       return;
     }
     setState(() {
@@ -153,36 +175,51 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
     });
   }
 
-  Future<void> _pickDue() async {
+  /// One popover for the whole field — grid, time and Clear on a single
+  /// surface, anchored under the value like every other property row. Same
+  /// call as the new-ticket dialog's Due date, deliberately: the two forms
+  /// should not have different calendars.
+  ///
+  /// This used to open a two-entry Change / Clear menu first, and then two
+  /// stacked Material modals: `showDatePicker` followed by `showTimePicker`.
+  /// The intermediate menu existed only because `showDatePicker` has no way to
+  /// say "no date"; [showZebuDatePicker] carries Clear in its own footer.
+  Future<void> _pickDue(BuildContext anchorContext) async {
     final now = DateTime.now();
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _due ?? now,
+    final res = await showZebuDatePicker(
+      anchorContext,
+      initial: _due,
       firstDate: now.subtract(const Duration(days: 1)),
       lastDate: now.add(const Duration(days: 365 * 3)),
+      // Nothing to clear while the row is empty, and an inert link reads as
+      // broken. The row shows "None" in that state anyway.
+      clearLabel: _due == null ? null : 'Clear',
     );
-    if (date == null || !mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(_due ?? now),
-    );
-    setState(() {
-      _due = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time?.hour ?? 17,
-        time?.minute ?? 0,
-      );
-    });
+    if (res == null || !mounted) return;
+    setState(() => _due = res.cleared ? null : res.date);
   }
 
-  /// Fetches a meta list and opens the app-styled dropdown under the field.
+  /// Fetches a meta list and opens a menu under the tapped control.
+  ///
+  /// [clearable] adds the muted default entry that empties the field — the
+  /// property rows have no X, so clearing lives in the menu. Department is not
+  /// clearable: the API rejects a task without one, and offering "None" on a
+  /// field the form will refuse to submit is a promise it cannot keep.
+  ///
+  /// [dotFor] paints an 8 px colour chip before each entry, for Priority.
   Future<void> _pickMeta(
     BuildContext anchorContext,
     String kind,
-    ValueChanged<MetaItem> onPicked,
-  ) async {
+    ValueChanged<MetaItem?> onPicked, {
+    MetaItem? current,
+    bool clearable = true,
+    String clearLabel = 'None',
+    Color Function(String name)? dotFor,
+
+    /// Set for a full-width select, so the menu takes the control's width
+    /// rather than the narrow default the property grid wants.
+    bool matchAnchorWidth = false,
+  }) async {
     final List<MetaItem> items;
     try {
       items = await ref.read(metaRepositoryProvider).get(kind);
@@ -191,189 +228,247 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
       return;
     }
     if (!mounted || !anchorContext.mounted) return;
-    final chosen = await showAppDropdown<int>(
+    final chosen = await showZebuPropertyMenu<int>(
       anchorContext,
-      entries: [
-        for (final m in items) AppDropdownItem<int>(value: m.id, label: m.name),
+      matchAnchorWidth: matchAnchorWidth,
+      items: [
+        if (clearable)
+          ZebuPropertyMenuItem<int>(
+            value: _kNoValue,
+            label: clearLabel,
+            muted: true,
+            selected: current == null,
+          ),
+        for (final m in items)
+          ZebuPropertyMenuItem<int>(
+            value: m.id,
+            label: m.name,
+            dotColor: dotFor?.call(m.name),
+            selected: m.id == current?.id,
+          ),
       ],
     );
     if (chosen == null) return;
-    onPicked(items.firstWhere((m) => m.id == chosen));
+    onPicked(
+      chosen == _kNoValue ? null : items.firstWhere((m) => m.id == chosen),
+    );
   }
 
-  Future<void> _pickParent() async {
-    final task = await showDialog<Task>(
-      context: context,
-      builder: (_) => const _TaskPickerDialog(),
+  /// Searchable dropdown over open tasks, the same control the new-ticket
+  /// dialog uses for its requester.
+  ///
+  /// Was a centred dialog. A modal on top of a modal to choose one value is
+  /// heavy, and it made Parent task the only field on this form that did not
+  /// open under itself.
+  Future<void> _pickParent(BuildContext anchorContext) async {
+    final found = <Task>[];
+    final id = await showZebuPropertyMenu<int>(
+      anchorContext,
+      matchAnchorWidth: true,
+      maxHeight: 260,
+      searchHint: 'Search tasks by number or title',
+      // Floor for the half-width column this row sits in; `matchAnchorWidth`
+      // takes the row itself when that is wider.
+      minWidth: 260,
+      search: (q) async {
+        final page = await ref
+            .read(tasksRepositoryProvider)
+            // `view: 'all'` and a *null* empty query, both as the dialog this
+            // replaced had them. `'open'` hid every completed task, and
+            // sending `q: ''` filters on an empty string server-side instead
+            // of meaning "no filter" — between them the list came back with
+            // three rows and nothing to scroll.
+            .list(TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25));
+        found
+          ..clear()
+          ..addAll(page.items);
+        return [
+          ZebuPropertyMenuItem<int>(
+            value: _kNoValue,
+            label: 'None',
+            muted: true,
+            selected: _parent == null,
+          ),
+          for (final t in found)
+            ZebuPropertyMenuItem<int>(
+              value: t.id,
+              label: t.title,
+              subtitle: t.departmentName == null
+                  ? '#${t.number}'
+                  : '#${t.number} · ${t.departmentName}',
+              selected: t.id == _parent?.id,
+            ),
+        ];
+      },
     );
-    if (task != null) setState(() => _parent = task);
+    if (id == null || !mounted) return;
+    if (id == _kNoValue) {
+      setState(() => _parent = null);
+      return;
+    }
+    // `orElse` returning `_parent!` would throw when nothing is set and the
+    // row somehow fell out of the last page — keep what we have instead.
+    final picked = found.where((t) => t.id == id).firstOrNull;
+    if (picked != null) setState(() => _parent = picked);
   }
 
   @override
   Widget build(BuildContext context) {
     final t = ZebuTheme.of(context);
-    return Container(
-      clipBehavior: Clip.hardEdge,
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        border: Border.all(color: t.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(ZebuRadius.rMd),
-      ),
-      child: AbsorbPointer(
-        absorbing: _saving,
-        child: Column(
-          children: [
-            _HeaderBar(onClose: _close),
-            if (_saving) const LinearProgressIndicator(minHeight: 2),
-            Expanded(child: _buildBody(t)),
-            _FooterBar(saving: _saving, onCancel: _close, onSubmit: _submit),
-          ],
+    // Same shell as the new-ticket dialog, rather than a hand-rolled frame
+    // with its own header and footer bars. Those had already drifted from it
+    // — and the footer carried a Cancel button the ticket dialog dropped,
+    // since the header's X already dismisses and a modal needs one way out,
+    // not two.
+    return ZebuDialogShell(
+      title: 'New task',
+      maxWidth: 640,
+      onDismiss: _close,
+      onSubmit: _saving ? null : _submit,
+      // The action is pinned in a footer, not placed in the body as the short
+      // dialogs do: this form scrolls, and a submit button that scrolls out of
+      // view is one an agent has to hunt back down for.
+      actions: [
+        ZebuDialogPrimaryBtn(
+          label: 'Create task',
+          busyLabel: 'Creating…',
+          busy: _saving,
+          onTap: _submit,
         ),
-      ),
+      ],
+      body: AbsorbPointer(absorbing: _saving, child: _buildBody(t)),
     );
   }
 
+  /// No scroll view and no padding of its own — [ZebuDialogShell] supplies
+  /// both, and nesting a second scrollable inside its one made the inner one
+  /// dead weight.
   Widget _buildBody(ZebuTheme t) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(
-        ZebuSpacing.s6,
-        ZebuSpacing.s4,
-        ZebuSpacing.s6,
-        ZebuSpacing.s5,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_error != null) ...[
-            _ErrorBanner(message: _error!),
-            const SizedBox(height: ZebuSpacing.s4),
-          ],
-
-          // --- TASK DETAILS ----------------------------------------------
-          _SectionTitle('Task details'),
-          const SizedBox(height: ZebuSpacing.s3),
-          _LabeledField(
-            label: 'Title',
-            required: true,
-            error: _fieldErrors['title'],
-            child: _TextInput(
-              controller: _title,
-              hint: 'Short summary of the task',
-              hasError: _fieldErrors['title'] != null,
-            ),
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_error != null) ...[
+          _ErrorBanner(message: _error!),
           const SizedBox(height: ZebuSpacing.s4),
-          _LabeledField(
-            label: 'Description',
-            required: true,
-            error: _fieldErrors['description'],
-            child: _TextInput(
-              controller: _description,
-              hint: 'Describe the task…',
-              minLines: 5,
-              maxLines: 12,
-              hasError: _fieldErrors['description'] != null,
-            ),
-          ),
-          const SizedBox(height: ZebuSpacing.s4),
-          _AttachmentsBlock(
-            files: _files,
-            onAdd: _pickFiles,
-            onRemove: (f) => setState(() => _files.remove(f)),
-          ),
-
-          const SizedBox(height: ZebuSpacing.s5),
-
-          // --- OPTIONS ---------------------------------------------------
-          _SectionTitle('Options'),
-          const SizedBox(height: ZebuSpacing.s3),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _LabeledField(
-                  label: 'Department',
-                  required: true,
-                  error: _fieldErrors['dept_id'],
-                  child: Builder(
-                    builder: (anchorContext) => _SelectField(
-                      icon: Icons.apartment_outlined,
-                      value: _department?.name,
-                      placeholder: 'Required',
-                      hasError: _fieldErrors['dept_id'] != null,
-                      onTap: () => _pickMeta(
-                        anchorContext,
-                        MetaKind.departments,
-                        (m) => setState(() => _department = m),
-                      ),
-                      anchorContext: anchorContext,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: ZebuSpacing.s3),
-              Expanded(
-                child: _LabeledField(
-                  label: 'Priority',
-                  child: Builder(
-                    builder: (anchorContext) => _SelectField(
-                      icon: Icons.flag_outlined,
-                      value: _priority?.name,
-                      placeholder: 'Not set',
-                      onTap: () => _pickMeta(
-                        anchorContext,
-                        MetaKind.taskPriorities,
-                        (m) => setState(() => _priority = m),
-                      ),
-                      onClear: _priority == null
-                          ? null
-                          : () => setState(() => _priority = null),
-                      anchorContext: anchorContext,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: ZebuSpacing.s3),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: _LabeledField(
-                  label: 'Due date',
-                  child: _SelectField(
-                    icon: Icons.event_outlined,
-                    value: _due == null ? null : Fmt.dateTime(_due),
-                    placeholder: 'Not set',
-                    onTap: _pickDue,
-                    onClear: _due == null
-                        ? null
-                        : () => setState(() => _due = null),
-                  ),
-                ),
-              ),
-              const SizedBox(width: ZebuSpacing.s3),
-              Expanded(
-                child: _LabeledField(
-                  label: 'Parent task',
-                  child: _SelectField(
-                    icon: Icons.account_tree_outlined,
-                    value: _parent == null
-                        ? null
-                        : '#${_parent!.number} · ${_parent!.title}',
-                    placeholder: 'Not set',
-                    onTap: _pickParent,
-                    onClear: _parent == null
-                        ? null
-                        : () => setState(() => _parent = null),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
-      ),
+
+        // --- TASK DETAILS ----------------------------------------------
+        // ZebuSectionTitle('Task details'),
+        // const SizedBox(height: ZebuSpacing.s3),
+        // Title and Department share the top row 50/50, the way Requester and
+        // Collaborators do in the new-ticket dialog. They are the two fields
+        // the API refuses a task without, so they belong at the top together
+        // rather than with an Attachments block between them.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ZebuLabeledField(
+                label: 'Title',
+                error: _fieldErrors['title'],
+                child: ZebuFormInput(
+                  controller: _title,
+                  onChanged: (_) => _clearError('title'),
+                  hint: 'e.g. Reconcile August partner ledger',
+                  hasError: _fieldErrors['title'] != null,
+                ),
+              ),
+            ),
+            const SizedBox(width: ZebuSpacing.s3),
+            Expanded(
+              child: ZebuLabeledField(
+                label: 'Department',
+                error: _fieldErrors['dept_id'],
+                child: Builder(
+                  builder: (anchorContext) => ZebuSelectField(
+                    icon: Icons.apartment_outlined,
+                    value: _department?.name,
+                    placeholder: 'Choose a department',
+                    hasError: _fieldErrors['dept_id'] != null,
+                    onTap: () => _pickMeta(
+                      anchorContext,
+                      MetaKind.departments,
+                      (m) {
+                        setState(() => _department = m);
+                        _clearError('dept_id');
+                      },
+                      current: _department,
+                      clearable: false,
+                      // Full-width select, so the menu takes the control's
+                      // width instead of the narrow default meant for the
+                      // property grid's short values.
+                      matchAnchorWidth: true,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: ZebuSpacing.s4),
+        ZebuLabeledField(
+          label: 'Description',
+          error: _fieldErrors['description'],
+          child: ZebuFormInput(
+            controller: _description,
+            onChanged: (_) => _clearError('description'),
+            hint: 'What needs doing, by when, and anything the doer will need…',
+            minLines: 5,
+            maxLines: 12,
+            hasError: _fieldErrors['description'] != null,
+          ),
+        ),
+        const SizedBox(height: ZebuSpacing.s4),
+        ZebuAttachmentsField(
+          files: [
+            for (final f in _files)
+              ZebuAttachmentSpec(name: f.name, size: Fmt.fileSize(f.size)),
+          ],
+          onAdd: _pickFiles,
+          onRemove: (i) => setState(() => _files.removeAt(i)),
+        ),
+
+        const SizedBox(height: ZebuSpacing.s5),
+
+        // --- PROPERTIES ------------------------------------------------
+        // The same grid the new-ticket dialog uses: flat label -> value rows
+        // instead of a grid of outlined selects, so the optional settings
+        // stop carrying the same weight as Title and Description.
+        ZebuPropertyGrid(
+          rows: [
+            ZebuPropertySpec(
+              label: 'Priority',
+              icon: Icons.priority_high_rounded,
+              value: _priority?.name,
+              placeholder: 'Normal (default)',
+              dotColor: zebuPriorityStyle(_priority?.name, t).dot,
+              onTap: (ctx) => _pickMeta(
+                ctx,
+                MetaKind.taskPriorities,
+                (m) => setState(() => _priority = m),
+                current: _priority,
+                clearLabel: 'Normal (default)',
+                dotFor: (n) => zebuPriorityStyle(n, t).dot,
+              ),
+            ),
+            ZebuPropertySpec(
+              label: 'Due date',
+              icon: Icons.schedule_outlined,
+              value: _due == null ? null : Fmt.dateTime(_due),
+              onTap: _pickDue,
+            ),
+            ZebuPropertySpec(
+              label: 'Parent task',
+              icon: Icons.account_tree_outlined,
+              value: _parent == null ? null : '#${_parent!.number}',
+              // Its menu carries a search box and two-line rows, so it
+              // anchors on the whole row rather than on `#4263`.
+              anchorToRow: true,
+              onTap: _pickParent,
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -381,80 +476,6 @@ class _CreateTaskScreenWebState extends ConsumerState<CreateTaskScreenWeb> {
 // ---------------------------------------------------------------------------
 // Header — X close + title, with a bottom border.
 // ---------------------------------------------------------------------------
-
-class _HeaderBar extends StatelessWidget {
-  const _HeaderBar({required this.onClose});
-  final VoidCallback onClose;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: ZebuSpacing.s5,
-        vertical: ZebuSpacing.s4,
-      ),
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        border: Border(bottom: BorderSide(color: t.borderSubtle, width: 1)),
-      ),
-      child: Row(
-        children: [
-          Text('New task', style: ZebuTextStyles.hero(context)),
-          const Spacer(),
-          _IconBtn(
-            icon: Icons.close_rounded,
-            tooltip: 'Close',
-            destructive: true,
-            onTap: onClose,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Footer — Cancel + Create task, right-aligned, top border.
-// ---------------------------------------------------------------------------
-
-class _FooterBar extends StatelessWidget {
-  const _FooterBar({
-    required this.saving,
-    required this.onCancel,
-    required this.onSubmit,
-  });
-
-  final bool saving;
-  final VoidCallback onCancel;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: ZebuSpacing.s5,
-        vertical: ZebuSpacing.s3,
-      ),
-      decoration: BoxDecoration(
-        color: t.bgElevated,
-        border: Border(top: BorderSide(color: t.borderSubtle, width: 1)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          _SecondaryButton(label: 'Cancel', onTap: onCancel),
-          const SizedBox(width: ZebuSpacing.s2),
-          _PrimaryButton(
-            label: saving ? 'Creating…' : 'Create task',
-            onTap: saving ? null : onSubmit,
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class _IconBtn extends StatefulWidget {
   const _IconBtn({
@@ -603,153 +624,6 @@ class _PrimaryButtonState extends State<_PrimaryButton> {
   }
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle(this.label);
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(label.toUpperCase(), style: ZebuTextStyles.eyebrow(context));
-  }
-}
-
-class _LabeledField extends StatelessWidget {
-  const _LabeledField({
-    required this.label,
-    required this.child,
-    this.required = false,
-    this.error,
-  });
-
-  final String label;
-  final Widget child;
-  final bool required;
-  final String? error;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              label,
-              style: ZebuTextStyles.small(
-                context,
-              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
-            ),
-            if (required) ...[
-              const SizedBox(width: 4),
-              Text(
-                '*',
-                style: TextStyle(
-                  color: t.danger,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 6),
-        child,
-        if (error != null) ...[
-          const SizedBox(height: 4),
-          Text(
-            error!,
-            style: ZebuTextStyles.small(context).copyWith(color: t.danger),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _SelectField extends StatefulWidget {
-  const _SelectField({
-    required this.onTap,
-    this.icon,
-    this.value,
-    this.placeholder,
-    this.onClear,
-    this.anchorContext,
-    this.hasError = false,
-  });
-
-  final VoidCallback onTap;
-  final IconData? icon;
-  final String? value;
-  final String? placeholder;
-  final VoidCallback? onClear;
-  final BuildContext? anchorContext;
-  final bool hasError;
-
-  @override
-  State<_SelectField> createState() => _SelectFieldState();
-}
-
-class _SelectFieldState extends State<_SelectField> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final hasValue = widget.value != null && widget.value!.isNotEmpty;
-    final borderColor = widget.hasError
-        ? t.danger
-        : (_hover ? t.accent : t.borderSubtle);
-    final textColor = hasValue ? t.textPrimary : t.textSecondary;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          padding: const EdgeInsets.symmetric(
-            horizontal: ZebuSpacing.s3,
-            vertical: 10,
-          ),
-          decoration: BoxDecoration(
-            color: t.bgElevated,
-            border: Border.all(color: borderColor, width: 1),
-            borderRadius: BorderRadius.circular(_kFlatRadius),
-          ),
-          child: Row(
-            children: [
-              if (widget.icon != null) ...[
-                Icon(widget.icon, size: 16, color: t.textSecondary),
-                const SizedBox(width: ZebuSpacing.s2),
-              ],
-              Expanded(
-                child: Text(
-                  hasValue ? widget.value! : (widget.placeholder ?? 'Select…'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ZebuTextStyles.body(context).copyWith(
-                    color: textColor,
-                    fontWeight: hasValue ? FontWeight.w500 : FontWeight.w400,
-                  ),
-                ),
-              ),
-              if (widget.onClear != null && hasValue) ...[
-                _MiniIcon(icon: Icons.close, onTap: widget.onClear!),
-                const SizedBox(width: 2),
-              ],
-              Icon(Icons.keyboard_arrow_down, size: 18, color: t.textSecondary),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _MiniIcon extends StatefulWidget {
   const _MiniIcon({required this.icon, required this.onTap});
   final IconData icon;
@@ -785,197 +659,6 @@ class _MiniIconState extends State<_MiniIcon> {
             color: _hover ? t.danger : t.textSecondary,
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _TextInput extends StatelessWidget {
-  const _TextInput({
-    required this.controller,
-    required this.hint,
-    this.minLines,
-    this.maxLines = 1,
-    this.hasError = false,
-  });
-
-  final TextEditingController controller;
-  final String hint;
-  final int? minLines;
-  final int maxLines;
-  final bool hasError;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(
-        color: hasError ? t.danger : t.borderSubtle,
-        width: 1,
-      ),
-    );
-    final focusedBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(_kFlatRadius),
-      borderSide: BorderSide(color: hasError ? t.danger : t.accent, width: 1.4),
-    );
-    return TextField(
-      controller: controller,
-      minLines: minLines,
-      maxLines: maxLines,
-      style: ZebuTextStyles.body(context),
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: t.bgElevated,
-        hoverColor: Colors.transparent,
-        border: border,
-        enabledBorder: border,
-        focusedBorder: focusedBorder,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: ZebuSpacing.s3,
-          vertical: 12,
-        ),
-        hintText: hint,
-        hintStyle: ZebuTextStyles.body(
-          context,
-        ).copyWith(color: t.textSecondary),
-      ),
-    );
-  }
-}
-
-class _AttachmentsBlock extends StatelessWidget {
-  const _AttachmentsBlock({
-    required this.files,
-    required this.onAdd,
-    required this.onRemove,
-  });
-
-  final List<PlatformFile> files;
-  final VoidCallback onAdd;
-  final ValueChanged<PlatformFile> onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              'Attachments',
-              style: ZebuTextStyles.small(
-                context,
-              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w600),
-            ),
-            const Spacer(),
-            _AddFilesButton(onTap: onAdd),
-          ],
-        ),
-        const SizedBox(height: ZebuSpacing.s2),
-        if (files.isEmpty)
-          Text('No files added', style: ZebuTextStyles.small(context))
-        else
-          Wrap(
-            spacing: ZebuSpacing.s2,
-            runSpacing: ZebuSpacing.s2,
-            children: [
-              for (final f in files)
-                _Chip(
-                  icon: Icons.insert_drive_file_outlined,
-                  label: '${f.name}  ·  ${Fmt.fileSize(f.size)}',
-                  onDelete: () => onRemove(f),
-                ),
-            ],
-          ),
-      ],
-    );
-  }
-}
-
-class _AddFilesButton extends StatefulWidget {
-  const _AddFilesButton({required this.onTap});
-  final VoidCallback onTap;
-
-  @override
-  State<_AddFilesButton> createState() => _AddFilesButtonState();
-}
-
-class _AddFilesButtonState extends State<_AddFilesButton> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.attach_file,
-              size: 14,
-              color: _hover ? t.accentHover : t.accent,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              'Add files',
-              style: TextStyle(
-                color: _hover ? t.accentHover : t.accent,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Chip extends StatelessWidget {
-  const _Chip({required this.label, required this.onDelete, this.icon});
-  final String label;
-  final VoidCallback onDelete;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Container(
-      padding: const EdgeInsets.fromLTRB(ZebuSpacing.s2, 4, 4, 4),
-      decoration: BoxDecoration(
-        color: t.bgTertiary,
-        border: Border.all(color: t.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(_kFlatRadius),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: t.textSecondary),
-            const SizedBox(width: 6),
-          ],
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 220),
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: ZebuTextStyles.small(
-                context,
-              ).copyWith(color: t.textPrimary, fontWeight: FontWeight.w500),
-            ),
-          ),
-          const SizedBox(width: 4),
-          _MiniIcon(icon: Icons.close, onTap: onDelete),
-        ],
       ),
     );
   }
@@ -1018,228 +701,3 @@ class _ErrorBanner extends StatelessWidget {
 // Parent-task picker — web-styled Dialog with a debounced search field and
 // a results list (`GET /tasks?q=`). Replaces the mobile bottom sheet.
 // ---------------------------------------------------------------------------
-
-class _TaskPickerDialog extends ConsumerStatefulWidget {
-  const _TaskPickerDialog();
-
-  @override
-  ConsumerState<_TaskPickerDialog> createState() => _TaskPickerDialogState();
-}
-
-class _TaskPickerDialogState extends ConsumerState<_TaskPickerDialog> {
-  final _ctrl = TextEditingController();
-  List<Task> _results = const [];
-  bool _loading = false;
-  String? _error;
-  Timer? _debounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _search('');
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _onChanged(String q) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 250), () => _search(q));
-  }
-
-  Future<void> _search(String q) async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final page = await ref
-          .read(tasksRepositoryProvider)
-          .list(TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25));
-      if (!mounted) return;
-      setState(() {
-        _results = page.items;
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e.message;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      insetPadding: const EdgeInsets.all(40),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 560),
-        child: Container(
-          clipBehavior: Clip.hardEdge,
-          decoration: BoxDecoration(
-            color: t.bgElevated,
-            border: Border.all(color: t.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(ZebuRadius.rMd),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  ZebuSpacing.s5,
-                  ZebuSpacing.s4,
-                  ZebuSpacing.s5,
-                  ZebuSpacing.s3,
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      'Select parent task',
-                      style: ZebuTextStyles.pageTitle(context),
-                    ),
-                    const Spacer(),
-                    _IconBtn(
-                      icon: Icons.close_rounded,
-                      tooltip: 'Close',
-                      destructive: true,
-                      onTap: () => Navigator.of(context).pop(),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: ZebuSpacing.s5),
-                child: TextField(
-                  controller: _ctrl,
-                  autofocus: true,
-                  onChanged: _onChanged,
-                  style: ZebuTextStyles.body(context),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: t.bgElevated,
-                    hoverColor: Colors.transparent,
-                    isDense: true,
-                    prefixIcon: Icon(
-                      Icons.search,
-                      size: 18,
-                      color: t.textSecondary,
-                    ),
-                    hintText: 'Search task by number or title',
-                    hintStyle: ZebuTextStyles.body(
-                      context,
-                    ).copyWith(color: t.textSecondary),
-                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(_kFlatRadius),
-                      borderSide: BorderSide(color: t.borderSubtle, width: 1),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(_kFlatRadius),
-                      borderSide: BorderSide(color: t.borderSubtle, width: 1),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(_kFlatRadius),
-                      borderSide: BorderSide(color: t.accent, width: 1.4),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: ZebuSpacing.s2),
-              Expanded(
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : _error != null
-                    ? Center(
-                        child: Text(
-                          _error!,
-                          style: ZebuTextStyles.small(context),
-                        ),
-                      )
-                    : _results.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No tasks found',
-                          style: ZebuTextStyles.small(context),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: ZebuSpacing.s2,
-                        ),
-                        itemCount: _results.length,
-                        itemBuilder: (_, i) {
-                          final task = _results[i];
-                          return _TaskPickRow(
-                            task: task,
-                            onTap: () => Navigator.of(context).pop(task),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TaskPickRow extends StatefulWidget {
-  const _TaskPickRow({required this.task, required this.onTap});
-  final Task task;
-  final VoidCallback onTap;
-
-  @override
-  State<_TaskPickRow> createState() => _TaskPickRowState();
-}
-
-class _TaskPickRowState extends State<_TaskPickRow> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: Container(
-          color: _hover ? t.bgHover : Colors.transparent,
-          padding: const EdgeInsets.symmetric(
-            horizontal: ZebuSpacing.s5,
-            vertical: ZebuSpacing.s3,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                widget.task.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: ZebuTextStyles.body(
-                  context,
-                ).copyWith(fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '#${widget.task.number} · ${widget.task.statusName}',
-                style: ZebuTextStyles.small(context),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

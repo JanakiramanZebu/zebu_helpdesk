@@ -64,6 +64,7 @@ class ZebuDialogShell extends StatelessWidget {
     this.onDismiss,
     this.onSubmit,
     this.maxWidth = 470,
+    this.maxHeight,
   });
 
   final String title;
@@ -80,6 +81,15 @@ class ZebuDialogShell extends StatelessWidget {
   final VoidCallback? onDismiss;
   final VoidCallback? onSubmit;
   final double maxWidth;
+
+  /// Caps the dialog and lets the body scroll inside it. Null leaves the
+  /// height content-driven, which is right for a confirm but not for a form:
+  /// the new-ticket dialog grew to 877 px, and a dialog that reaches almost
+  /// the full window height stops reading as a dialog.
+  ///
+  /// Only ever a cap — the outer 24 px inset still wins on a short window, so
+  /// this can never push the dialog off the screen.
+  final double? maxHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +113,10 @@ class ZebuDialogShell extends StatelessWidget {
             child: Material(
               color: Colors.transparent,
               child: ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: maxWidth),
+                constraints: BoxConstraints(
+                  maxWidth: maxWidth,
+                  maxHeight: maxHeight ?? double.infinity,
+                ),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: t.bgElevated,

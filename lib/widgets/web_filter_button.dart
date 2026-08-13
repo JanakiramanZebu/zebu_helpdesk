@@ -7,6 +7,7 @@ import '../core/assets.dart';
 import '../res/zebu_theme.dart';
 import '../res/zebu_spacing.dart';
 import '../res/zebu_text_styles.dart';
+import 'app_dropdown.dart';
 import 'list_controls.dart' show DateRange;
 import 'svg_icon.dart';
 import 'web/select_checkbox.dart';
@@ -716,64 +717,30 @@ class _FilterDropdown<T> extends StatefulWidget {
 }
 
 class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
+  /// Opens the app's one dropdown menu.
+  ///
+  /// This used to hand-roll its own overlay — own positioning, own rows, no
+  /// search field however long the list — so the same control looked different
+  /// depending on which screen you opened it from. Everything the menu does
+  /// now lives in `showAppDropdown`: the flip-up near the viewport bottom, the
+  /// search field once a list gets long enough, and the selected-row mark.
+  ///
+  /// `minWidth: 0` lets the menu take the anchor's width rather than the
+  /// shared 220 px floor — these sit two-up in a 420 px panel, so the floor
+  /// would hang the menu past the edge of the box that opened it.
   Future<void> _open(BuildContext ctx) async {
-    final box = ctx.findRenderObject();
-    if (box is! RenderBox || !box.attached) return;
-    final overlayState = Overlay.of(ctx, rootOverlay: true);
-    final overlayBox = overlayState.context.findRenderObject()! as RenderBox;
-    final anchorTopLeft = box.localToGlobal(Offset.zero, ancestor: overlayBox);
-    final anchorSize = box.size;
-    final viewport = overlayBox.size;
-
-    final menuWidth = anchorSize.width;
-    const maxMenuHeight = 300.0;
-    final menuLeft = anchorTopLeft.dx.clamp(
-      8.0,
-      viewport.width - menuWidth - 8.0,
-    );
-    final belowTop = anchorTopLeft.dy + anchorSize.height + 4;
-    final aboveTop = anchorTopLeft.dy - maxMenuHeight - 4;
-    final menuTop = belowTop + maxMenuHeight <= viewport.height
-        ? belowTop
-        : aboveTop;
-
-    final completer = Completer<T?>();
-    late OverlayEntry entry;
-    void dismiss(T? v) {
-      if (completer.isCompleted) return;
-      completer.complete(v);
-      entry.remove();
-    }
-
-    entry = OverlayEntry(
-      builder: (_) => Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => dismiss(null),
-              child: const SizedBox.expand(),
-            ),
+    final picked = await showAppDropdown<T>(
+      ctx,
+      minWidth: 0,
+      entries: [
+        for (final e in widget.entries)
+          AppDropdownItem<T>(
+            value: e.value,
+            label: e.label,
+            selected: e.value == widget.selected,
           ),
-          Positioned(
-            left: menuLeft,
-            top: menuTop,
-            width: menuWidth,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: maxMenuHeight),
-              child: _DropdownMenu<T>(
-                entries: widget.entries,
-                selected: widget.selected,
-                onPick: dismiss,
-              ),
-            ),
-          ),
-        ],
-      ),
+      ],
     );
-
-    overlayState.insert(entry);
-    final picked = await completer.future;
     if (picked != null && picked != widget.selected) {
       widget.onSelected(picked);
     }
@@ -782,108 +749,6 @@ class _FilterDropdownState<T> extends State<_FilterDropdown<T>> {
   @override
   Widget build(BuildContext context) =>
       ZebuSelect(label: widget.label, onTap: _open);
-}
-
-class _DropdownMenu<T> extends StatelessWidget {
-  const _DropdownMenu({
-    required this.entries,
-    required this.selected,
-    required this.onPick,
-  });
-  final List<_DropdownEntry<T>> entries;
-  final T selected;
-  final ValueChanged<T> onPick;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return Material(
-      color: t.bgElevated,
-      elevation: 8,
-      borderRadius: BorderRadius.circular(6),
-      clipBehavior: Clip.antiAlias,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border.all(color: t.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final e in entries)
-                _DropdownRow<T>(
-                  entry: e,
-                  isSelected: e.value == selected,
-                  onTap: () => onPick(e.value),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DropdownRow<T> extends StatefulWidget {
-  const _DropdownRow({
-    required this.entry,
-    required this.isSelected,
-    required this.onTap,
-  });
-  final _DropdownEntry<T> entry;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  State<_DropdownRow<T>> createState() => _DropdownRowState<T>();
-}
-
-class _DropdownRowState<T> extends State<_DropdownRow<T>> {
-  bool _hover = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = ZebuTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() => _hover = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: widget.onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          // Selection is carried by weight and colour alone — no fill, no
-          // tick. Scalper's treatment: with a short list the label is right
-          // there to read, and a wash on top of the blue label was two marks
-          // for one fact. Idle is `bgHover` at zero alpha, never
-          // `Colors.transparent` — that is transparent *black*, and a fill
-          // lerping from it washes through grey on the way in.
-          color: _hover ? t.bgHover : t.bgHover.withValues(alpha: 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  widget.entry.label,
-                  style: ZebuTextStyles.body(
-                    context,
-                    color: widget.isSelected ? t.accent : t.textPrimary,
-                    fontWeight: widget.isSelected
-                        ? ZebuFonts.semiBold
-                        : ZebuFonts.medium,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _FilterChip extends StatefulWidget {

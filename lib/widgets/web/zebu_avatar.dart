@@ -110,7 +110,23 @@ class ZebuAvatar extends StatelessWidget {
     this.size = 32,
     this.fill,
     this.ink,
-  });
+  }) : solid = false;
+
+  /// Saturated fill with reversed initials, the way the user-picker mock draws
+  /// them.
+  ///
+  /// The tinted default exists because eight saturated circles read as candy
+  /// down the side of a thread, where they repeat every few lines. A picker is
+  /// the opposite case: you scan it once, the avatar is the only thing
+  /// distinguishing rows of near-identical corporate addresses, and stronger
+  /// colour is exactly what makes the row findable.
+  const ZebuAvatar.solid({
+    super.key,
+    required this.name,
+    this.size = 32,
+    this.fill,
+    this.ink,
+  }) : solid = true;
 
   final String name;
   final double size;
@@ -120,6 +136,9 @@ class ZebuAvatar extends StatelessWidget {
   /// warm because "this is private" outranks "this is Venkat".
   final Color? fill;
   final Color? ink;
+
+  /// Saturated rather than tinted. See [ZebuAvatar.solid].
+  final bool solid;
 
   static String _initials(String s) {
     final parts = s.trim().split(RegExp(r'\s+'));
@@ -138,14 +157,25 @@ class ZebuAvatar extends StatelessWidget {
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: fill ?? (t.isLight ? s.fillLight : s.fillDark),
+        // Solid reuses the swatch's deep tone as the fill and reverses the
+        // label onto it, so both forms stay on the same eight hues and the
+        // same name lands on the same colour either way.
+        color:
+            fill ??
+            (solid
+                ? (t.isLight ? s.textLight : s.textDark)
+                : (t.isLight ? s.fillLight : s.fillDark)),
         shape: BoxShape.circle,
       ),
       child: Text(
         _initials(name),
         style: ZebuTextStyles.small(
           context,
-          color: ink ?? (t.isLight ? s.textLight : s.textDark),
+          color:
+              ink ??
+              (solid
+                  ? (t.isLight ? Colors.white : s.fillDark)
+                  : (t.isLight ? s.textLight : s.textDark)),
           fontWeight: ZebuFonts.semiBold,
           // Scales with the circle so a larger avatar isn't a big ring around
           // small initials.

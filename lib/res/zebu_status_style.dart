@@ -44,6 +44,14 @@ class ZebuStatusStyle {
   final Color bg;
   final Color ink;
 
+  /// The badge's identity colour, for anywhere the state is shown as a plain
+  /// swatch rather than a badge — the dots in the property grid and its menu.
+  ///
+  /// Not simply [ink]: the three solid badges (Escalated, Overdue, Emergency)
+  /// put white text on a coloured field, so their ink is white and a dot drawn
+  /// from it disappeared against the menu. On those, the fill is the colour.
+  Color get dot => border == null ? bg : ink;
+
   /// Null for the solid badge, which needs no edge.
   final Color? border;
 

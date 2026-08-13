@@ -12,6 +12,11 @@ class Assets {
   static const download = 'assets/icon/download.svg';
   static const claim = 'assets/icon/claim.svg';
 
+  /// Selected-row check. Drawn to match the action set's stroke weight and
+  /// round caps — the menus used a `✓` text glyph, which is a different
+  /// typeface's idea of a tick and sat off-baseline beside the label.
+  static const check = 'assets/icon/check.svg';
+
   // Bottom-navigation glyphs (custom line set).
   static const navDashboard = 'assets/icon/nav_dashboard.svg';
   static const navTickets = 'assets/icon/nav_tickets.svg';
