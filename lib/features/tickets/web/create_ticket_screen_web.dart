@@ -723,20 +723,25 @@ class _CreateTicketScreenWebState extends ConsumerState<CreateTicketScreenWeb> {
             ],
           ),
 
-          const SizedBox(height: ZebuSpacing.s5),
-
           // --- INTERNAL NOTE ---------------------------------------------
-          ZebuSectionTitle('Internal note'),
-          const SizedBox(height: ZebuSpacing.s3),
-          ZebuLabeledField(
-            label: 'Note',
-            child: ZebuFormInput(
-              controller: _internalNote,
-              hint: 'Visible to staff only (optional)',
-              minLines: 3,
-              maxLines: 8,
-            ),
-          ),
+          // Dropped from the new-ticket form on request. Commented rather than
+          // deleted so it can come back as-is; `_internalNote` and the
+          // `repo.note(...)` call in `_submit` are still wired up, and that
+          // call is guarded by `isNotEmpty`, so it simply never fires while
+          // nothing can type into the field.
+          //
+          // const SizedBox(height: ZebuSpacing.s5),
+          // ZebuSectionTitle('Internal note'),
+          // const SizedBox(height: ZebuSpacing.s3),
+          // ZebuLabeledField(
+          //   label: 'Note',
+          //   child: ZebuFormInput(
+          //     controller: _internalNote,
+          //     hint: 'Visible to staff only (optional)',
+          //     minLines: 3,
+          //     maxLines: 8,
+          //   ),
+          // ),
         ],
       ),
     );

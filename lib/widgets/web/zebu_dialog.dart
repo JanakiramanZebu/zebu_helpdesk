@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../res/zebu_spacing.dart';
 import '../../res/zebu_text_styles.dart';
 import '../../res/zebu_theme.dart';
+import 'scrollable_body.dart';
 
 /// Modal shell for the app's form dialogs — header, scrolling body, footer.
 ///
@@ -137,12 +138,14 @@ class ZebuDialogShell extends StatelessWidget {
                       children: [
                         _header(context, t),
                         Flexible(
-                          child: SingleChildScrollView(
+                          child: ZebuScrollableBody(
                             padding: const EdgeInsets.all(ZebuSpacing.s5),
+                            footer: actions.isEmpty
+                                ? null
+                                : _footer(context, t),
                             child: body,
                           ),
                         ),
-                        if (actions.isNotEmpty) _footer(context, t),
                       ],
                     ),
                   ),

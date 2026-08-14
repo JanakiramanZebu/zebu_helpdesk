@@ -14,14 +14,21 @@ import 'zebu_avatar.dart';
 /// would be the general fix, but both cards measure text with a
 /// `LayoutBuilder` and that combination asserts, so the floor is a constant.
 ///
-/// 68 clears the tallest of the three. The requester's name-over-email column
-/// measures 42 px, which beats its own 36 px avatar, so the card wants 66 on
-/// its own; the floor pulls the placeholder and the collaborator stack up to
-/// meet it.
+/// 58 clears the tallest of the three — the requester's name-over-email
+/// column, which measures 38 px and beats its own 30 px avatar. The floor
+/// pulls the placeholder and the collaborator stack up to meet it.
+///
+/// Was 68. The cards were doing very little with that height: a 36 px avatar
+/// beside two lines of 14 and 12, inside 12 px of padding. At 30/13/12 inside
+/// 10 the same three facts fit in 10 px less, on a form where every row above
+/// the fold is competing for the same space.
 /// `user_card_test.dart` asserts the two match rather than asserting this
 /// number, so a font change that pushes one past the floor fails the test
 /// instead of quietly reintroducing the step.
-const double kZebuUserCardMinHeight = 68;
+const double kZebuUserCardMinHeight = 58;
+
+/// Inset on all three cards. Named so shrinking one shrinks the set.
+const double kZebuUserCardPad = 10;
 
 /// The chosen requester, shown as a card rather than a value in a select box.
 ///
@@ -63,7 +70,7 @@ class ZebuUserCard extends StatelessWidget {
         onTap: onChange,
         child: Container(
           constraints: const BoxConstraints(minHeight: kZebuUserCardMinHeight),
-          padding: const EdgeInsets.all(ZebuSpacing.s3),
+          padding: const EdgeInsets.all(kZebuUserCardPad),
           decoration: BoxDecoration(
             // color: t.accentSoft,
             border: Border.all(color: t.accent, width: 1),
@@ -72,7 +79,7 @@ class ZebuUserCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              ZebuAvatar.solid(name: name, size: 36),
+              ZebuAvatar.solid(name: name, size: 30),
               const SizedBox(width: ZebuSpacing.s3),
               Expanded(
                 child: Column(
@@ -81,11 +88,11 @@ class ZebuUserCard extends StatelessWidget {
                   children: [
                     ZebuEllipsisText(
                       name,
-                      style: ZebuTextStyles.body(
+                      style: ZebuTextStyles.small(
                         context,
                         color: t.textPrimary,
                         fontWeight: ZebuFonts.semiBold,
-                      ),
+                      ).copyWith(fontSize: 13),
                     ),
                     ZebuEllipsisText(
                       email,
@@ -174,8 +181,8 @@ class ZebuCollaboratorsCard extends StatelessWidget {
     final t = ZebuTheme.of(context);
     final shown = names.take(maxAvatars).toList();
     final extra = names.length - shown.length;
-    const size = 28.0;
-    const overlap = 9.0;
+    const size = 24.0;
+    const overlap = 8.0;
 
     // Each disc is drawn inside a ring, so it occupies `size + 4` — and the
     // stack has to be measured on that, not on `size`. Measuring on the bare
@@ -193,7 +200,7 @@ class ZebuCollaboratorsCard extends StatelessWidget {
         onTap: onEdit,
         child: Container(
           constraints: const BoxConstraints(minHeight: kZebuUserCardMinHeight),
-          padding: const EdgeInsets.all(ZebuSpacing.s3),
+          padding: const EdgeInsets.all(kZebuUserCardPad),
           decoration: BoxDecoration(
             // color: t.accentSoft,
             border: Border.all(color: t.accent, width: 1),
@@ -327,7 +334,7 @@ class ZebuPersonPlaceholder extends StatelessWidget {
         onTap: onTap,
         child: Container(
           constraints: const BoxConstraints(minHeight: kZebuUserCardMinHeight),
-          padding: const EdgeInsets.all(ZebuSpacing.s3),
+          padding: const EdgeInsets.all(kZebuUserCardPad),
           decoration: BoxDecoration(
             border: Border.all(color: hasError ? t.danger : t.accent, width: 1),
             borderRadius: BorderRadius.circular(ZebuRadius.rSm),
@@ -335,14 +342,14 @@ class ZebuPersonPlaceholder extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 36,
-                height: 36,
+                width: 30,
+                height: 30,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: t.bgTertiary,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, size: 18, color: t.iconMuted),
+                child: Icon(icon, size: 16, color: t.iconMuted),
               ),
               const SizedBox(width: ZebuSpacing.s3),
               Expanded(
@@ -354,11 +361,11 @@ class ZebuPersonPlaceholder extends StatelessWidget {
                       label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: ZebuTextStyles.body(
+                      style: ZebuTextStyles.small(
                         context,
                         color: t.textSlate,
                         fontWeight: ZebuFonts.medium,
-                      ),
+                      ).copyWith(fontSize: 13),
                     ),
                     Text(
                       hint,

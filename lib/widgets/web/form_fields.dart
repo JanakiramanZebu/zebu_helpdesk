@@ -120,12 +120,14 @@ class ZebuLabeledField extends StatelessWidget {
 }
 
 /// Single- or multi-line text field for a create form.
-/// Height of a single-line form control — input and select alike.
 ///
-/// Named rather than inlined so a test can assert the two match without
-/// pinning the number twice.
-const double kZebuFieldHeight = 40;
-
+/// The height is whatever `contentPadding` and the font's line metrics make
+/// it — deliberately not pinned. Two attempts to force it to the select's 40
+/// (`InputDecoration.constraints`, then an outer `SizedBox`) both measured
+/// correct in a widget test and both rendered a squashed box in the browser,
+/// so the pin was removed rather than left in half-working. The single-line
+/// input therefore stands slightly taller than a `ZebuSelect` beside it; that
+/// difference is known and unsolved.
 class ZebuFormInput extends StatelessWidget {
   const ZebuFormInput({
     super.key,
@@ -162,14 +164,7 @@ class ZebuFormInput extends StatelessWidget {
     final border = outline(hasError ? t.danger : t.accent);
     final focusedBorder = outline(hasError ? t.danger : t.accentHover, 1.4);
 
-    // A single-line input is pinned to [kZebuFieldHeight] and centres its text
-    // in it, so it stands exactly as tall as the select beside it whatever the
-    // font does. Left to padding it measured 45 against the select's 40 — a
-    // step you see immediately on Title / Department and Requester /
-    // Collaborators, where the two share a row.
-    final fixedHeight = maxLines == 1 && (minLines ?? 1) == 1;
-
-    final field = TextField(
+    return TextField(
       controller: controller,
       onChanged: onChanged,
       minLines: minLines,
@@ -183,25 +178,14 @@ class ZebuFormInput extends StatelessWidget {
         enabledBorder: border,
         focusedBorder: focusedBorder,
         isDense: true,
-        contentPadding: EdgeInsets.symmetric(
+        contentPadding: const EdgeInsets.symmetric(
           horizontal: ZebuSpacing.s3,
-          // Only a box that has to grow with its content keeps a
-          // padding-derived height.
-          vertical: fixedHeight ? 0 : 12,
+          vertical: 12,
         ),
         hintText: hint,
         hintStyle: ZebuTextStyles.body(context, color: t.textSlateMuted),
       ),
     );
-
-    // A `SizedBox`, not `InputDecoration.constraints`. The decoration's own
-    // constraints measured 40 in a widget test and still painted a ~23 px box
-    // in the app, as though the constraint were not there. An outer tight box
-    // is not something the decorator can decline; it fills it and centres the
-    // text inside.
-    return fixedHeight
-        ? SizedBox(height: kZebuFieldHeight, child: field)
-        : field;
   }
 }
 
