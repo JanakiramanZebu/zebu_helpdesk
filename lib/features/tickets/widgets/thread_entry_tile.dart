@@ -187,15 +187,18 @@ class ThreadEntryTile extends StatelessWidget {
                   AttachmentTile(attachment: a),
               ],
               const SizedBox(height: 2),
-              // Trailing timestamp, messaging-app style.
-              Align(
-                alignment: Alignment.centerRight,
-                child: AppText.captionText(
-                  context,
-                  Fmt.ago(entry.created),
-                  color: scheme.onSurfaceVariant,
+              // Trailing clock time (WhatsApp-style "3:45 PM"). The day is
+              // conveyed by the date separators between turns, so the bubble
+              // only needs the time-of-day.
+              if (entry.created != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: AppText.captionText(
+                    context,
+                    Fmt.time(entry.created),
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
-              ),
             ],
           ),
         ),
@@ -251,6 +254,7 @@ class ConversationList extends StatefulWidget {
     required this.thread,
     this.onReply,
     this.bottomReserve = 10,
+    this.headerController,
   });
   final List<ThreadEntry> thread;
   final ValueChanged<ThreadEntry>? onReply;
@@ -258,6 +262,15 @@ class ConversationList extends StatefulWidget {
   /// Extra bottom padding so the newest messages clear the floating composer
   /// that overlays the bottom of the list.
   final double bottomReserve;
+
+  /// The enclosing [NestedScrollView]'s outer (header) controller. Its
+  /// `maxScrollExtent` is the collapsing-header distance; subtracting it from
+  /// the shared position's max tells us whether the *body* itself overflows.
+  /// Without it, a short conversation still auto-scrolls into the header region
+  /// on open — collapsing the subject and (with [bottomReserve]) shoving the
+  /// lone message off the top, leaving an empty screen. Optional so other
+  /// callers keep the plain scroll-to-end behaviour.
+  final ScrollController? headerController;
 
   @override
   State<ConversationList> createState() => _ConversationListState();
@@ -311,6 +324,16 @@ class _ConversationListState extends State<ConversationList> {
       // tab-swipe when both are live so we don't yank the other list.
       if (c == null || c.positions.length != 1) return;
       final target = c.position.maxScrollExtent;
+      // The shared position's max spans the collapsing header *plus* the body
+      // overflow. When the body doesn't overflow (a short conversation that
+      // already fits), scrolling would only collapse the header away and — with
+      // the composer reserve — push the lone message off the top. So only
+      // scroll when the conversation genuinely extends below the fold.
+      final headerExtent =
+          (widget.headerController?.hasClients ?? false)
+              ? widget.headerController!.position.maxScrollExtent
+              : 0.0;
+      if (target - headerExtent <= 1.0) return;
       if (animate) {
         c.animateTo(
           target,

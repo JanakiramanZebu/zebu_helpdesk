@@ -39,10 +39,23 @@ class J {
     return s == '1' || s == 'true' || s == 'yes' || s == 'on';
   }
 
-  /// Parse the API's `"YYYY-MM-DD HH:MM:SS"` (and ISO) timestamps as local-ish.
+  /// Parse the API's timestamps and return them in **device-local** time.
+  ///
+  /// The backend emits GMT/UTC values as `"YYYY-MM-DD HH:MM:SS"` with no
+  /// timezone marker. `DateTime.tryParse` treats a marker-less string as local,
+  /// which skewed every displayed time by the device's UTC offset (e.g. +5:30 in
+  /// IST — a "just now" message read as "6 hours ago"). So when a value carries
+  /// a time but no explicit zone, parse it as UTC, then convert to local. Values
+  /// that already carry a zone (`Z` or `±HH:MM`) are honored as-is; bare dates
+  /// have no time-of-day to skew.
+  static final _zoneSuffix = RegExp(r'[+-]\d{2}:?\d{2}$');
   static DateTime? dateTime(dynamic v) {
     final s = str(v);
     if (s == null || s.isEmpty) return null;
-    return DateTime.tryParse(s.contains('T') ? s : s.replaceFirst(' ', 'T'));
+    final iso = s.contains('T') ? s : s.replaceFirst(' ', 'T');
+    final hasTime = iso.contains(':');
+    final hasZone = iso.endsWith('Z') || _zoneSuffix.hasMatch(iso);
+    final normalized = (hasTime && !hasZone) ? '${iso}Z' : iso;
+    return DateTime.tryParse(normalized)?.toLocal();
   }
 }

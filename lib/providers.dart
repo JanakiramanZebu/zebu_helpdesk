@@ -152,3 +152,19 @@ final ticketsViewRequestProvider = NotifierProvider<ViewRequest, String?>(
 final tasksViewRequestProvider = NotifierProvider<ViewRequest, String?>(
   ViewRequest.new,
 );
+
+/// A monotonically-increasing revision that bumps whenever a ticket/task is
+/// mutated (edited, status-changed, assigned, …) from anywhere — most
+/// importantly the detail screen. The matching list folds this into its refresh
+/// key so it refetches after an edit instead of showing stale rows. Because the
+/// list route stays mounted behind the pushed detail, the refetch runs while
+/// the detail is still on top, so returning to the list shows fresh data.
+class Revision extends Notifier<int> {
+  @override
+  int build() => 0;
+
+  void bump() => state = state + 1;
+}
+
+final tasksChangedProvider = NotifierProvider<Revision, int>(Revision.new);
+final ticketsChangedProvider = NotifierProvider<Revision, int>(Revision.new);

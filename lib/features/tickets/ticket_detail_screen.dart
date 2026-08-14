@@ -1,10 +1,12 @@
 ﻿import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
 import '../../core/format.dart';
+import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/common.dart';
@@ -19,6 +21,7 @@ import '../../widgets/app_snack.dart';
 import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/message_composer.dart';
 import '../../widgets/pickers.dart';
+import '../../widgets/reassign_dialog.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
 import 'widgets/dynamic_fields_section.dart';
@@ -44,6 +47,7 @@ class _TicketCaps {
     this.canReply = false,
     this.canDelete = false,
     this.canBan = false,
+    this.canCreateTask = false,
   });
 
   final bool canEdit; // ticket.edit — priority, owner, topic, due, fields, tags
@@ -58,6 +62,7 @@ class _TicketCaps {
   final bool canReply; // ticket.reply
   final bool canDelete; // ticket.delete
   final bool canBan; // emails.banlist (global perm, not dept-scoped)
+  final bool canCreateTask; // task.create on this ticket's dept
 
   /// `/tickets/{id}/status` accepts PERM_CLOSE **or** PERM_EDIT.
   bool get canChangeStatus => canClose || canEdit;
@@ -85,6 +90,7 @@ class _TicketCaps {
       canReply: me.canOn('ticket.reply', d),
       canDelete: me.canOn('ticket.delete', d),
       canBan: me.can('emails.banlist'),
+      canCreateTask: me.canOn('task.create', d),
     );
   }
 }
@@ -209,6 +215,9 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         await repo.reply(widget.ticketId, body: html, alert: true, files: files);
       }
       await _load(silent: true);
+      // A reply can reopen a closed ticket and always bumps last activity, both
+      // of which the list reflects (status / thread-activity sort).
+      _markChanged();
       return true;
     } on ApiException catch (e) {
       if (mounted) AppSnack.error(context, e.message);
@@ -216,7 +225,15 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     }
   }
 
-  void _apply(Ticket updated) => setState(() => _ticket = updated);
+  void _apply(Ticket updated) {
+    _markChanged();
+    setState(() => _ticket = updated);
+  }
+
+  /// Signal the Tickets list (and any other listener) that this ticket changed,
+  /// so it refetches instead of showing a stale row after the user backs out.
+  /// The list route stays mounted behind us, so it reloads while we're on top.
+  void _markChanged() => ref.read(ticketsChangedProvider.notifier).bump();
 
   void _toast(String msg) => AppSnack.info(context, msg);
 
@@ -290,6 +307,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
           appMenuItem(value: 'link', asset: Assets.actLink, label: 'Link tickets'),
         if (caps.canMerge)
           appMenuItem(value: 'merge', asset: Assets.actMerge, label: 'Merge tickets'),
+        if (caps.canCreateTask)
+          appMenuItem(value: 'newtask', asset: Assets.actEdit, label: 'Create task'),
       ],
       // Metadata.
       [
@@ -385,6 +404,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                         _ConversationTab(
                           thread: _thread,
                           onReply: (e) => setState(() => _replyTo = e),
+                          headerController: _headerScroll,
                         ),
                         _DetailsTab(ticket: t, caps: caps, onEdit: _onMenu),
                         _ActivityTab(events: _events),
@@ -476,13 +496,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
           await _load();
         });
       case 'assign':
-        await _pickMeta(MetaKind.agents, title: 'Assign to', (id) async {
-          await _runAction(
-            () => repo.assign(widget.ticketId, staffId: id),
-            success: 'Assigned',
-          );
-          await _load();
-        });
+        await _reassign();
       case 'assign_team':
         await _pickMeta(MetaKind.teams, title: 'Assign to team', (id) async {
           await _runAction(
@@ -526,6 +540,16 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         await _markState();
       case 'collaborators':
         await _manageCollaborators();
+      case 'newtask':
+        // Open the task-create form pre-linked to this ticket (backend accepts
+        // `ticket_id`). Pass id + number so the form can show the link.
+        final t = _ticket;
+        if (t != null) {
+          context.push(
+            Routes.taskNew,
+            extra: (id: widget.ticketId, number: t.number),
+          );
+        }
       case 'delete':
         await _confirmDelete();
     }
@@ -618,7 +642,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       context: context,
       builder: (_) => _CustomFieldsSheet(ticketId: widget.ticketId),
     );
-    if (saved == true) await _load();
+    if (saved == true) {
+      _markChanged();
+      await _load();
+    }
   }
 
   Future<void> _manageTags() async {
@@ -640,7 +667,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       context: context,
       builder: (_) => _LinkMergeDialog(ticketId: widget.ticketId, merge: merge),
     );
-    if (changed == true) await _load();
+    if (changed == true) {
+      _markChanged();
+      await _load();
+    }
   }
 
   /// Ban or unban the requester's email address. Both operations are exposed
@@ -680,6 +710,39 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     } on ApiException catch (e) {
       if (mounted) _toast(e.message);
     }
+  }
+
+  /// osTicket-style reassign flow: pick a new assignee and, optionally, record
+  /// a reason and keep the current assignee's referral access. Mirrors the web
+  /// reassign form rather than the bare agent picker.
+  Future<void> _reassign() async {
+    final List<MetaItem> agents;
+    try {
+      agents = await ref.read(metaRepositoryProvider).get(MetaKind.agents);
+    } on ApiException catch (e) {
+      _toast(e.message);
+      return;
+    }
+    if (!mounted) return;
+    final current = _ticket?.assignee;
+    final result = await showReassignDialog(
+      context,
+      assignees: agents,
+      title: (current != null && current.isNotEmpty) ? 'Reassign' : 'Assign',
+      assigneeLabel: 'Assignee',
+      currentAssignee: current,
+    );
+    if (result == null) return;
+    await _runAction(
+      () => ref.read(ticketsRepositoryProvider).assign(
+            widget.ticketId,
+            staffId: result.assigneeId,
+            comments: result.comments,
+            refer: result.maintainReferral,
+          ),
+      success: 'Assigned',
+    );
+    await _load();
   }
 
   Future<void> _pickMeta(
@@ -814,9 +877,14 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
 // --- Tabs -------------------------------------------------------------------
 
 class _ConversationTab extends StatelessWidget {
-  const _ConversationTab({required this.thread, this.onReply});
+  const _ConversationTab({
+    required this.thread,
+    this.onReply,
+    this.headerController,
+  });
   final List<ThreadEntry> thread;
   final ValueChanged<ThreadEntry>? onReply;
+  final ScrollController? headerController;
 
   @override
   Widget build(BuildContext context) {
@@ -827,6 +895,7 @@ class _ConversationTab extends StatelessWidget {
     return ConversationList(
       thread: thread,
       onReply: onReply,
+      headerController: headerController,
       bottomReserve: 104 + MediaQuery.of(context).padding.bottom,
     );
   }
@@ -850,7 +919,14 @@ class _DetailsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      // Pad the bottom past the system gesture bar / home indicator so the last
+      // row isn't tucked under it.
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        16 + MediaQuery.of(context).padding.bottom,
+      ),
       children: [
         // Editable attributes â€” tap to open the matching picker.
         _DetailSection(
@@ -1066,14 +1142,19 @@ class _ActivityTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (events.isEmpty) return const EmptyView(message: 'No activity');
     final scheme = Theme.of(context).colorScheme;
+    // Newest first: the API returns events oldest→newest (ordered by
+    // timestamp), so reverse it — this keeps same-second events (e.g. "Created"
+    // then "assigned") in the right relative order and puts "Created" last. A
+    // timestamp sort can't, since same-second ties would shuffle.
+    final ordered = events.reversed.toList();
     return SafeArea(
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        itemCount: events.length,
+        itemCount: ordered.length,
         itemBuilder: (context, i) {
-          final e = events[i];
+          final e = ordered[i];
           final (icon, color) = _style(e.state);
-          final isLast = i == events.length - 1;
+          final isLast = i == ordered.length - 1;
           return IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,

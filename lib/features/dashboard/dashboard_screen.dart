@@ -61,9 +61,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // Task counts (derived from /tasks list totals — there is no task report
   // endpoint). Null until loaded; the Tasks section is hidden until then.
   int? _tasksOpen;
-  int? _tasksMine;
   int? _tasksOverdue;
-  int? _tasksCollaborator;
   int? _tasksAll;
   int? _tasksClosed;
 
@@ -152,22 +150,19 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   Future<void> _loadTaskCounts() async {
     try {
       final repo = ref.read(tasksRepositoryProvider);
+      // Only the views shown as dashboard tiles (web Tasks queue tabs).
       final totals = await Future.wait([
         repo.count(view: 'open'),
-        repo.count(view: 'mine'),
-        repo.count(view: 'overdue'),
-        repo.count(view: 'collaborator'),
         repo.count(view: 'all'),
+        repo.count(view: 'overdue'),
         repo.count(view: 'closed'),
       ]);
       if (!mounted) return;
       setState(() {
         _tasksOpen = totals[0];
-        _tasksMine = totals[1];
+        _tasksAll = totals[1];
         _tasksOverdue = totals[2];
-        _tasksCollaborator = totals[3];
-        _tasksAll = totals[4];
-        _tasksClosed = totals[5];
+        _tasksClosed = totals[3];
       });
     } catch (_) {
       // Leave counts null — the Tasks section simply stays hidden.
@@ -334,6 +329,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         actionLabel: 'View all',
         onAction: () => _openTickets('open'),
       ),
+      // Tiles mirror the web Tickets queue tabs exactly, in web order:
+      // Open · All Tickets · My Tickets · Closed. Each tile drills into its
+      // matching tab.
       FocusStrip(
         metrics: [
           FocusMetric(
@@ -343,16 +341,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             onTap: () => _openTickets('open'),
           ),
           FocusMetric(
-            label: 'Unassigned',
-            value: t.unassigned,
-            color: AppTheme.warning,
-            onTap: () => _openTickets('unassigned'),
-          ),
-          FocusMetric(
-            label: 'Overdue',
-            value: t.overdue,
-            color: AppTheme.overdue,
-            onTap: () => _openTickets('overdue'),
+            label: 'All Tickets',
+            value: t.total,
+            color: Glass.accent,
+            onTap: () => _openTickets('all'),
           ),
         ],
       ),
@@ -360,16 +352,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       CountChipRow(
         chips: [
           CountChip(
-            label: 'Mine',
+            label: 'My Tickets',
             value: t.mineOpen,
             color: Glass.indigo,
             onTap: () => _openTickets('mine'),
-          ),
-          CountChip(
-            label: 'Answered',
-            value: t.answered,
-            color: AppTheme.open,
-            onTap: () => _openTickets('answered'),
           ),
           CountChip(
             label: 'Closed',
@@ -386,7 +372,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         'Needs attention',
         actionLabel: (_attention?.isNotEmpty ?? false) ? 'View all' : null,
         onAction: (_attention?.isNotEmpty ?? false)
-            ? () => _openTickets('overdue')
+            ? () => _openTickets('open')
             : null,
       ),
       _attentionPanel(),
@@ -550,6 +536,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           actionLabel: 'View all',
           onAction: () => _openTasks('all'),
         ),
+        // Tiles mirror the web Tasks queue tabs exactly, in web order:
+        // Open · All · Overdue · Completed. Each tile drills into its matching
+        // tab ("Completed" is the tasks `closed` view).
         FocusStrip(
           metrics: [
             FocusMetric(
@@ -559,16 +548,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               onTap: () => _openTasks('open'),
             ),
             FocusMetric(
-              label: 'Mine',
-              value: _tasksMine ?? 0,
-              color: Glass.indigo,
-              onTap: () => _openTasks('mine'),
-            ),
-            FocusMetric(
-              label: 'Overdue',
-              value: _tasksOverdue ?? 0,
-              color: AppTheme.overdue,
-              onTap: () => _openTasks('overdue'),
+              label: 'All',
+              value: _tasksAll ?? 0,
+              color: Glass.accent,
+              onTap: () => _openTasks('all'),
             ),
           ],
         ),
@@ -576,19 +559,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
         CountChipRow(
           chips: [
             CountChip(
-              label: 'Collaborator',
-              value: _tasksCollaborator ?? 0,
-              color: AppTheme.warning,
-              onTap: () => _openTasks('collaborator'),
+              label: 'Overdue',
+              value: _tasksOverdue ?? 0,
+              color: AppTheme.overdue,
+              onTap: () => _openTasks('overdue'),
             ),
             CountChip(
-              label: 'All',
-              value: _tasksAll ?? 0,
-              color: Glass.accent,
-              onTap: () => _openTasks('all'),
-            ),
-            CountChip(
-              label: 'Closed',
+              label: 'Completed',
               value: _tasksClosed ?? 0,
               color: AppTheme.closed,
               onTap: () => _openTasks('closed'),

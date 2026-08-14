@@ -8,6 +8,7 @@ import '../../core/assets.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/common.dart';
 import '../../models/me.dart';
 import '../../models/meta.dart';
@@ -19,6 +20,7 @@ import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/message_composer.dart';
 import '../../widgets/pickers.dart';
+import '../../widgets/reassign_dialog.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
 import '../tickets/widgets/thread_entry_tile.dart';
@@ -65,8 +67,14 @@ class _TaskCaps {
 }
 
 class TaskDetailScreen extends ConsumerStatefulWidget {
-  const TaskDetailScreen({super.key, required this.taskId});
+  const TaskDetailScreen({super.key, required this.taskId, this.seed});
   final int taskId;
+
+  /// The list row's task, passed via the route's `extra` when navigating from a
+  /// list/subtask. The detail endpoint (`/tasks/{id}`) omits the due date, but
+  /// the list summary carries it — so we graft the seed's due date onto the
+  /// fetched detail when the response lacks one. Null for deep-link/push entry.
+  final Task? seed;
 
   @override
   ConsumerState<TaskDetailScreen> createState() => _TaskDetailScreenState();
@@ -74,7 +82,7 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 2, vsync: this);
+  late final TabController _tabs = TabController(length: 3, vsync: this);
   // Controls the outer (header) scroll view of the NestedScrollView, so its
   // offset tells us when the collapsing header (which holds the title) has
   // scrolled behind the pinned app bar.
@@ -82,6 +90,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
 
   Task? _task;
   List<ThreadEntry> _thread = [];
+  List<ThreadEvent> _events = [];
   List<Task> _subtasks = [];
   List<TaskDependency> _dependencies = [];
   Object? _error;
@@ -136,14 +145,25 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     });
     final repo = ref.read(tasksRepositoryProvider);
     try {
-      final task = await repo.get(widget.taskId);
+      var task = await repo.get(widget.taskId);
+      // The detail endpoint omits the due date; graft it from the list row we
+      // came in with (same task) so the Due row and overdue chip still show.
+      final seed = widget.seed;
+      if (task.duedate == null &&
+          seed != null &&
+          seed.id == task.id &&
+          seed.duedate != null) {
+        task = task.copyWith(duedate: seed.duedate, overdue: seed.overdue);
+      }
       final thread = await repo.thread(widget.taskId, limit: 50);
+      final events = await repo.events(widget.taskId);
       final subtasks = await repo.subtasks(widget.taskId);
       final dependencies = await repo.dependencies(widget.taskId);
       if (!mounted) return;
       setState(() {
         _task = task;
         _thread = thread.items;
+        _events = events;
         _subtasks = subtasks;
         _dependencies = dependencies;
         _loading = false;
@@ -173,6 +193,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
         await repo.reply(widget.taskId, body: html, alert: true, files: files);
       }
       await _load(silent: true);
+      // A reply can reopen a closed task and always bumps last activity, both of
+      // which the list reflects (status / thread-activity sort).
+      _markChanged();
       return true;
     } on ApiException catch (e) {
       if (mounted) AppSnack.error(context, e.message);
@@ -180,7 +203,15 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     }
   }
 
-  void _apply(Task updated) => setState(() => _task = updated);
+  void _apply(Task updated) {
+    _markChanged();
+    setState(() => _task = updated);
+  }
+
+  /// Signal the Tasks list (and any other listener) that this task changed, so
+  /// it refetches instead of showing a stale row after the user backs out. The
+  /// list route stays mounted behind us, so it reloads while we're still on top.
+  void _markChanged() => ref.read(tasksChangedProvider.notifier).bump();
 
   void _toast(String msg) => AppSnack.info(context, msg);
 
@@ -246,6 +277,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
             asset: Assets.actCollaborators,
             label: 'Collaborators',
           ),
+          // Tags edit the task, so gate on task.edit (matches the ticket menu).
+          if (caps.canEdit)
+            appMenuItem(value: 'tags', asset: Assets.actTag, label: 'Tags'),
         ],
       );
 
@@ -312,6 +346,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                       tabs: const [
                         Tab(text: 'Conversation'),
                         Tab(text: 'Details'),
+                        Tab(text: 'Activity'),
                       ],
                     ),
                   ),
@@ -327,6 +362,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                         _ConversationTab(
                           thread: _thread,
                           onReply: (e) => setState(() => _replyTo = e),
+                          headerController: _headerScroll,
                         ),
                         _DetailsTab(
                           task: t,
@@ -334,12 +370,13 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                           onEdit: _onMenu,
                           subtasks: _subtasks,
                           onSubtaskTap: (st) =>
-                              context.push(Routes.task(st.id)),
+                              context.push(Routes.task(st.id), extra: st),
                           onAddSubtask: _addSubtask,
                           dependencies: _dependencies,
                           onAddDependency: _addDependency,
                           onRemoveDependency: _removeDependency,
                         ),
+                        _ActivityTab(events: _events),
                       ],
                     ),
                   ),
@@ -400,13 +437,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
         );
         await _load();
       case 'assign':
-        await _pickMeta(MetaKind.agents, title: 'Assign to', (id) async {
-          await _runAction(
-            () => repo.assign(widget.taskId, staffId: id),
-            success: 'Assigned',
-          );
-          await _load();
-        });
+        await _reassign();
       case 'transfer':
         await _pickMeta(MetaKind.departments, title: 'Transfer department',
             selectedId: _task?.departmentId, (id) async {
@@ -430,6 +461,11 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           context: context,
           builder: (_) => _TaskCollaboratorsSheet(taskId: widget.taskId),
         );
+      case 'tags':
+        await showDialog<void>(
+          context: context,
+          builder: (_) => _TaskTagsSheet(taskId: widget.taskId),
+        );
     }
   }
 
@@ -438,7 +474,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       context: context,
       builder: (_) => _SubtaskSheet(taskId: widget.taskId),
     );
-    if (created == true) await _load();
+    if (created == true) {
+      _markChanged();
+      await _load();
+    }
   }
 
   Future<void> _addDependency() async {
@@ -458,6 +497,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     } finally {
       if (mounted) setState(() => _acting = false);
     }
+    _markChanged();
     await _load();
   }
 
@@ -473,6 +513,40 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     } finally {
       if (mounted) setState(() => _acting = false);
     }
+    _markChanged();
+    await _load();
+  }
+
+  /// osTicket-style reassign flow: pick a new assignee and, optionally, record
+  /// a reason and keep the current assignee's referral access. Mirrors the web
+  /// reassign form rather than the bare agent picker.
+  Future<void> _reassign() async {
+    final List<MetaItem> agents;
+    try {
+      agents = await ref.read(metaRepositoryProvider).get(MetaKind.agents);
+    } on ApiException catch (e) {
+      _toast(e.message);
+      return;
+    }
+    if (!mounted) return;
+    final current = _task?.assignee;
+    final result = await showReassignDialog(
+      context,
+      assignees: agents,
+      title: (current != null && current.isNotEmpty) ? 'Reassign' : 'Assign',
+      assigneeLabel: 'Assignee',
+      currentAssignee: current,
+    );
+    if (result == null) return;
+    await _runAction(
+      () => ref.read(tasksRepositoryProvider).assign(
+            widget.taskId,
+            staffId: result.assigneeId,
+            comments: result.comments,
+            refer: result.maintainReferral,
+          ),
+      success: 'Assigned',
+    );
     await _load();
   }
 
@@ -651,9 +725,14 @@ class _SliverTabBarDelegate extends SliverPersistentHeaderDelegate {
 // --- Tabs -------------------------------------------------------------------
 
 class _ConversationTab extends StatelessWidget {
-  const _ConversationTab({required this.thread, this.onReply});
+  const _ConversationTab({
+    required this.thread,
+    this.onReply,
+    this.headerController,
+  });
   final List<ThreadEntry> thread;
   final ValueChanged<ThreadEntry>? onReply;
+  final ScrollController? headerController;
 
   @override
   Widget build(BuildContext context) {
@@ -664,6 +743,7 @@ class _ConversationTab extends StatelessWidget {
     return ConversationList(
       thread: thread,
       onReply: onReply,
+      headerController: headerController,
       bottomReserve: 104 + MediaQuery.of(context).padding.bottom,
     );
   }
@@ -705,7 +785,12 @@ class _DetailsTab extends StatelessWidget {
     // explicit horizontal inset to line up with the cards.
     const hPad = EdgeInsets.symmetric(horizontal: 16);
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      // Pad the bottom past the system gesture bar / home indicator so the last
+      // row (dependencies) isn't tucked under it.
+      padding: EdgeInsets.only(
+        top: 16,
+        bottom: 16 + MediaQuery.of(context).padding.bottom,
+      ),
       children: [
         // Editable attributes â€” tap to open the matching picker/editor.
         Padding(
@@ -1150,6 +1235,118 @@ class _MetaPickerDialogState extends State<_MetaPickerDialog> {
   }
 }
 
+// --- Activity tab -----------------------------------------------------------
+
+/// The task's event history (`GET /tasks/{id}/events`) as a vertical timeline —
+/// status changes, assignments, transfers, notes, etc. Mirrors the ticket
+/// Activity tab so both entities present history the same way.
+class _ActivityTab extends StatelessWidget {
+  const _ActivityTab({required this.events});
+  final List<ThreadEvent> events;
+
+  /// (icon, colour) for an event, derived from its state slug.
+  static (IconData, Color) _style(String state) {
+    final s = state.toLowerCase();
+    if (s.contains('close') || s.contains('resolved')) {
+      return (Icons.check_circle_outline, AppTheme.closed);
+    }
+    if (s.contains('open') || s.contains('reopen')) {
+      return (Icons.play_circle_outline, AppTheme.open);
+    }
+    if (s.contains('assign') || s.contains('claim') || s.contains('owner')) {
+      return (Icons.person_outline, AppTheme.brand);
+    }
+    if (s.contains('transfer')) {
+      return (Icons.swap_horiz, AppTheme.warning);
+    }
+    if (s.contains('overdue')) {
+      return (Icons.warning_amber_rounded, AppTheme.overdue);
+    }
+    if (s.contains('note')) {
+      return (Icons.sticky_note_2_outlined, AppTheme.brandLight);
+    }
+    if (s.contains('reply') || s.contains('message')) {
+      return (Icons.reply, AppTheme.open);
+    }
+    return (Icons.fiber_manual_record, AppTheme.brand);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (events.isEmpty) return const EmptyView(message: 'No activity');
+    final scheme = Theme.of(context).colorScheme;
+    // Newest first: the API returns events oldest→newest (ordered by
+    // timestamp), so reverse it — this keeps same-second events (e.g. "Created"
+    // then "assigned") in the right relative order and puts "Created" last. A
+    // timestamp sort can't, since same-second ties would shuffle.
+    final ordered = events.reversed.toList();
+    return SafeArea(
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        itemCount: ordered.length,
+        itemBuilder: (context, i) {
+          final e = ordered[i];
+          final (icon, color) = _style(e.state);
+          final isLast = i == ordered.length - 1;
+          return IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Timeline rail: a coloured icon node with a connector below.
+                Column(
+                  children: [
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.14),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(icon, size: 17, color: color),
+                    ),
+                    if (!isLast)
+                      Expanded(
+                        child: Container(
+                          width: 2,
+                          color: scheme.outlineVariant,
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: isLast ? 0 : 18, top: 4),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        AppText.subText(
+                          context,
+                          e.description ?? e.state,
+                          fw: 1,
+                          lineHeight: 1.3,
+                        ),
+                        const SizedBox(height: 2),
+                        AppText.paraText(
+                          context,
+                          [
+                            if ((e.actor ?? '').isNotEmpty) e.actor!,
+                            Fmt.ago(e.created),
+                          ].join(' · '),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 // --- Subtask sheet ----------------------------------------------------------
 
 class _SubtaskSheet extends ConsumerStatefulWidget {
@@ -1292,6 +1489,119 @@ class _DependencyDialogState extends State<_DependencyDialog> {
           errorText: _error,
         ),
       ),
+    );
+  }
+}
+
+// --- Tags sheet -------------------------------------------------------------
+
+/// Lists a task's tags and lets the agent add/remove them
+/// (`GET/POST/DELETE /tasks/{id}/tags`). Mirrors the ticket Tags sheet.
+class _TaskTagsSheet extends ConsumerStatefulWidget {
+  const _TaskTagsSheet({required this.taskId});
+  final int taskId;
+
+  @override
+  ConsumerState<_TaskTagsSheet> createState() => _TaskTagsSheetState();
+}
+
+class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
+  List<Tag> _tags = const [];
+  bool _loading = true;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final t = await ref.read(tasksRepositoryProvider).tags(widget.taskId);
+      if (mounted) {
+        setState(() {
+          _tags = t;
+          _loading = false;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        AppSnack.error(context, e.message);
+      }
+    }
+  }
+
+  Future<void> _add() async {
+    final List<MetaItem> items;
+    try {
+      items = await ref.read(metaRepositoryProvider).get(MetaKind.tags);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+      return;
+    }
+    if (!mounted) return;
+    final chosen = await showDialog<int>(
+      context: context,
+      builder: (_) => _MetaPickerDialog(title: 'Add tag', items: items),
+    );
+    if (chosen == null) return;
+    setState(() => _busy = true);
+    try {
+      final t = await ref
+          .read(tasksRepositoryProvider)
+          .addTag(widget.taskId, tagId: chosen);
+      if (mounted) setState(() => _tags = t);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _remove(int tagId) async {
+    setState(() => _busy = true);
+    try {
+      final t = await ref
+          .read(tasksRepositoryProvider)
+          .removeTag(widget.taskId, tagId);
+      if (mounted) setState(() => _tags = t);
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppDialog(
+      title: 'Tags',
+      actionLabel: 'Add tag',
+      onAction: _busy ? null : _add,
+      actionEnabled: !_busy,
+      child: _loading
+          ? const Padding(
+              padding: EdgeInsets.all(16),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _tags.isEmpty
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: AppText.subText(context, 'No tags'),
+            )
+          : Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final t in _tags)
+                  Chip(
+                    label: Text(t.name),
+                    onDeleted: _busy ? null : () => _remove(t.id),
+                  ),
+              ],
+            ),
     );
   }
 }

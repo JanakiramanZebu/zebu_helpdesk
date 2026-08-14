@@ -223,6 +223,8 @@ class AuthUi {
       prefixIcon: Icon(icon, size: 20, color: p.icon),
       suffixIcon: suffix,
       errorText: error,
+      // Full-sentence messages must never truncate to "…" — let them wrap.
+      errorMaxLines: 2,
       filled: true,
       fillColor: p.fieldFill,
       contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 18),

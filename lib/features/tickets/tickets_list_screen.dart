@@ -31,13 +31,15 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/svg_icon.dart';
 import 'widgets/ticket_row.dart';
 
-/// App filter pills (the `view` param on GET /tickets).
+/// App filter pills (the `view` param on GET /tickets). Order/labels mirror the
+/// web Tickets nav's default system queues exactly: Open · All Tickets ·
+/// My Tickets · Closed. ("Search" is the search bar + filter button, and
+/// "New Ticket" is the bottom-nav "+", so neither is a tab here.) `all` returns
+/// the full visible set server-side.
 const _views = <({String key, String label})>[
   (key: 'open', label: 'Open'),
-  (key: 'mine', label: 'Mine'),
-  (key: 'unassigned', label: 'Unassigned'),
-  (key: 'overdue', label: 'Overdue'),
-  (key: 'answered', label: 'Answered'),
+  (key: 'all', label: 'All Tickets'),
+  (key: 'mine', label: 'My Tickets'),
   (key: 'closed', label: 'Closed'),
 ];
 
@@ -167,6 +169,12 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     final entries = await Future.wait(
       _views.map((v) async {
         try {
+          // The server's view=mine still counts closed assignments; count the
+          // open-only set client-side so the badge matches the filtered list.
+          if (v.key == 'mine') {
+            final mine = await _gatherAll(const TicketQuery(view: 'mine'));
+            return MapEntry('mine', mine.where((t) => !t.isClosed).length);
+          }
           return MapEntry(v.key, await repo.count(view: v.key));
         } catch (_) {
           return MapEntry(v.key, -1);
@@ -179,6 +187,8 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
         for (final e in entries)
           if (e.value >= 0) e.key: e.value,
       };
+      // Keep the app-bar total in step with the corrected My Tickets count.
+      if (_view == 'mine' && _counts['mine'] != null) _total = _counts['mine'];
     });
   }
 
@@ -200,15 +210,12 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   String get _order => _sort == 'due' ? 'asc' : 'desc';
 
   /// Semantic dot color for each view chip, mirroring the dashboard's status
-  /// palette (open/answered green, mine brand, unassigned amber, overdue red,
-  /// closed grey).
+  /// palette (open green, mine brand, closed grey, all neutral accent).
   static Color _viewColor(String key) => switch (key) {
-    'open' || 'answered' => AppTheme.open,
-    'mine' => Glass.indigo,
-    'unassigned' => AppTheme.warning,
-    'overdue' => AppTheme.overdue,
+    'open' => AppTheme.open,
+    'mine' => Glass.indigo, // My Tickets
     'closed' => AppTheme.closed,
-    _ => Glass.indigo,
+    _ => Glass.accent, // 'all' (All Tickets)
   };
 
   (DateTime, DateTime)? get _dateBounds => _dateRange.bounds(DateTime.now());
@@ -495,6 +502,11 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   /// overdue/answered state, closed vs open, assignment. Re-deriving it silently
   /// dropped rows the server returned, which is what emptied the Overdue tab.
   bool _matches(Ticket t, String view) {
+    // "My Tickets" shows only OPEN tickets assigned to me, matching the web
+    // queue. The server's view=mine also returns closed assignments, so drop
+    // them here — the row's status name reliably marks closed (see isClosed).
+    if (view == 'mine' && t.isClosed) return false;
+
     final b = _dateBounds;
     if (b != null) {
       final c = t.created;
@@ -665,19 +677,24 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   Widget _buildList(String view, bool compact) {
     final active = view == _view;
     final repo = ref.watch(ticketsRepositoryProvider);
+    // Refetch this list whenever a ticket is mutated anywhere (e.g. edited on
+    // the detail screen) — folded into refreshKey below.
+    final changed = ref.watch(ticketsChangedProvider);
     final query = _queryFor(view);
     return PagedListView<Ticket>(
       fabClearance: !_selectionMode,
       skeleton: ListSkeleton(compact: compact),
       separated: compact,
-      refreshKey: '$view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
+      refreshKey: '$view|${_dateRange.name}|$_sort|$_filterSig|$_refresh|$changed',
       itemFilter: (t) => _matches(t, view),
       itemSort: _sort == 'thread' ? null : _compare,
       // Only the visible page feeds selection state and the app-bar total.
       onItems: active ? _onItems : null,
       onTotalChanged: active
           ? (t) {
-              if (mounted && t != _total) setState(() => _total = t);
+              // Mirror the client-side open-only count for My Tickets.
+              final shown = view == 'mine' ? (_counts['mine'] ?? t) : t;
+              if (mounted && shown != _total) setState(() => _total = shown);
             }
           : null,
       emptyMessage: 'No tickets',

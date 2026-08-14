@@ -14,6 +14,7 @@ import '../../features/notifications/notifications_screen.dart';
 import '../../features/organizations/org_detail_screen.dart';
 import '../../features/organizations/orgs_list_screen.dart';
 import '../../features/profile/profile_screen.dart';
+import '../../features/queues/queue_results_screen.dart';
 import '../../features/queues/queues_screen.dart';
 import '../../features/reports/reports_screen.dart';
 import '../../features/settings/server_settings_screen.dart';
@@ -27,6 +28,8 @@ import '../../features/tickets/ticket_detail_screen.dart';
 import '../../features/tickets/tickets_list_screen.dart';
 import '../../features/users/user_detail_screen.dart';
 import '../../features/users/users_list_screen.dart';
+import '../../models/saved_queue.dart';
+import '../../models/task.dart';
 import '../../providers.dart';
 import 'routes.dart';
 
@@ -133,13 +136,27 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         parentNavigatorKey: _rootKey,
         path: Routes.taskNew,
-        builder: (_, __) => const CreateTaskScreen(),
+        // A "Create task" action on a ticket passes (id, number) as `extra` to
+        // pre-link the new task to that ticket.
+        builder: (_, s) {
+          final link = s.extra;
+          return CreateTaskScreen(
+            ticketId: link is ({int id, String number}) ? link.id : null,
+            ticketNumber: link is ({int id, String number})
+                ? link.number
+                : null,
+          );
+        },
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
         path: '/tasks/:id',
-        builder: (_, s) =>
-            TaskDetailScreen(taskId: int.parse(s.pathParameters['id']!)),
+        builder: (_, s) => TaskDetailScreen(
+          taskId: int.parse(s.pathParameters['id']!),
+          // A list/subtask tap passes its row Task so the detail can borrow the
+          // due date the detail endpoint omits.
+          seed: s.extra is Task ? s.extra as Task : null,
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
@@ -183,6 +200,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootKey,
         path: Routes.queues,
         builder: (_, __) => const QueuesScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: Routes.queueResults,
+        // The tapped SavedQueue is passed as `extra` (it carries type + criteria
+        // the results screen needs).
+        builder: (_, s) => QueueResultsScreen(queue: s.extra as SavedQueue),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,

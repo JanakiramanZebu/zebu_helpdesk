@@ -28,14 +28,19 @@ import '../../widgets/selection_controls.dart';
 import '../../widgets/skeleton.dart';
 import 'widgets/task_row.dart';
 
-/// App filter pills (the `view` param on GET /tasks).
+/// App filter pills (the `view` param on GET /tasks). Order and labels mirror
+/// the web Tasks nav (scp/tasks.php): Open · All · Overdue · Completed ·
+/// Created by me · Collaborator · My Tasks. ("New Task" is the bottom-nav "+",
+/// not a filter tab.) The `closed` key is kept (the backend accepts it and the
+/// dashboard "Completed" tile deep-links to it) while the chip reads "Completed".
 const _views = <({String key, String label})>[
   (key: 'open', label: 'Open'),
-  (key: 'mine', label: 'Mine'),
-  (key: 'overdue', label: 'Overdue'),
-  (key: 'collaborator', label: 'Collaborator'),
   (key: 'all', label: 'All'),
-  (key: 'closed', label: 'Closed'),
+  (key: 'overdue', label: 'Overdue'),
+  (key: 'closed', label: 'Completed'),
+  (key: 'created', label: 'Created by me'),
+  (key: 'collaborator', label: 'Collaborator'),
+  (key: 'mine', label: 'My Tasks'),
 ];
 
 /// Sort options (the `sort` param on GET /tasks), mirroring the web menu.
@@ -152,12 +157,23 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   }
 
   /// Fetch the count for every tab in parallel (cheap total-only queries).
+  ///
+  /// Uses the SAME query the list will run for each view ([_queryFor], limited
+  /// to one row) rather than a bare `view` count, so the badge can't disagree
+  /// with the list — notably the `status=open` scope on "My Tasks" and
+  /// "Collaborator". The server's pagination total is what we read.
   Future<void> _loadCounts() async {
     final repo = ref.read(tasksRepositoryProvider);
     final entries = await Future.wait(
       _views.map((v) async {
         try {
-          return MapEntry(v.key, await repo.count(view: v.key));
+          // Count My Tasks open-only client-side, matching the filtered list.
+          if (v.key == 'mine') {
+            final mine = await _gatherAll(_queryFor('mine'));
+            return MapEntry('mine', mine.where((t) => t.isOpen).length);
+          }
+          final res = await repo.list(_queryFor(v.key).copyWith(limit: 1));
+          return MapEntry(v.key, res.total);
         } catch (_) {
           return MapEntry(v.key, -1);
         }
@@ -169,6 +185,8 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
         for (final e in entries)
           if (e.value >= 0) e.key: e.value,
       };
+      // Keep the app-bar total in step with the corrected My Tasks count.
+      if (_view == 'mine' && _counts['mine'] != null) _total = _counts['mine'];
     });
   }
 
@@ -176,10 +194,11 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   /// palette.
   static Color _viewColor(String key) => switch (key) {
     'open' => AppTheme.open,
-    'mine' => Glass.indigo,
+    'mine' => Glass.indigo, // My Tasks (assigned to me)
     'overdue' => AppTheme.overdue,
     'collaborator' => AppTheme.warning,
-    'closed' => AppTheme.closed,
+    'created' => Glass.indigo, // Created by me
+    'closed' => AppTheme.closed, // Completed
     _ => Glass.accent, // 'all'
   };
 
@@ -278,6 +297,14 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
       priorityId: _filters['priority']?.id,
       assigneeId: _filters['agent']?.id,
       tagId: tag == null ? null : [tag.id],
+      // The "My Tasks" (mine) and "Collaborator" views scope by assignee /
+      // collaborator server-side but otherwise include completed tasks. The web
+      // nav counts both as OPEN-only (Task::getStaffStats: `assigned` and
+      // `collab` require the ISOPEN flag), so AND in status=open to match — the
+      // backend applies it alongside the view.
+      extra: (view == 'mine' || view == 'collaborator')
+          ? const {'status': 'open'}
+          : const {},
     );
   }
 
@@ -479,6 +506,11 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   /// overdue state, open vs closed, assignment. Re-deriving it silently dropped
   /// rows the server returned, which is what emptied the Overdue tab.
   bool _matches(Task t, String view) {
+    // "My Tasks" shows only OPEN tasks assigned to me. The server scopes
+    // view=mine to status=open, but guard here too so a closed row can never
+    // leak into this tab (mirrors the Tickets screen).
+    if (view == 'mine' && !t.isOpen) return false;
+
     final b = _dateBounds;
     if (b != null) {
       final c = t.created;
@@ -645,19 +677,24 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   Widget _buildList(String view, bool compact) {
     final active = view == _view;
     final repo = ref.watch(tasksRepositoryProvider);
+    // Refetch this list whenever a task is mutated anywhere (e.g. edited on the
+    // detail screen) — folded into refreshKey below.
+    final changed = ref.watch(tasksChangedProvider);
     final query = _queryFor(view);
     return PagedListView<Task>(
       fabClearance: !_selectionMode,
       skeleton: ListSkeleton(compact: compact),
       separated: compact,
-      refreshKey: '$view|${_dateRange.name}|$_sort|$_filterSig|$_refresh',
+      refreshKey: '$view|${_dateRange.name}|$_sort|$_filterSig|$_refresh|$changed',
       itemFilter: (t) => _matches(t, view),
       itemSort: _sort == 'thread' ? null : _compare,
       // Only the visible page feeds selection state and the app-bar total.
       onItems: active ? _onItems : null,
       onTotalChanged: active
           ? (t) {
-              if (mounted && t != _total) setState(() => _total = t);
+              // Mirror the client-side open-only count for My Tasks.
+              final shown = view == 'mine' ? (_counts['mine'] ?? t) : t;
+              if (mounted && shown != _total) setState(() => _total = shown);
             }
           : null,
       emptyMessage: 'No tasks',
@@ -669,7 +706,9 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
         selectionMode: _selectionMode,
         selected: _selected.contains(t.id),
         onToggle: () => _toggle(t.id),
-        onTap: () => context.push(Routes.task(t.id)),
+        // Pass the row task so the detail can show the due date its own
+        // endpoint omits (list summary carries it).
+        onTap: () => context.push(Routes.task(t.id), extra: t),
       ),
     );
   }

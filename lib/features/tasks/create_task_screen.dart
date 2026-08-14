@@ -26,7 +26,12 @@ import '../../widgets/states.dart';
 
 /// `POST /tasks` — create a task.
 class CreateTaskScreen extends ConsumerStatefulWidget {
-  const CreateTaskScreen({super.key});
+  const CreateTaskScreen({super.key, this.ticketId, this.ticketNumber});
+
+  /// When opened from a ticket ("Create task"), the task is linked to it via
+  /// `ticket_id`. [ticketNumber] is only for display.
+  final int? ticketId;
+  final String? ticketNumber;
 
   @override
   ConsumerState<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -118,6 +123,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           if (_priority != null) 'priority_id': _priority!.id,
           if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
           if (_parent != null) 'parent_id': _parent!.id,
+          if (widget.ticketId != null) 'ticket_id': widget.ticketId,
         },
         files: [
           for (final f in _files)
@@ -269,6 +275,14 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               if (_error != null) ...[
                 const SizedBox(height: 8),
                 _ErrorBanner(message: _error!),
+              ],
+              if (widget.ticketId != null) ...[
+                const SizedBox(height: 8),
+                _LinkBanner(
+                  message: widget.ticketNumber != null
+                      ? 'This task will be linked to ticket #${widget.ticketNumber}'
+                      : 'This task will be linked to the ticket',
+                ),
               ],
 
               // --- Task details (Gmail-style compose) ------------------
@@ -528,6 +542,35 @@ class _ErrorBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: AppText.subText(context, message, color: scheme.error, fw: 0),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// An informational banner shown when the task is being created linked to a
+/// ticket (mirrors [_ErrorBanner] but in the neutral/primary tone).
+class _LinkBanner extends StatelessWidget {
+  const _LinkBanner({required this.message});
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: scheme.primary.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.link, size: 20, color: scheme.primary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: AppText.subText(context, message, color: scheme.primary),
           ),
         ],
       ),

@@ -49,9 +49,8 @@ class TicketRow extends StatelessWidget {
         accentColor: AppTheme.priorityAccent(ticket.priority, scheme),
         danger: ticket.isOverdue,
         dangerLabel: 'Overdue',
-        subtitleParts: [
-          if ((ticket.departmentName ?? '').isNotEmpty) ticket.departmentName!,
-        ],
+        // Department now rides in metaChips (rendered in both layouts), so it's
+        // no longer duplicated as a compact-only subtitle part.
         metaChips: [
           if ((ticket.departmentName ?? '').isNotEmpty)
             EntityMetaChip(icon: Icons.apartment, label: ticket.departmentName!),

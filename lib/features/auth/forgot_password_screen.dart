@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -8,6 +9,7 @@ import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../providers.dart';
 import '../../widgets/app_snack.dart';
+import 'widgets/auth_identifier.dart';
 import 'widgets/auth_ui.dart';
 
 /// The stages of the forgot-password flow.
@@ -70,7 +72,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     try {
       final message = await ref
           .read(passwordResetRepositoryProvider)
-          .requestReset(_login.text.trim());
+          // Same canonical trimmed-lowercase form the sign-in screen submits.
+          .requestReset(AuthIdentifier.canonical(_login.text));
       if (!mounted) return;
       setState(() {
         _sentMessage = message;
@@ -166,6 +169,8 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   Widget _buildStage(BuildContext context) => switch (_stage) {
     _Stage.request => _buildRequest(context),
     _Stage.emailSent => _buildEmailSent(context),
+    // Unreachable: both entry points to the code-entry stage are commented
+    // out above. Kept wired so the flow can be restored by uncommenting them.
     _Stage.reset => _buildReset(context),
     _Stage.done => _buildDone(context),
   };
@@ -197,14 +202,20 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             textInputAction: TextInputAction.done,
             autocorrect: false,
             enableSuggestions: false,
+            textCapitalization: TextCapitalization.characters,
+            // Same identifier rules as the sign-in screen: junk characters
+            // untypeable, ID/email casing follows content.
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(AuthIdentifier.allowedChars),
+              UsernameCaseFormatter(),
+            ],
             onFieldSubmitted: (_) => _requestReset(),
             decoration: AuthUi.fieldDecoration(
               context,
               hint: 'Username or email',
               icon: Icons.person_outline,
             ),
-            validator: (v) =>
-                (v == null || v.trim().isEmpty) ? 'Required' : null,
+            validator: AuthIdentifier.validate,
           ),
           const SizedBox(height: 24),
           AuthUi.primaryButton(
@@ -215,15 +226,17 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             onPressed: _requestReset,
           ),
           const SizedBox(height: 14),
-          Center(
-            child: AuthUi.link(
-              context,
-              label: 'Already have a reset code from the email? Enter it',
-              onPressed: _busy
-                  ? null
-                  : () => setState(() => _stage = _Stage.reset),
-            ),
-          ),
+          // In-app reset-code entry is disabled: the reset email carries a
+          // link that completes the flow outside the app.
+          // Center(
+          //   child: AuthUi.link(
+          //     context,
+          //     label: 'Already have a reset code from the email? Enter it',
+          //     onPressed: _busy
+          //         ? null
+          //         : () => setState(() => _stage = _Stage.reset),
+          //   ),
+          // ),
           Center(child: _backButton(context)),
         ],
       ),
@@ -258,14 +271,15 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           lineHeight: 1.45,
         ),
         const SizedBox(height: 32),
-        AuthUi.primaryButton(
-          context,
-          label: 'I have a reset code',
-          icon: Icons.vpn_key_outlined,
-          busy: _busy,
-          onPressed: () => setState(() => _stage = _Stage.reset),
-        ),
-        const SizedBox(height: 14),
+        // In-app reset-code entry is disabled — see _buildRequest.
+        // AuthUi.primaryButton(
+        //   context,
+        //   label: 'I have a reset code',
+        //   icon: Icons.vpn_key_outlined,
+        //   busy: _busy,
+        //   onPressed: () => setState(() => _stage = _Stage.reset),
+        // ),
+        // const SizedBox(height: 14),
         Center(child: _backButton(context)),
       ],
     );

@@ -128,11 +128,10 @@ class _QueuesScreenState extends ConsumerState<QueuesScreen> {
   }
 
   void _onTap(SavedQueue queue) {
-    if (queue.type == 'ticket') {
-      context.push(Routes.tickets);
-    } else {
-      _toast('Task queues open in the tasks list.');
-    }
+    // Open the queue's results. Ticket queues resolve server-side via
+    // `?queue={id}`; task queues replay their stored criteria (see
+    // QueueResultsScreen). The SavedQueue rides along as `extra`.
+    context.push(Routes.queueResults, extra: queue);
   }
 
   Future<void> _openCreate() async {

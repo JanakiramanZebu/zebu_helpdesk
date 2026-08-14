@@ -11,6 +11,7 @@ import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
 import '../../providers.dart';
 import '../../widgets/app_snack.dart';
+import 'widgets/auth_identifier.dart';
 import 'widgets/auth_ui.dart';
 
 /// Vertical rhythm for the sign-in card, on an 8dp grid so spacing stays
@@ -68,13 +69,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   /// Prefill and tick "Remember me" if a username was saved on a prior sign-in.
-  /// Stored lowercase; shown uppercase to match the in-field formatting.
+  /// Stored lowercase; shown with the same case rule as typing (staff codes
+  /// uppercase, emails lowercase — see [UsernameCaseFormatter]).
   Future<void> _loadRemembered() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(_kRememberedUser);
     if (!mounted || saved == null || saved.trim().isEmpty) return;
     setState(() {
-      _username.text = saved.trim().toUpperCase();
+      _username.text = AuthIdentifier.display(saved);
       _remember = true;
     });
   }
@@ -108,7 +110,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           .login(
             // Shown uppercase, but the backend treats usernames/emails as
             // case-insensitive, so submit the canonical lowercase form.
-            username: _username.text.trim().toLowerCase(),
+            username: AuthIdentifier.canonical(_username.text),
             password: _password.text,
           );
       // Remember the username only once the credentials are known good.
@@ -177,7 +179,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                             autocorrect: false,
                             enableSuggestions: false,
                             textCapitalization: TextCapitalization.characters,
-                            inputFormatters: [UpperCaseTextFormatter()],
+                            inputFormatters: [
+                              // Only characters that can occur in an employee
+                              // ID or email are typeable at all; junk keys
+                              // (spaces, symbols) are swallowed, not errored.
+                              FilteringTextInputFormatter.allow(
+                                AuthIdentifier.allowedChars,
+                              ),
+                              UsernameCaseFormatter(),
+                            ],
                             style: const TextStyle(letterSpacing: 0.4),
                             decoration: AuthUi.fieldDecoration(
                               context,
@@ -185,9 +195,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                               icon: Icons.person_outline,
                               error: _fieldErrors['username'],
                             ),
-                            validator: (v) => (v == null || v.trim().isEmpty)
-                                ? 'Required'
-                                : null,
+                            validator: AuthIdentifier.validate,
                           ),
                         ),
                         const SizedBox(height: _Gap.betweenFields),
@@ -217,8 +225,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                                     setState(() => _obscure = !_obscure),
                               ),
                             ),
-                            validator: (v) =>
-                                (v == null || v.isEmpty) ? 'Required' : null,
+                            validator: (v) => (v == null || v.isEmpty)
+                                ? 'Password is required'
+                                : null,
                           ),
                         ),
                         const SizedBox(height: _Gap.beforeActions),
@@ -269,20 +278,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
           ),
         ),
       ),
-    );
-  }
-}
-/// Forces the visible username text to uppercase while typing. The value is
-/// lowercased again at submit time (helpdesk logins are case-insensitive).
-class UpperCaseTextFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    return TextEditingValue(
-      text: newValue.text.toUpperCase(),
-      selection: newValue.selection,
     );
   }
 }

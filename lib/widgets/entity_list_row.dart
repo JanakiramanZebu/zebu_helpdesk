@@ -384,6 +384,22 @@ class EntityListRow extends StatelessWidget {
           fw: 2,
           lineHeight: 1.3,
         ),
+        // Secondary metadata (department, due date, …). Compact drops the card's
+        // full chip cluster, but these carry real signal (an overdue due date
+        // especially), so surface them as a dense inline line rather than hide
+        // them the way the priority/status chips are handled below.
+        if (data.metaChips.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              for (final m in data.metaChips)
+                MetaChip(icon: m.icon, label: m.label, danger: m.danger),
+            ],
+          ),
+        ],
         const SizedBox(height: 6),
         // Footer: person + meta (left), priority + status chips (right).
         Row(

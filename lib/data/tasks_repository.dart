@@ -162,12 +162,18 @@ class TasksRepository {
   Future<Task> close(int id) => _task2(id, 'close', {});
   Future<Task> reopen(int id) => _task2(id, 'reopen', {});
 
-  Future<Task> assign(int id, {int? staffId, int? teamId, String? comments}) =>
-      _task2(id, 'assign', {
-        if (staffId != null) 'staff_id': staffId,
-        if (teamId != null) 'team_id': teamId,
-        if (comments != null) 'comments': comments,
-      });
+  Future<Task> assign(
+    int id, {
+    int? staffId,
+    int? teamId,
+    String? comments,
+    bool? refer,
+  }) => _task2(id, 'assign', {
+    if (staffId != null) 'staff_id': staffId,
+    if (teamId != null) 'team_id': teamId,
+    if (comments != null) 'comments': comments,
+    if (refer != null) 'refer': refer,
+  });
 
   Future<Task> transfer(int id, int deptId, {String? comments}) => _task2(
     id,

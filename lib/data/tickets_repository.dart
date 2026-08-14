@@ -302,10 +302,12 @@ class TicketsRepository {
     int? staffId,
     int? teamId,
     String? comments,
+    bool? refer,
   }) => _post(id, 'assign', {
     if (staffId != null) 'staff_id': staffId,
     if (teamId != null) 'team_id': teamId,
     if (comments != null) 'comments': comments,
+    if (refer != null) 'refer': refer,
   });
 
   Future<Ticket> claim(int id) => _post(id, 'claim', {});

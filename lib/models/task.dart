@@ -46,6 +46,30 @@ class Task {
   /// `{ label: value }`.
   final Map<String, String> customFields;
 
+  /// Returns a copy with the given fields overridden. Currently used to graft
+  /// the due date / overdue flag from a list row (which carries them) onto a
+  /// detail task (whose endpoint omits them).
+  Task copyWith({DateTime? duedate, bool? overdue}) => Task(
+    id: id,
+    number: number,
+    title: title,
+    statusName: statusName,
+    departmentName: departmentName,
+    departmentId: departmentId,
+    assignee: assignee,
+    priority: priority,
+    parentId: parentId,
+    progress: progress,
+    subtaskCount: subtaskCount,
+    blocked: blocked,
+    duedate: duedate ?? this.duedate,
+    overdue: overdue ?? this.overdue,
+    created: created,
+    updated: updated,
+    isOpen: isOpen,
+    customFields: customFields,
+  );
+
   factory Task.fromJson(Map<String, dynamic> j) {
     String? deptName;
     int? deptId;
