@@ -88,7 +88,10 @@ class Ticket {
       subject: J.strOr(j['subject']),
       statusName: statusName,
       statusId: statusId,
-      priority: J.str(j['priority']),
+      // List rows omit `priority` for tickets without an explicitly-set one;
+      // the effective value is the system default — "Normal" — which is what
+      // the detail endpoint (and the web UI) resolve and display.
+      priority: J.str(j['priority']) ?? 'Normal',
       departmentName: deptName,
       departmentId: deptId,
       requester: J.str(j['requester']) ?? J.str(user['name']),

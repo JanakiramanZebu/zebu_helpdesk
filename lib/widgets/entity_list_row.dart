@@ -109,12 +109,9 @@ class EntityListRow extends StatelessWidget {
     return scheme.outlineVariant; // normal / low / none → neutral
   }
 
-  /// Whether to render a priority chip at all. "Normal" is the implicit default
-  /// and adds noise, so it's suppressed — only meaningful priorities show.
-  bool get _showPriority {
-    final p = (data.priorityLabel ?? '').toLowerCase();
-    return p.isNotEmpty && !p.contains('normal');
-  }
+  /// Whether to render a priority chip. Every known priority shows — including
+  /// "Normal", so rows read consistently against the detail screen and the web.
+  bool get _showPriority => (data.priorityLabel ?? '').isNotEmpty;
 
   String get _semanticsLabel {
     final buf = StringBuffer('${data.number}, ${data.title}. Status ${data.statusName}.');

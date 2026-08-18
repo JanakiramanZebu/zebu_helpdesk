@@ -167,6 +167,9 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       }
 
       if (!mounted) return;
+      // Tell the list screens a ticket now exists so they refetch rows and
+      // tab count badges without waiting for a manual pull-to-refresh.
+      ref.read(ticketsChangedProvider.notifier).bump();
       _toast('Ticket #${ticket.number} created');
       context.pushReplacement(Routes.ticket(ticket.id));
     } on ApiException catch (e) {

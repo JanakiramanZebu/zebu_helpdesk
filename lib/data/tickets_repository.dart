@@ -138,12 +138,13 @@ class TicketsRepository {
     return TicketStats.fromJson(J.map(J.map(body)['data']));
   }
 
-  /// Total number of tickets matching [view] — cheap (fetches a single row and
-  /// reads the pagination total). Used for the filter-tab count badges.
-  Future<int> count({String view = 'open'}) async {
+  /// Total number of tickets matching [view] (or a full [query], which lets
+  /// the tab badges reflect active filters) — cheap: fetches a single row and
+  /// reads the pagination total.
+  Future<int> count({String view = 'open', TicketQuery? query}) async {
     final body = await _api.get(
       '/tickets',
-      query: TicketQuery(view: view, limit: 1).toMap(),
+      query: (query ?? TicketQuery(view: view)).copyWith(limit: 1).toMap(),
     );
     return Paginated.fromEnvelope(J.map(body), Ticket.fromJson).total;
   }

@@ -23,6 +23,7 @@ class PagedListView<T> extends StatefulWidget {
     this.onItems,
     this.skeleton,
     this.separated = false,
+    this.onRefresh,
   });
 
   final Future<Paginated<T>> Function(int page) fetch;
@@ -63,6 +64,10 @@ class PagedListView<T> extends StatefulWidget {
   /// When true, draws a hairline divider between items and shows an
   /// always-visible scrollbar — for edge-to-edge (Gmail-style) list rows.
   final bool separated;
+
+  /// Invoked on pull-to-refresh, alongside the list's own refetch — lets the
+  /// host reload companion data (e.g. tab count badges) in the same gesture.
+  final Future<void> Function()? onRefresh;
 
   @override
   State<PagedListView<T>> createState() => _PagedListViewState<T>();
@@ -148,7 +153,12 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
     }
   }
 
-  Future<void> refresh() => _load(reset: true);
+  Future<void> refresh() {
+    // Companion reload (badges etc.) runs concurrently with the list refetch.
+    final companion = widget.onRefresh?.call();
+    final load = _load(reset: true);
+    return companion == null ? load : Future.wait([companion, load]).then((_) {});
+  }
 
   @override
   Widget build(BuildContext context) {
