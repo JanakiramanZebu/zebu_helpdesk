@@ -193,13 +193,17 @@ class SheetSearchField extends StatelessWidget {
                 ? const SizedBox(width: 12)
                 : Padding(
                     padding: const EdgeInsets.only(right: 6),
-                    child: InkResponse(
-                      radius: 18,
-                      onTap: () {
-                        controller.clear();
-                        onClear?.call();
-                      },
-                      child: Icon(Icons.close, size: 18, color: muted),
+                    // Part of the field as far as focus goes, so clearing
+                    // doesn't put the keyboard away mid-search.
+                    child: TextFieldTapRegion(
+                      child: InkResponse(
+                        radius: 18,
+                        onTap: () {
+                          controller.clear();
+                          onClear?.call();
+                        },
+                        child: Icon(Icons.close, size: 18, color: muted),
+                      ),
                     ),
                   ),
           ),

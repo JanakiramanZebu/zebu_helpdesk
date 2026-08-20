@@ -78,6 +78,31 @@ class Me {
     return can(permission);
   }
 
+  /// Whether this agent could open a ticket that sits in [departmentId] and is
+  /// assigned to [assigneeId] / [teamId].
+  ///
+  /// Ports the *visibility* phase of osTicket's `Ticket::checkStaffPerm()`
+  /// (`include/class.ticket.php`), which this install tightened: admins see
+  /// everything, otherwise it takes a department the agent **manages**
+  /// (`Staff::getVisibilityDepts()`, published here as
+  /// [visibilityDepartments]), being the assignee, or being on the assigned
+  /// team. Plain department membership is deliberately not honored, and
+  /// **opening a ticket grants its creator nothing** — so a ticket filed into a
+  /// department the agent merely belongs to, and left unassigned, is invisible
+  /// to them the moment it exists (`GET /tickets/{id}` → `404 No such ticket`).
+  ///
+  /// Staff-collaborator and referral access also grant visibility server-side,
+  /// but neither can be set while a ticket is being created, so this is exact
+  /// for the create form. A null [departmentId] means "not known yet": only an
+  /// assignment can promise visibility then.
+  bool canSeeTicket({int? departmentId, int? assigneeId, int? teamId}) {
+    if (isAdmin) return true;
+    if (assigneeId != null && assigneeId == id) return true;
+    if (teamId != null && teamIds.contains(teamId)) return true;
+    return departmentId != null &&
+        visibilityDepartments.contains(departmentId);
+  }
+
   factory Me.fromJson(Map<String, dynamic> j) {
     final avatar = J.map(j['avatar']);
     final perms = <String, int>{};

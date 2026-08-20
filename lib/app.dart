@@ -5,6 +5,7 @@ import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'widgets/glass.dart';
+import 'widgets/keyboard_dismisser.dart';
 import 'widgets/offline_banner.dart';
 
 class ZebuHelpdeskApp extends ConsumerWidget {
@@ -21,18 +22,16 @@ class ZebuHelpdeskApp extends ConsumerWidget {
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
       routerConfig: router,
-      // Dismiss the keyboard when tapping anywhere outside a focused field.
-      // Applied app-wide so every screen behaves consistently. Translucent hit
-      // behavior lets buttons/list items still receive their taps.
+      // Dismiss the keyboard on any touch outside a focused field — see
+      // [KeyboardDismisser], which listens for the raw pointer so taps that a
+      // button, row or tab handles still put the keyboard away.
       builder: (context, child) {
         // The active theme (resolved from themeMode) decides the aurora
         // brightness: the whole app renders on the light or dark glass canvas
         // under the matching tint, so every screen — tabs and pushed detail
         // routes — shares one material and follows the theme toggle.
         final base = Theme.of(context);
-        return GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        return KeyboardDismisser(
           child: Theme(
             data: Glass.tint(base),
             child: Glass.canvas(

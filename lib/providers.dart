@@ -6,6 +6,7 @@ import 'core/auth/token_storage.dart';
 import 'core/config.dart';
 import 'core/network/server_config.dart';
 import 'core/push/push_service.dart';
+import 'data/agent_directory.dart';
 import 'data/auth_repository.dart';
 import 'data/canned_repository.dart';
 import 'data/faq_repository.dart';
@@ -114,6 +115,14 @@ final reportsRepositoryProvider = Provider<ReportsRepository>(
 
 final metaRepositoryProvider = Provider<MetaRepository>(
   (ref) => MetaRepository(ref.watch(apiClientProvider)),
+);
+
+/// Department-scoped agent pick-lists for the assign/reassign flows.
+final agentDirectoryProvider = Provider<AgentDirectory>(
+  (ref) => AgentDirectory(
+    ref.watch(metaRepositoryProvider),
+    ref.watch(meRepositoryProvider),
+  ),
 );
 
 // --- Derived async state ----------------------------------------------------

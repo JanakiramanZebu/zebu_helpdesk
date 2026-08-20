@@ -13,6 +13,15 @@ class J {
 
   static String? str(dynamic v) => v?.toString();
 
+  /// Like [str], but treats a blank value (`""` / whitespace) as absent.
+  /// The API returns an empty string rather than `null` for some cleared
+  /// fields, which silently defeats a `??` fallback chain and leaves the UI
+  /// rendering nothing where it meant to render a placeholder.
+  static String? strNonBlank(dynamic v) {
+    final s = v?.toString().trim();
+    return (s == null || s.isEmpty) ? null : s;
+  }
+
   static String strOr(dynamic v, [String fallback = '']) =>
       v == null ? fallback : v.toString();
 

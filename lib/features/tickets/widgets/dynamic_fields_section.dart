@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_text.dart';
 import '../../../models/ticket.dart';
-import '../../../widgets/app_sheet.dart';
 import '../../../widgets/pickers.dart';
 
 /// Renders a topic's dynamic custom form ([TicketField]s, the `GET
@@ -65,7 +64,7 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
 
   void _syncControllers() {
     // Dispose controllers for fields that are gone.
-    final names = widget.fields.map((f) => f.name).toSet();
+    final names = widget.fields.map((f) => f.key).toSet();
     for (final key in _text.keys.toList()) {
       if (!names.contains(key)) {
         _text.remove(key)!.dispose();
@@ -73,9 +72,9 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
     }
     // Create controllers for new text/memo fields, seeded from the value map.
     for (final f in widget.fields) {
-      if (_isText(f) && !_text.containsKey(f.name)) {
-        _text[f.name] = TextEditingController(
-          text: (widget.values[f.name] ?? f.value ?? '').toString(),
+      if (_isText(f) && !_text.containsKey(f.key)) {
+        _text[f.key] = TextEditingController(
+          text: (widget.values[f.key] ?? f.value ?? '').toString(),
         );
       }
     }
@@ -89,11 +88,10 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
     super.dispose();
   }
 
-  bool _isText(TicketField f) =>
-      f.type == 'text' ||
-      f.type == 'memo' ||
-      f.type == 'thread' ||
-      (f.type != 'choices' && f.type != 'bool');
+  /// Anything that isn't a picker or a switch renders as text. Choice-ness is
+  /// decided by [TicketField.isChoice] (i.e. the server sent `choices`), so
+  /// custom lists — typed `list-2`, `list-4`, … — don't fall through to here.
+  bool _isText(TicketField f) => !f.isChoice && f.type != 'bool';
 
   bool _isMultiline(TicketField f) => f.type == 'memo' || f.type == 'thread';
 
@@ -110,6 +108,8 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
     } else {
       next[name] = value;
     }
+    // Cascading lists: a new parent selection can invalidate child answers.
+    _pruneCascade(next, name);
     widget.onChanged(next);
   }
 
@@ -127,20 +127,75 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
   }
 
   Widget _field(TicketField f) {
-    final error = widget.errors[f.name];
+    final error = widget.errors[f.key];
+    if (f.isChoice) return _choiceField(f, error);
     if (f.type == 'bool') return _boolField(f, error);
-    if (f.type == 'choices') return _choiceField(f, error);
     return _textField(f, error);
+  }
+
+  /// The field [f] cascades from. `parent_field` names the parent, but answers
+  /// are stored under [TicketField.key], so resolve the field itself rather
+  /// than indexing the value map by the raw name.
+  TicketField? _parentOf(TicketField f) {
+    final parent = f.parentField;
+    if (parent == null) return null;
+    for (final p in widget.fields) {
+      if (p.name == parent || p.key == parent) return p;
+    }
+    return null;
+  }
+
+  /// The parent's current answer, or null while it's unset.
+  dynamic _parentValue(TicketField f, [Map<String, dynamic>? values]) {
+    final p = _parentOf(f);
+    return p == null ? null : (values ?? widget.values)[p.key];
+  }
+
+  /// The label of [f]'s parent field, for the "choose X first" hint.
+  String? _parentLabel(TicketField f) => _parentOf(f)?.label;
+
+  /// After [changedName] changes, drop any descendant answers that the new
+  /// parent selection no longer allows. Loops so multi-level chains settle.
+  void _pruneCascade(Map<String, dynamic> next, String changedName) {
+    var changed = {changedName};
+    for (var depth = 0; depth < 5 && changed.isNotEmpty; depth++) {
+      final touched = <String>{};
+      for (final f in widget.fields) {
+        final parent = _parentOf(f);
+        if (parent == null || !changed.contains(parent.key)) continue;
+        final current = next[f.key];
+        if (current == null) continue;
+        final allowed = f.choicesFor(next[parent.key]);
+        if (current is List) {
+          final kept = current
+              .map((e) => e.toString())
+              .where(allowed.containsKey)
+              .toList();
+          if (kept.length != current.length) {
+            if (kept.isEmpty) {
+              next.remove(f.key);
+            } else {
+              next[f.key] = kept;
+            }
+            touched.add(f.key);
+          }
+        } else if (!allowed.containsKey(current.toString())) {
+          next.remove(f.key);
+          touched.add(f.key);
+        }
+      }
+      changed = touched;
+    }
   }
 
   // --- Text / memo -----------------------------------------------------------
 
   Widget _textField(TicketField f, String? error) {
     return TextField(
-      controller: _text[f.name],
+      controller: _text[f.key],
       minLines: _isMultiline(f) ? 3 : 1,
       maxLines: _isMultiline(f) ? 8 : 1,
-      onChanged: (v) => _set(f.name, v.trim()),
+      onChanged: (v) => _set(f.key, v.trim()),
       decoration: InputDecoration(
         labelText: _label(f),
         hintText: f.hint,
@@ -154,15 +209,15 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
 
   Widget _boolField(TicketField f, String? error) {
     final scheme = Theme.of(context).colorScheme;
-    final on = widget.values[f.name] == true || widget.values[f.name] == '1';
+    final on = widget.values[f.key] == true || widget.values[f.key] == '1';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: on,
-          onChanged: (v) => _set(f.name, v),
-          title: AppText.subText(context, _label(f), fw: 1),
+          onChanged: (v) => _set(f.key, v),
+          title: AppText.subText(context, _label(f), fw: 0),
           subtitle: f.hint == null ? null : AppText.paraText(context, f.hint!),
         ),
         if (error != null) AppText.paraText(context, error, color: scheme.error),
@@ -173,38 +228,51 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
   // --- Choices ---------------------------------------------------------------
 
   Widget _choiceField(TicketField f, String? error) {
-    final choices = f.choices ?? const {};
+    // Cascading child: only the options its parent's selection allows.
+    final choices = f.parentField == null
+        ? (f.choices ?? const {})
+        : f.choicesFor(_parentValue(f));
     if (f.multiselect) return _multiChoiceField(f, choices, error);
 
     final scheme = Theme.of(context).colorScheme;
-    final selectedKey = widget.values[f.name]?.toString();
+    final selectedKey = widget.values[f.key]?.toString();
     final selectedLabel = selectedKey == null ? null : choices[selectedKey];
+    // Waiting on the parent — show why it's not selectable yet.
+    final blockedBy = f.parentField != null && choices.isEmpty
+        ? (_parentLabel(f) ?? 'the previous field')
+        : null;
+    if (blockedBy != null) {
+      return _FieldShell(
+        label: _label(f),
+        error: error,
+        child: InputDecorator(
+          decoration: InputDecoration(
+            errorText: error,
+            suffixIcon: const Icon(Icons.arrow_drop_down),
+          ),
+          child: AppText.subText(
+            context,
+            'Select $blockedBy first',
+            color: scheme.onSurfaceVariant,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
+    }
     return _FieldShell(
       label: _label(f),
       error: error,
       child: InkWell(
         borderRadius: BorderRadius.circular(8),
         onTap: () async {
-          final key = await showAppSheet<String>(
-            context: context,
-            builder: (_) => AppSheet(
-              title: f.label,
-              scrollable: false,
-              padding: EdgeInsets.zero,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (final e in choices.entries)
-                    PickerOptionTile(
-                      label: e.value,
-                      selected: e.key == selectedKey,
-                      onTap: () => Navigator.pop(context, e.key),
-                    ),
-                ],
-              ),
-            ),
+          final key = await pickChoice(
+            context,
+            title: f.label,
+            choices: choices,
+            selectedValue: selectedKey,
           );
-          if (key != null) _set(f.name, key);
+          if (key != null) _set(f.key, key);
         },
         child: InputDecorator(
           decoration: InputDecoration(
@@ -218,7 +286,7 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
             color: selectedLabel != null
                 ? scheme.onSurface
                 : scheme.onSurfaceVariant,
-            fw: selectedLabel != null ? 1 : null,
+            fw: selectedLabel != null ? 0 : null,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
@@ -234,7 +302,7 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
   ) {
     final scheme = Theme.of(context).colorScheme;
     final selected = <String>{
-      ...?(widget.values[f.name] as List?)?.map((e) => e.toString()),
+      ...?(widget.values[f.key] as List?)?.map((e) => e.toString()),
     };
     return _FieldShell(
       label: _label(f),
@@ -254,7 +322,7 @@ class _DynamicFieldsSectionState extends State<DynamicFieldsSection> {
                 } else {
                   next.remove(e.key);
                 }
-                _set(f.name, next.toList());
+                _set(f.key, next.toList());
               },
             ),
           if (error != null)

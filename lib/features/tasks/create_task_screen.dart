@@ -48,6 +48,12 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   final List<PlatformFile> _files = [];
 
   final _scrollCtrl = ScrollController();
+  // Anchors so a failed submit can scroll the first offending required field
+  // into view — Title/Description sit up top, Department/Due date lower.
+  final _titleKey = GlobalKey();
+  final _descriptionKey = GlobalKey();
+  final _departmentKey = GlobalKey();
+  final _dueKey = GlobalKey();
   // Set true once the user first tries to submit, so required-field errors only
   // show after an attempt (not on a pristine form).
   bool _attempted = false;
@@ -55,6 +61,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   bool _saving = false;
   Map<String, String> _fieldErrors = const {};
   String? _error;
+  String? _titleError;
   String? _descriptionError;
 
   @override
@@ -66,10 +73,31 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   }
 
   void _onRequiredChanged() => setState(() {
+    if (_titleError != null && _title.text.trim().isNotEmpty) _titleError = null;
     if (_descriptionError != null && _descriptionText.isNotEmpty) {
       _descriptionError = null;
     }
   });
+
+  /// A field-level error to show for [key], preferring a clear, field-named
+  /// message over the API's terse `"Required"` (or an empty string). Any other
+  /// server message passes through unchanged.
+  String? _apiFieldError(String key, String label) {
+    final msg = _fieldErrors[key];
+    if (msg == null) return null;
+    final t = msg.trim();
+    return (t.isEmpty || t.toLowerCase() == 'required') ? '$label is required' : t;
+  }
+
+  /// The anchor of the first still-missing required field, in top-to-bottom
+  /// order, so a failed submit scrolls straight to it.
+  GlobalKey? get _firstInvalidKey {
+    if (_title.text.trim().isEmpty) return _titleKey;
+    if (_descriptionText.isEmpty) return _descriptionKey;
+    if (_department == null) return _departmentKey;
+    if (_due == null) return _dueKey;
+    return null;
+  }
 
   @override
   void dispose() {
@@ -87,28 +115,39 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   String get _descriptionText =>
       _description.document.toPlainText().trim();
 
-  /// Department, title and description are the required fields.
+  /// The required fields, mirroring the osTicket task create (the `/tasks` API
+  /// validates dept_id, title, description; and the due date is required for
+  /// staff-created tasks unless a lead-time priority computes it — the API never
+  /// sends one, so it is always required).
   bool get _canSubmit =>
       _department != null &&
       _title.text.trim().isNotEmpty &&
-      _descriptionText.isNotEmpty;
+      _descriptionText.isNotEmpty &&
+      _due != null;
 
   Future<void> _submit() async {
     setState(() => _attempted = true);
+    final titleOk = _title.text.trim().isNotEmpty;
     final descriptionOk = _descriptionText.isNotEmpty;
-    setState(
-      () => _descriptionError = descriptionOk ? null : 'Description is required',
-    );
-    if (_department == null) {
-      setState(() => _error = 'Pick a department first');
-      _scrollCtrl.animateTo(
-        0,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+    setState(() {
+      _titleError = titleOk ? null : 'Title is required';
+      _descriptionError = descriptionOk ? null : 'Description is required';
+    });
+    // Any missing required field (title, description, department or due date)
+    // surfaces its own inline error — scroll the first one into view and stop
+    // before calling the API.
+    if (!_canSubmit || !titleOk || !descriptionOk) {
+      final ctx = _firstInvalidKey?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          alignment: 0.1,
+        );
+      }
       return;
     }
-    if (_title.text.trim().isEmpty || !descriptionOk) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -132,6 +171,9 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
         ],
       );
       if (!mounted) return;
+      // Tell the list screens a task now exists so they refetch rows and tab
+      // count badges without waiting for a manual pull-to-refresh (TC_150).
+      ref.read(tasksChangedProvider.notifier).bump();
       _toast('Task #${task.number} created');
       context.pushReplacement(Routes.task(task.id));
     } on ApiException catch (e) {
@@ -291,6 +333,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
                   child: TextField(
+                    key: _titleKey,
                     controller: _title,
                     textInputAction: TextInputAction.next,
                     style: AppText.style(context, fontSize: 15, fw: 1),
@@ -301,20 +344,21 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                       focusedBorder: InputBorder.none,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                      errorText: _fieldErrors['title'],
+                      errorText: _titleError ?? _apiFieldError('title', 'Title'),
                     ),
                   ),
                 ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: RichMessageField(
+                    key: _descriptionKey,
                     controller: _description,
                     hintText: 'Describe the task…',
                     bordered: false,
                     onInsertCanned: _insertCanned,
                     onInsertFaq: _insertFaq,
-                    errorText:
-                        _descriptionError ?? _fieldErrors['description'],
+                    errorText: _descriptionError ??
+                        _apiFieldError('description', 'Description'),
                   ),
                 ),
               ], dividerIndent: 0),
@@ -376,12 +420,13 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
               _sectionLabel('Properties'),
               _group([
                 _ListRow(
+                  key: _departmentKey,
                   icon: Icons.apartment_outlined,
                   label: 'Department',
                   value: _department?.name,
                   hint: 'Required · tap to choose',
                   error:
-                      _fieldErrors['dept_id'] ??
+                      _apiFieldError('dept_id', 'Department') ??
                       (_attempted && _department == null
                           ? 'Please select a department'
                           : null),
@@ -392,6 +437,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                       MetaKind.departments,
                       title: 'Department',
                       selectedId: _department?.id,
+                      searchable: true,
                     );
                     if (m != null) setState(() => _department = m);
                   },
@@ -412,9 +458,16 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                   },
                 ),
                 _ListRow(
+                  key: _dueKey,
                   icon: Icons.event_outlined,
                   label: 'Due date',
                   value: _due == null ? null : Fmt.dateTime(_due),
+                  hint: 'Required · tap to set',
+                  error:
+                      _apiFieldError('duedate', 'Due date') ??
+                      (_attempted && _due == null
+                          ? 'Due date is required'
+                          : null),
                   trailing: _due == null
                       ? null
                       : IconButton(
@@ -484,7 +537,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                   const SizedBox(height: 8),
                 ],
                 FilledButton.icon(
-                  onPressed: (_saving || !_canSubmit) ? null : _submit,
+                  // Always tappable (except mid-save): tapping an incomplete
+                  // form runs validation and surfaces a clear inline error on
+                  // each missing field, rather than leaving the user stuck at a
+                  // disabled button with no explanation.
+                  onPressed: _saving ? null : _submit,
                   icon: _saving
                       ? const SizedBox.shrink()
                       : const Icon(Icons.check_circle_outline, size: 20),
@@ -511,9 +568,10 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   /// disabled submit button.
   String get _missingHint {
     final missing = <String>[
-      if (_department == null) 'department',
       if (_title.text.trim().isEmpty) 'title',
       if (_descriptionText.isEmpty) 'description',
+      if (_department == null) 'department',
+      if (_due == null) 'due date',
     ];
     if (missing.isEmpty) return '';
     return 'Add ${missing.join(', ')} to continue';
@@ -584,6 +642,7 @@ class _LinkBanner extends StatelessWidget {
 /// paints the value line in the error color. (Mirrors the create-ticket form.)
 class _ListRow extends StatelessWidget {
   const _ListRow({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,

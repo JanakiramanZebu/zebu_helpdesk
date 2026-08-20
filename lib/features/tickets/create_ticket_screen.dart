@@ -10,15 +10,17 @@ import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
+import '../../models/me.dart';
 import '../../models/meta.dart';
+import '../../models/ticket.dart';
 import '../../models/user.dart';
 import '../../providers.dart';
-import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/composer_actions.dart';
 import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/rich_message_field.dart';
+import 'widgets/dynamic_fields_section.dart';
 
 /// Ticket source options (the `source` param), mirroring the web dropdown.
 const _sources = ['Phone', 'Email', 'Web', 'Other'];
@@ -36,16 +38,30 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   final _subject = TextEditingController();
   final _message = FleatherController();
   final _internalNote = TextEditingController();
+  // Optional first reply to the requester — the web's "Response" section. Posted
+  // as a follow-up `POST /tickets/{id}/reply` after the ticket is created.
+  final _response = FleatherController();
+  bool _responseAlert = false;
   // Focus target so a failed submit can jump to the empty subject field.
   final _subjectFocus = FocusNode();
   final _scrollCtrl = ScrollController();
-  // Set true once the user first tries to submit, so the Requester tile only
-  // shows its "Required" error after an attempt (not on a pristine form).
+  // Anchors so a failed submit can scroll the first offending required field
+  // into view — Requester/Subject/Message sit up top, Help topic/Due date lower.
+  final _requesterKey = GlobalKey();
+  final _subjectKey = GlobalKey();
+  final _messageKey = GlobalKey();
+  final _topicKey = GlobalKey();
+  final _dueKey = GlobalKey();
+  // Set true once the user first tries to submit, so the required tiles only
+  // show their error after an attempt (not on a pristine form).
   bool _attempted = false;
 
   AppUser? _user;
   final List<AppUser> _collaborators = [];
   String _source = 'Phone';
+  // True once the agent picks a Source, so a topic change stops overwriting it
+  // with the server default.
+  bool _sourceTouched = false;
   MetaItem? _topic;
   MetaItem? _department;
   MetaItem? _priority;
@@ -54,6 +70,167 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   MetaItem? _team;
   DateTime? _due;
   final List<PlatformFile> _files = [];
+
+  // The topic's create form (`GET /tickets/form`) — custom fields, defaults,
+  // and the server's Source/Status option lists. This is the same schema the
+  // web renders when a Help Topic is picked, so it works even for a topic that
+  // has no tickets yet.
+  final _customFieldsKey = GlobalKey();
+  TicketCreateForm? _form;
+  Map<String, dynamic> _customValues = {};
+  Map<String, String> _customErrors = const {};
+  bool _loadingForm = false;
+  Object? _formError;
+  // Guards against an out-of-order response when topics are switched quickly:
+  // only the newest request may apply its result.
+  int _formRequest = 0;
+  // Per-topic cache so re-selecting a topic doesn't refetch.
+  final Map<int, TicketCreateForm> _formCache = {};
+  // The SLA plan the topic implies. Sent back unchanged on create — the server
+  // uses it to decide whether a due date is required/computed.
+  int? _slaId;
+  // Plans from `GET /meta/sla`, used when the create form doesn't publish its
+  // own list. This is the same set the web's create dropdown renders.
+  List<FormOption> _metaSlas = const [];
+  // id -> enabled, for the plans we listed. osTicket offers disabled plans in
+  // the same dropdown and only an active one computes the due date.
+  Map<int, bool?> _slaActive = const {};
+
+  List<TicketField> get _customFields => _form?.fields ?? const [];
+
+  /// The agent may set the due date only when no SLA plan drives it. Where the
+  /// plans are listable we decide from the selection, like the web's
+  /// `toggleDueDateLock` — except the web locks on `slaId > 0` alone, which
+  /// traps you on a **disabled** plan: the server's `$slaWillDrive` also
+  /// requires `isActive()`, so it would demand a due date the locked field
+  /// can't provide. Otherwise the server's `sla_locked` is authoritative.
+  bool get _canSetDue {
+    final form = _form;
+    if (form == null) return true;
+    if (_slaOptions.isNotEmpty) return !_slaDrivesDue;
+    return form.canSetDuedate;
+  }
+
+  /// True when the selected plan computes the due date server-side: a real
+  /// plan (0 = System Default hands it back) that isn't disabled. Falls back to
+  /// the label ("… - Disabled)") the server-published lists carry, and finally
+  /// to "it drives", matching the web.
+  bool get _slaDrivesDue {
+    final id = _slaId ?? 0;
+    if (id == 0) return false;
+    final known = _slaActive[id];
+    if (known != null) return known;
+    final label = _slaName;
+    return label == null ? true : (MetaItem.activeFromLabel(label) ?? true);
+  }
+
+  /// Selectable plans: whatever the create form publishes, else `GET /meta/sla`,
+  /// led by osTicket's own "System Default" (0) entry so the agent can hand the
+  /// due date back to themselves exactly like the web dropdown.
+  List<FormOption> get _slaOptions {
+    final fromForm = _form?.slas ?? const <FormOption>[];
+    final plans = fromForm.isNotEmpty ? fromForm : _metaSlas;
+    if (plans.isEmpty) return const [];
+    if (plans.any((o) => o.value == '0')) return plans;
+    return [
+      const FormOption(value: '0', label: '— System Default —'),
+      ...plans,
+    ];
+  }
+
+  /// The display name of the selected SLA plan, when the plans are known.
+  String? get _slaName {
+    for (final o in _slaOptions) {
+      if (o.value == '${_slaId ?? 0}') return o.label;
+    }
+    return null;
+  }
+
+  /// Everything that goes out under `custom_fields`: the topic's own answers,
+  /// plus the built-in **priority** field.
+  ///
+  /// Priority needs special handling. osTicket's ticket form carries a built-in
+  /// `priority` field — labelled "Priority Level" — which `GET /tickets/form`
+  /// omits (the client renders it natively as the Priority row). But
+  /// `Ticket::create()` validates the form from `$vars` and only *afterwards*
+  /// applies `priority_id` (`setAnswer('priority', …)` runs past the
+  /// `if ($errors) return 0;` gate). So on an install where that field is
+  /// required for agents, `priority_id` alone can never satisfy validation and
+  /// every create fails with "Priority Level is a required field". Sending it
+  /// under the field's own name puts it in `$vars` in time. `priority_id` is
+  /// still sent as well, so nothing regresses where this isn't an issue.
+  Map<String, dynamic> get _formAnswers => {
+    ..._customValues,
+    if (_priority != null && !_customValues.containsKey('priority'))
+      'priority': _priority!.id,
+  };
+
+  /// Server error keys that already render inline on their own row, so the
+  /// banner doesn't repeat them. Anything else has nowhere to show and must be
+  /// surfaced — otherwise a rejected create looks like nothing happened.
+  static const _inlineErrorKeys = {
+    'user_id',
+    'subject',
+    'message',
+    'topicId',
+    'duedate',
+  };
+
+  /// Server-driven options as the `{value: label}` map [pickChoice] takes.
+  /// Insertion order is preserved, so the server's ordering survives.
+  Map<String, String> _optionMap(List<FormOption> options) => {
+    for (final o in options) o.value: o.label,
+  };
+
+  /// Pick an SLA plan, when the backend publishes the list.
+  Future<void> _pickSla() async {
+    final options = _slaOptions;
+    if (options.isEmpty) return;
+    final picked = await pickChoice(
+      context,
+      title: 'SLA plan',
+      choices: _optionMap(options),
+      selectedValue: '${_slaId ?? 0}',
+    );
+    if (picked == null) return;
+    setState(() {
+      _slaId = int.tryParse(picked);
+      // A plan now computes the due date server-side, so drop any manual value
+      // (and vice-versa: switching to System Default re-opens the picker).
+      if (!_canSetDue) _due = _form?.duedate;
+    });
+  }
+
+  // --- Subject / message vs. the topic's own fields --------------------------
+  // `GET /tickets/form` omits the built-in `subject` and `message` so the client
+  // renders them natively — in osTicket they're labelled "Issue Summary" and
+  // "Issue Details" (this install renames the latter "Description"), which is
+  // why the web shows them inside Ticket Details. If an install instead exposes
+  // its OWN summary/description fields, we must not render a second pair, so
+  // take the required `subject`/`message` from those instead.
+  TicketField? get _topicSubjectField => _form?.summaryField;
+  TicketField? get _topicMessageField => _form?.detailsField;
+
+  /// Render the native inputs only when the topic form doesn't already carry an
+  /// equivalent — so the agent never sees the same question twice.
+  bool get _showNativeSubject => _topicSubjectField == null;
+  bool get _showNativeMessage => _topicMessageField == null;
+
+  String _customText(TicketField? f) =>
+      f == null ? '' : (_customValues[f.key]?.toString().trim() ?? '');
+
+  /// What actually goes out as the required `subject` / `message`, wherever the
+  /// agent typed it.
+  String get _effectiveSubject => _showNativeSubject
+      ? _subject.text.trim()
+      : _customText(_topicSubjectField);
+
+  String get _effectiveMessageText =>
+      _showNativeMessage ? _messageText : _customText(_topicMessageField);
+
+  String get _effectiveMessageBody => _showNativeMessage
+      ? parchmentHtml.encode(_message.document)
+      : _customText(_topicMessageField);
 
   bool _saving = false;
   Map<String, String> _fieldErrors = const {};
@@ -66,6 +243,47 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     // Rebuild the submit button's enabled state as the required text changes.
     _subject.addListener(_onRequiredChanged);
     _message.addListener(_onRequiredChanged);
+    // User-first, like the web "Open a New Ticket" flow: prompt for the
+    // requester before the form is shown. If the agent cancels, the body falls
+    // back to a "select requester" gate (see build()).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _user == null) _pickRequester();
+    });
+    // Load the default topic's form up front (fields, defaults, Source/Status
+    // options) — the web does the same before the agent touches anything.
+    _loadTopicForm();
+    _loadSlaPlans();
+  }
+
+  /// SLA plans, so the row becomes a real picker like the web's `slaId`
+  /// dropdown. Backends without the route just leave the list empty and the
+  /// plan stays whatever the help topic sets.
+  Future<void> _loadSlaPlans() async {
+    try {
+      final items = await ref.read(metaRepositoryProvider).slaPlans();
+      if (!mounted) return;
+      setState(() {
+        _metaSlas = [
+          for (final m in items) FormOption(value: '${m.id}', label: m.name),
+        ];
+        _slaActive = {for (final m in items) m.id: m.active};
+      });
+    } catch (_) {
+      // No such endpoint on this build - nothing to offer.
+    }
+  }
+
+  /// Look up or create the requester (`GET /users` / `POST /users`).
+  Future<void> _pickRequester() async {
+    final u = await pickUser(context, ref);
+    if (u != null && mounted) {
+      setState(() {
+        _user = u;
+        if (_fieldErrors.containsKey('user_id')) {
+          _fieldErrors = Map.of(_fieldErrors)..remove('user_id');
+        }
+      });
+    }
   }
 
   void _onRequiredChanged() => setState(() {
@@ -76,11 +294,218 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   /// Plain-text view of the rich message, for empty/required checks.
   String get _messageText => _message.document.toPlainText().trim();
 
-  /// Requester, subject and message are the required fields.
+  /// Plain-text view of the optional response, to know whether to post a reply.
+  String get _responseText => _response.document.toPlainText().trim();
+
+  /// True when [v] holds a real answer (non-empty string / non-empty list).
+  bool _hasValue(dynamic v) =>
+      v != null &&
+      !(v is String && v.trim().isEmpty) &&
+      !(v is List && v.isEmpty);
+
+  /// Required custom fields (mirroring the topic's web form) that are still
+  /// blank — the create would be rejected server-side without them.
+  List<TicketField> get _missingCustomFields => [
+    for (final f in _customFields)
+      if (f.required && !_hasValue(_customValues[f.key])) f,
+  ];
+
+  /// The required fields, mirroring the osTicket staff "Open New Ticket" form
+  /// (the `/tickets` API validates the create as origin 'staff'): requester,
+  /// subject, message, help topic and due date. Source always carries a
+  /// default, so it never needs prompting. Plus any required custom fields the
+  /// selected help topic pulls in.
   bool get _canSubmit =>
       _user != null &&
-      _subject.text.trim().isNotEmpty &&
-      _messageText.isNotEmpty;
+      _effectiveSubject.isNotEmpty &&
+      _effectiveMessageText.isNotEmpty &&
+      _topic != null &&
+      (!_canSetDue || _due != null) &&
+      _missingCustomFields.isEmpty;
+
+  /// The anchor of the first still-missing required field, in top-to-bottom
+  /// order, so a failed submit scrolls straight to it.
+  GlobalKey? get _firstInvalidKey {
+    if (_user == null) return _requesterKey;
+    if (_effectiveSubject.isEmpty) {
+      return _showNativeSubject ? _subjectKey : _customFieldsKey;
+    }
+    if (_effectiveMessageText.isEmpty) {
+      return _showNativeMessage ? _messageKey : _customFieldsKey;
+    }
+    if (_topic == null) return _topicKey;
+    if (_canSetDue && _due == null) return _dueKey;
+    if (_missingCustomFields.isNotEmpty) return _customFieldsKey;
+    return null;
+  }
+
+  /// Fetch (and cache) the create form for [topicId] — the topic's custom
+  /// fields plus its defaults and option lists — then apply it. Called on entry
+  /// (for the default topic) and on every help-topic change, mirroring the web
+  /// form's re-render.
+  Future<void> _loadTopicForm({int? topicId}) async {
+    final cached = topicId == null ? null : _formCache[topicId];
+    if (cached != null) {
+      setState(() {
+        _loadingForm = false;
+        _formError = null;
+        _applyForm(cached);
+      });
+      return;
+    }
+    final request = ++_formRequest;
+    setState(() {
+      _loadingForm = true;
+      _formError = null;
+    });
+    try {
+      final form = await ref
+          .read(ticketsRepositoryProvider)
+          .createForm(topicId: topicId);
+      if (topicId != null) _formCache[topicId] = form;
+      // A newer topic selection has superseded this response — drop it.
+      if (!mounted || request != _formRequest) return;
+      setState(() {
+        _loadingForm = false;
+        _applyForm(form);
+      });
+      // Fill in display names for any prefilled defaults (fire and forget).
+      _resolveDefaultNames();
+    } on ApiException catch (e) {
+      if (!mounted || request != _formRequest) return;
+      setState(() {
+        _loadingForm = false;
+        _formError = e;
+      });
+    }
+  }
+
+  /// Adopt [form]: swap in its fields, drop answers that no longer apply, and
+  /// prefill the built-in pickers from the topic's defaults — never overwriting
+  /// something the agent has already chosen.
+  void _applyForm(TicketCreateForm form) {
+    _form = form;
+    _formError = null;
+    _pruneCustomValues();
+
+    // The SLA plan is echoed back on create; the server derives the due date
+    // (and whether one is required) from it.
+    _slaId = form.slaId;
+
+    // Source: adopt the server's default only while the agent hasn't picked.
+    final defaultSource = form.defaultSource;
+    if (!_sourceTouched && defaultSource != null && defaultSource.isNotEmpty) {
+      _source = defaultSource;
+    }
+
+    // The server answers for the default topic when we didn't name one — adopt
+    // it so the Help topic row reflects what the form actually describes.
+    if (_topic == null && form.topicId != null) {
+      _topic = _placeholder(form.topicId!);
+      _formCache[form.topicId!] = form;
+    }
+    if (_priority == null && form.priorityId != null) {
+      _priority = _placeholder(form.priorityId!);
+    }
+    if (_department == null && form.deptId != null) {
+      _department = _placeholder(form.deptId!);
+    }
+    if (_agent == null && form.staffId != null) {
+      _agent = _placeholder(form.staffId!);
+    }
+    if (_team == null && form.teamId != null) {
+      _team = _placeholder(form.teamId!);
+    }
+    if (_status == null) {
+      final id = form.statusId ?? form.defaultStatusId;
+      if (id != null) {
+        _status = MetaItem(id: id, name: _statusName(form, id));
+      }
+    }
+
+    // Due date: SLA-driven installs compute it, so mirror the server's value
+    // and keep the row read-only. Otherwise leave whatever the agent set.
+    if (form.slaLocked) {
+      _due = form.duedate;
+    } else if (_due == null && form.duedate != null) {
+      _due = form.duedate;
+    }
+  }
+
+  /// The display name for status [id] from the form's own option list, falling
+  /// back to a neutral label when the server didn't list it.
+  String _statusName(TicketCreateForm form, int id) {
+    for (final o in form.statuses) {
+      if (o.value == '$id') return o.label;
+    }
+    return 'Status #$id';
+  }
+
+  /// A prefilled picker value whose display name isn't known yet — the id is
+  /// already correct, so the row submits fine while the name resolves.
+  MetaItem _placeholder(int id) => MetaItem(id: id, name: '#$id');
+
+  bool _isPlaceholder(MetaItem? m) => m != null && m.name == '#${m.id}';
+
+  /// Swap any placeholder default for its real `/meta` entry, so a prefilled
+  /// Department/Priority/Assignee shows its name instead of "#3". Silent on
+  /// failure — the ids are already right.
+  Future<void> _resolveDefaultNames() async {
+    final repo = ref.read(metaRepositoryProvider);
+    Future<MetaItem?> find(String kind, MetaItem? current) async {
+      if (!_isPlaceholder(current)) return null;
+      try {
+        for (final m in await repo.get(kind)) {
+          if (m.id == current!.id) return m;
+        }
+      } on ApiException {
+        // Keep the placeholder; the id still submits correctly.
+      }
+      return null;
+    }
+
+    final resolved = await Future.wait([
+      find(MetaKind.priorities, _priority),
+      find(MetaKind.departments, _department),
+      find(MetaKind.agents, _agent),
+      find(MetaKind.teams, _team),
+      find(MetaKind.topics, _topic),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      if (resolved[0] != null) _priority = resolved[0];
+      if (resolved[1] != null) _department = resolved[1];
+      if (resolved[2] != null) _agent = resolved[2];
+      if (resolved[3] != null) _team = resolved[3];
+      if (resolved[4] != null) _topic = resolved[4];
+    });
+    // The topic's department is settled now, so the assignment that keeps the
+    // ticket in reach can be worked out.
+    await _defaultAssignee();
+  }
+
+  /// Drop answers/errors for fields that don't exist under the current topic.
+  void _pruneCustomValues() {
+    final names = _customFields.map((f) => f.key).toSet();
+    _customValues = {
+      for (final e in _customValues.entries)
+        if (names.contains(e.key)) e.key: e.value,
+    };
+    _customErrors = {
+      for (final e in _customErrors.entries)
+        if (names.contains(e.key)) e.key: e.value,
+    };
+  }
+
+  /// A field-level error to show for [key], preferring a clear, field-named
+  /// message over the API's terse `"Required"` (or an empty string). Any other
+  /// server message (e.g. "Subject is too long") passes through unchanged.
+  String? _apiFieldError(String key, String label) {
+    final msg = _fieldErrors[key];
+    if (msg == null) return null;
+    final t = msg.trim();
+    return (t.isEmpty || t.toLowerCase() == 'required') ? '$label is required' : t;
+  }
 
   @override
   void dispose() {
@@ -89,6 +514,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     _subject.dispose();
     _message.dispose();
     _internalNote.dispose();
+    _response.dispose();
     _subjectFocus.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -96,24 +522,56 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
 
   void _toast(String msg) => AppSnack.info(context, msg);
 
+  /// Drop an assignee the newly chosen department can't take. The picker is
+  /// department-scoped, so a stale pick from the previous department would
+  /// otherwise sit in the form until the server rejected it on submit.
+  Future<void> _revalidateAgent() async {
+    final agent = _agent;
+    final dept = _department;
+    if (agent == null || dept == null) return;
+    final ok = await ref
+        .read(agentDirectoryProvider)
+        .isAssignable(
+          agent.id,
+          departmentName: _isPlaceholder(dept) ? null : dept.name,
+          departmentId: dept.id,
+        );
+    if (ok || !mounted) return;
+    setState(() => _agent = null);
+    _toast('${agent.name} is not assignable in ${dept.name} — pick another agent');
+  }
+
   Future<void> _submit() async {
     setState(() => _attempted = true);
     // Validate the subject field inline via the Form, and the rich message
     // separately (it's not a FormField).
     final formOk = _formKey.currentState?.validate() ?? false;
-    final messageOk = _messageText.isNotEmpty;
-    setState(() => _messageError = messageOk ? null : 'Message is required');
-    if (_user == null) {
-      // Surface the missing requester on its own tile and scroll it into view.
-      setState(() => _error = 'Pick a requester first');
-      _scrollCtrl.animateTo(
-        0,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
+    final messageOk = _effectiveMessageText.isNotEmpty;
+    // Flag each still-blank required custom field inline (by field name).
+    final customErrors = <String, String>{
+      for (final f in _missingCustomFields) f.key: '${f.label} is required',
+    };
+    setState(() {
+      _messageError = (messageOk || !_showNativeMessage)
+          ? null
+          : 'Message is required';
+      _customErrors = customErrors;
+    });
+    // Any missing required field (requester, subject, message, help topic, due
+    // date, or a topic custom field) surfaces its own inline error — scroll the
+    // first one into view and stop before calling the API.
+    if (!_canSubmit || !formOk || !messageOk) {
+      final ctx = _firstInvalidKey?.currentContext;
+      if (ctx != null) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          alignment: 0.1,
+        );
+      }
       return;
     }
-    if (!formOk || !messageOk) return;
     setState(() {
       _saving = true;
       _error = null;
@@ -121,65 +579,236 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     });
     try {
       final repo = ref.read(ticketsRepositoryProvider);
+      // Everything the create call can't carry is applied afterwards and must
+      // never fail the ticket — but each miss is collected so the agent is
+      // told what didn't stick instead of being shown a bare success.
+      final failed = <String>[];
       final ticket = await repo.create(
         {
           'user_id': _user!.id,
-          'subject': _subject.text.trim(),
-          'message': parchmentHtml.encode(_message.document),
+          // Wherever the agent typed them — the native inputs, or the topic's
+          // own summary/description fields when it provides them.
+          'subject': _effectiveSubject,
+          'message': _effectiveMessageBody,
           'source': _source,
           if (_topic != null) 'topic_id': _topic!.id,
           if (_department != null) 'dept_id': _department!.id,
           if (_priority != null) 'priority_id': _priority!.id,
-          if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
+          if (_status != null) 'status_id': _status!.id,
+          // Echo the topic's SLA back — the server derives the due date (and
+          // whether one is required) from it.
+          if (_slaId != null) 'sla_id': _slaId,
+          // Only send a due date when the agent owns it; on an SLA-driven
+          // install the server computes it and rejects a manual value.
+          if (_canSetDue && _due != null) 'duedate': Fmt.apiDateTime(_due!),
+          // The topic's form answers, keyed by field name — exactly the shape
+          // POST /tickets accepts under `custom_fields`.
+          if (_formAnswers.isNotEmpty) 'custom_fields': _formAnswers,
+          // Assign INSIDE the create. `POST /tickets/{id}/assign` sits behind
+          // the same visibility gate that hides a brand-new ticket from the
+          // agent who opened it (see [_canOpen]), so it 404s in exactly the
+          // case the assignment was needed; the create endpoint applies these
+          // while it still holds the ticket object.
+          if (_agent != null) 'assign_staff_id': _agent!.id,
+          if (_team != null) 'assign_team_id': _team!.id,
         },
         files: [
           for (final f in _files)
             if (f.bytes != null)
               MultipartFile.fromBytes(f.bytes!, filename: f.name),
         ],
+        onFilesFailed: (_) => failed.add('attachments'),
       );
 
-      // Apply assignment / status / collaborators / note via their dedicated
-      // endpoints (best-effort, so none can fail the create itself).
-      if (_agent != null || _team != null) {
+      // Everything the create body can't carry goes out through its own
+      // endpoint below — best-effort, so none of them can fail the ticket.
+      //
+      // Assignment fallback only: a backend that ignores the inline assign keys
+      // hands the ticket back with no assignee, so try the dedicated endpoint.
+      if ((_agent != null || _team != null) && ticket.assignee == null) {
         try {
           await repo.assign(
             ticket.id,
             staffId: _agent?.id,
             teamId: _team?.id,
           );
-        } catch (_) {}
+        } catch (_) {
+          failed.add('assignment');
+        }
       }
-      if (_status != null) {
+      // Optional first reply to the requester (the web's "Response" section).
+      // The status already went out with the create, so it isn't repeated here.
+      if (_responseText.isNotEmpty) {
         try {
-          await repo.setStatus(ticket.id, _status!.id);
-        } catch (_) {}
+          await repo.reply(
+            ticket.id,
+            body: parchmentHtml.encode(_response.document),
+            alert: _responseAlert,
+          );
+        } catch (_) {
+          failed.add('response');
+        }
       }
+      var collaboratorsFailed = false;
       for (final c in _collaborators) {
         try {
           await repo.addCollaborator(ticket.id, c.id);
-        } catch (_) {}
+        } catch (_) {
+          collaboratorsFailed = true;
+        }
       }
+      if (collaboratorsFailed) failed.add('collaborators');
       if (_internalNote.text.trim().isNotEmpty) {
         try {
           await repo.note(ticket.id, body: _internalNote.text.trim());
-        } catch (_) {}
+        } catch (_) {
+          failed.add('internal note');
+        }
       }
 
       if (!mounted) return;
       // Tell the list screens a ticket now exists so they refetch rows and
       // tab count badges without waiting for a manual pull-to-refresh.
       ref.read(ticketsChangedProvider.notifier).bump();
-      _toast('Ticket #${ticket.number} created');
-      context.pushReplacement(Routes.ticket(ticket.id));
+
+      // The detail screen can only open a ticket the server will hand back.
+      // [_defaultAssignee] keeps that true for the ordinary flow; if the agent
+      // deliberately assigned the ticket away from themselves it can still
+      // come back invisible, and then the list is the honest landing place —
+      // never the detail screen's "No such ticket" error page.
+      final canOpen = await _canOpen(ticket.id);
+      if (!mounted) return;
+      if (failed.isEmpty) {
+        _toast('Ticket #${ticket.number} created');
+      } else {
+        AppSnack.error(
+          context,
+          'Ticket #${ticket.number} created, but the ${_phrase(failed)} '
+          'could not be saved.',
+        );
+      }
+      if (canOpen) {
+        context.pushReplacement(Routes.ticket(ticket.id));
+      } else {
+        context.pop();
+      }
     } on ApiException catch (e) {
+      // Route each field error to the input that owns it. Custom-field errors
+      // arrive keyed by the numeric field id (sometimes by name).
+      final byField = <String, String>{};
+      final unattached = <String>[];
+      for (final entry in e.fields.entries) {
+        TicketField? owner;
+        for (final f in _customFields) {
+          if (entry.key == f.name || entry.key == f.key || entry.key == '${f.id}') {
+            owner = f;
+            break;
+          }
+        }
+        if (owner != null) {
+          byField[owner.key] = entry.value;
+        } else if (!_inlineErrorKeys.contains(entry.key)) {
+          // Nothing on screen can show this one — surface it in the banner
+          // rather than failing the create with no explanation.
+          final msg = entry.value.trim();
+          unattached.add(msg.isEmpty ? '${entry.key} is required' : msg);
+        }
+      }
       setState(() {
-        _error = e.fields.isEmpty ? e.message : null;
         _fieldErrors = e.fields;
+        if (byField.isNotEmpty) _customErrors = byField;
+        _error = unattached.isNotEmpty
+            ? '${e.message}\n• ${unattached.join('\n• ')}'
+            : (e.fields.isEmpty ? e.message : null);
       });
+      if (!mounted) return;
+      AppSnack.error(context, e.message);
+      // Put the reason in front of the agent: the offending custom field, or
+      // the banner at the top of the form.
+      final fieldCtx = byField.isEmpty
+          ? null
+          : _customFieldsKey.currentContext;
+      if (fieldCtx != null && fieldCtx.mounted) {
+        Scrollable.ensureVisible(
+          fieldCtx,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+          alignment: 0.1,
+        );
+      } else if (_error != null && _scrollCtrl.hasClients) {
+        _scrollCtrl.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Whether the server will actually serve this ticket back to us.
+  ///
+  /// osTicket's `Ticket::checkStaffPerm()` on this install grants a ticket's
+  /// **creator** nothing: visibility needs an admin, a department the agent
+  /// *manages* (`Staff::getVisibilityDepts()`), the assignee, the assigned
+  /// team, a staff collaborator or a referral — plain department membership is
+  /// deliberately not honored. So an agent can file a ticket into a department
+  /// they merely belong to, leave it unassigned, and lose sight of it the
+  /// instant it exists: `GET /tickets/{id}` answers `404 No such ticket`.
+  ///
+  /// Only a 404 counts as "can't open" — a network blip says nothing about
+  /// permission, and the detail screen has its own retry for that.
+  Future<bool> _canOpen(int id) async {
+    try {
+      await ref.read(ticketsRepositoryProvider).get(id);
+      return true;
+    } on ApiException catch (e) {
+      return !e.isNotFound;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// "the response and the attachments" — a readable list for the partial
+  /// success message.
+  String _phrase(List<String> items) => items.length == 1
+      ? items.single
+      : '${items.take(items.length - 1).join(', ')} and ${items.last}';
+
+  /// Keep the new ticket in reach of the agent opening it.
+  ///
+  /// A ticket's creator is granted no visibility on this install (see
+  /// [_canOpen]), so one filed into a department the agent doesn't manage and
+  /// left unassigned is gone the moment it exists. The one thing that always
+  /// grants visibility is being the assignee, so an otherwise-unassigned
+  /// ticket is defaulted to the agent creating it — the same "Assign To" the
+  /// web form offers, just pre-filled where leaving it blank would lose the
+  /// ticket. It stays fully editable: clear it or pick someone else and that
+  /// choice is honored.
+  ///
+  /// Runs when the department resolves (topic defaults, or a manual change).
+  /// Silent throughout: an agent who already has visibility keeps the blank
+  /// "unassigned" the web would give them.
+  Future<void> _defaultAssignee() async {
+    if (_agent != null || _team != null) return;
+    if (!(_form?.canAssign ?? true)) return;
+    final dept = _department;
+    if (dept == null) return;
+    final Me me;
+    try {
+      // Awaited, not peeked: `/me` is usually cached by now, but on a cold
+      // start into this screen it may still be in flight and the default
+      // would be silently skipped.
+      me = await ref.read(meProvider.future);
+    } catch (_) {
+      return; // No profile, no way to tell — leave the field alone.
+    }
+    if (!mounted) return;
+    // The form may have moved on while `/me` answered.
+    if (_agent != null || _team != null || _department?.id != dept.id) return;
+    if (me.canSeeTicket(departmentId: dept.id)) return;
+    setState(() => _agent = MetaItem(id: me.id, name: me.name));
   }
 
   Future<void> _pickFiles() async {
@@ -204,26 +833,55 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   }
 
   Future<void> _pickSource() async {
-    final s = await showAppSheet<String>(
-      context: context,
-      builder: (_) => AppSheet(
-        title: 'Source',
-        scrollable: false,
-        padding: EdgeInsets.zero,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final o in _sources)
-              PickerOptionTile(
-                label: o,
-                selected: o == _source,
-                onTap: () => Navigator.pop(context, o),
-              ),
-          ],
-        ),
-      ),
+    // Prefer the server's permission-aware list; fall back to the static set
+    // when the form hasn't loaded.
+    final options = _form?.sources.isNotEmpty == true
+        ? _form!.sources
+        : [for (final s in _sources) FormOption(value: s, label: s)];
+    final s = await pickChoice(
+      context,
+      title: 'Source',
+      choices: _optionMap(options),
+      selectedValue: _source,
     );
-    if (s != null) setState(() => _source = s);
+    if (s != null) {
+      setState(() {
+        _source = s;
+        _sourceTouched = true;
+      });
+    }
+  }
+
+  /// Status options come from the create form (closed statuses are omitted for
+  /// agents without the permission); `/meta/statuses` is the fallback.
+  Future<void> _pickStatus() async {
+    final options = _form?.statuses ?? const <FormOption>[];
+    if (options.isEmpty) {
+      final m = await pickMeta(
+        context,
+        ref,
+        MetaKind.statuses,
+        title: 'Status',
+        selectedId: _status?.id,
+      );
+      if (m != null) setState(() => _status = m);
+      return;
+    }
+    final choices = _optionMap(options);
+    final picked = await pickChoice(
+      context,
+      title: 'Status',
+      choices: choices,
+      selectedValue: '${_status?.id}',
+    );
+    if (picked != null) {
+      final id = int.tryParse(picked);
+      if (id != null) {
+        setState(
+          () => _status = MetaItem(id: id, name: choices[picked] ?? '#$id'),
+        );
+      }
+    }
   }
 
   /// Picks a saved reply and splices its (rich) body into the message at the
@@ -235,6 +893,15 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     setState(() {
       if (_messageError != null) _messageError = null;
     });
+  }
+
+  /// Picks a saved reply and splices its (rich) body into the optional
+  /// Response field — the web's "Canned Response" selector on that section.
+  Future<void> _insertResponseCanned() async {
+    final canned = await pickCannedResponse(context, ref);
+    if (canned == null || !mounted) return;
+    insertRichHtml(_response, canned.body);
+    setState(() {});
   }
 
   /// Picks a knowledgebase article and splices its answer into the message. The
@@ -294,7 +961,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       context,
       title.toUpperCase(),
       color: Theme.of(context).colorScheme.onSurfaceVariant,
-      fw: 2,
+      fw: 0,
     ),
   );
 
@@ -333,6 +1000,9 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     return Scaffold(
       appBar: AppBar(title: AppText.titleText(context, 'New ticket', fw: 1)),
       body: SafeArea(
+        // Web flow: the whole form is always visible, with Requester as the
+        // first required field. Closing the initial requester sheet no longer
+        // gates the rest of the fields behind a "select requester" screen.
         child: AbsorbPointer(
           absorbing: _saving,
           child: Form(
@@ -354,19 +1024,36 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   _ErrorBanner(message: _error!),
                 ],
 
-                // --- Requester & collaborators ---------------------------
-                _sectionLabel('Requester'),
+                // --- User & collaborators --------------------------------
+                _sectionLabel('User & collaborators'),
                 _group([
                   _ListRow(
+                    key: _requesterKey,
                     icon: Icons.person_outline,
                     label: 'Requester',
                     value: _user?.name,
                     hint: 'Required · tap to choose',
                     error:
-                        _fieldErrors['user_id'] ??
+                        _apiFieldError('user_id', 'Requester') ??
                         (_attempted && _user == null
                             ? 'Please select a requester'
                             : null),
+                    // Tap the row to choose/change the requester; the trailing
+                    // "×" clears it back to the "Required · tap to choose" state.
+                    trailing: _user == null
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            visualDensity: VisualDensity.compact,
+                            tooltip: 'Remove requester',
+                            onPressed: () => setState(() {
+                              _user = null;
+                              if (_fieldErrors.containsKey('user_id')) {
+                                _fieldErrors = Map.of(_fieldErrors)
+                                  ..remove('user_id');
+                              }
+                            }),
+                          ),
                     onTap: () async {
                       final u = await pickUser(context, ref);
                       if (u != null) setState(() => _user = u);
@@ -410,42 +1097,318 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   ),
                 ]),
 
-                // --- Ticket details (Gmail-style compose) ----------------
-                _sectionLabel('Ticket details'),
+                // --- Ticket information (source/topic/dept/priority/…) ----
+                _sectionLabel('Ticket information'),
                 _group([
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
-                    child: TextFormField(
-                      controller: _subject,
-                      focusNode: _subjectFocus,
-                      textInputAction: TextInputAction.next,
-                      style: AppText.style(context, fontSize: 15, fw: 1),
-                      validator: (v) => (v ?? '').trim().isEmpty
-                          ? 'Subject is required'
-                          : null,
-                      decoration: InputDecoration(
-                        hintText: 'Subject',
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        isDense: true,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                        errorText: _fieldErrors['subject'],
+                  _ListRow(
+                    icon: Icons.podcasts_outlined,
+                    label: 'Source',
+                    value: _source,
+                    onTap: _pickSource,
+                  ),
+                  _ListRow(
+                    key: _topicKey,
+                    icon: Icons.topic_outlined,
+                    label: 'Help topic',
+                    value: _topic?.name,
+                    hint: 'Required · tap to choose',
+                    error:
+                        _apiFieldError('topicId', 'Help topic') ??
+                        (_attempted && _topic == null
+                            ? 'Help topic is required'
+                            : null),
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.topics,
+                        title: 'Help topic',
+                        selectedId: _topic?.id,
+                        searchable: true,
+                      );
+                      if (m != null && m.id != _topic?.id) {
+                        setState(() => _topic = m);
+                        // Re-render the form for the new topic, like the web.
+                        _loadTopicForm(topicId: m.id);
+                      }
+                    },
+                  ),
+                  _ListRow(
+                    icon: Icons.apartment_outlined,
+                    label: 'Department',
+                    value: _department?.name,
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.departments,
+                        title: 'Department',
+                        selectedId: _department?.id,
+                      );
+                      if (m != null) {
+                        setState(() => _department = m);
+                        await _revalidateAgent();
+                        // The new department may be one we'd lose the ticket
+                        // in — or one we no longer need the default for.
+                        await _defaultAssignee();
+                      }
+                    },
+                  ),
+                  _ListRow(
+                    icon: Icons.flag_outlined,
+                    label: 'Priority',
+                    value: _priority?.name,
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.priorities,
+                        title: 'Priority',
+                        selectedId: _priority?.id,
+                      );
+                      if (m != null) setState(() => _priority = m);
+                    },
+                  ),
+                  // SLA plan. A picker wherever the plans can be listed (the
+                  // create form's own list, or `GET /meta/sla`) - matching the
+                  // web's dropdown; read-only otherwise, since then only the
+                  // help topic can pick it.
+                  if (_form != null)
+                    _ListRow(
+                      icon: Icons.speed_outlined,
+                      label: 'SLA plan',
+                      value:
+                          _slaName ??
+                          ((_slaId == null || _slaId == 0)
+                              ? 'System default'
+                              : 'Set by help topic'),
+                      trailing: _slaOptions.isNotEmpty
+                          ? null
+                          : const Icon(Icons.lock_outline, size: 18),
+                      onTap: _slaOptions.isNotEmpty
+                          ? _pickSla
+                          : () => _toast(
+                              (_slaId == null || _slaId == 0)
+                                  ? 'No SLA plan on this help topic — the system default applies'
+                                  : 'The help topic sets the SLA plan',
+                            ),
+                    ),
+                  _ListRow(
+                    key: _dueKey,
+                    icon: Icons.event_outlined,
+                    label: 'Due date',
+                    value: _due == null ? null : Fmt.dateTime(_due),
+                    // SLA-driven installs compute the due date server-side, so
+                    // the row goes read-only and explains itself (the web shows
+                    // "Computed from SLA plan" the same way).
+                    hint: _canSetDue
+                        ? 'Required · tap to set'
+                        : 'Computed from SLA plan',
+                    error: _canSetDue
+                        ? (_apiFieldError('duedate', 'Due date') ??
+                              (_attempted && _due == null
+                                  ? 'Due date is required'
+                                  : null))
+                        : null,
+                    trailing: !_canSetDue
+                        ? const Icon(Icons.lock_outline, size: 18)
+                        : _due == null
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _due = null),
+                          ),
+                    onTap: _canSetDue
+                        ? _pickDue
+                        : () => _toast(
+                            'The SLA plan sets this ticket\'s due date',
+                          ),
+                  ),
+                  if (_form?.canAssign ?? true)
+                  _ListRow(
+                    icon: Icons.assignment_ind_outlined,
+                    label: 'Assign to agent',
+                    value: _agent?.name,
+                    trailing: _agent == null
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _agent = null),
+                          ),
+                    onTap: () async {
+                      final m = await pickAgent(
+                        context,
+                        ref,
+                        departmentName: _isPlaceholder(_department)
+                            ? null
+                            : _department?.name,
+                        departmentId: _department?.id,
+                        title: 'Assign to agent',
+                        selectedId: _agent?.id,
+                      );
+                      if (m != null) setState(() => _agent = m);
+                    },
+                  ),
+                  if (_form?.canAssign ?? true)
+                  _ListRow(
+                    icon: Icons.groups_outlined,
+                    label: 'Assign to team',
+                    value: _team?.name,
+                    trailing: _team == null
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 20),
+                            visualDensity: VisualDensity.compact,
+                            onPressed: () => setState(() => _team = null),
+                          ),
+                    onTap: () async {
+                      final m = await pickMeta(
+                        context,
+                        ref,
+                        MetaKind.teams,
+                        title: 'Assign to team',
+                        selectedId: _team?.id,
+                        searchable: true,
+                      );
+                      if (m != null) setState(() => _team = m);
+                    },
+                  ),
+                ]),
+
+                // --- Ticket details --------------------------------------
+                // The built-in subject/message, which the API omits from the
+                // topic form for the client to render. osTicket labels them
+                // "Issue Summary" and "Issue Details" — this install shows
+                // "Description" for the latter — so they read the same as the
+                // web. Skipped entirely when the topic supplies its own.
+                _sectionLabel('Ticket details'),
+                if (_showNativeSubject || _showNativeMessage)
+                  _group([
+                    if (_showNativeSubject)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+                        child: TextFormField(
+                          key: _subjectKey,
+                          controller: _subject,
+                          focusNode: _subjectFocus,
+                          textInputAction: TextInputAction.next,
+                          style: AppText.style(context, fontSize: 15, fw: 0),
+                          validator: (v) => (v ?? '').trim().isEmpty
+                              ? 'Issue summary is required'
+                              : null,
+                          decoration: InputDecoration(
+                            labelText: 'Issue Summary *',
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(
+                              vertical: 12,
+                            ),
+                            errorText: _apiFieldError(
+                              'subject',
+                              'Issue summary',
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                    if (_showNativeMessage)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 4, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            AppText.paraText(
+                              context,
+                              'Description *',
+                              color: scheme.onSurfaceVariant,
+                            ),
+                            RichMessageField(
+                              key: _messageKey,
+                              controller: _message,
+                              hintText: 'Describe the issue…',
+                              bordered: false,
+                              onInsertCanned: _insertCanned,
+                              onInsertFaq: _insertFaq,
+                              errorText:
+                                  _messageError ??
+                                  _apiFieldError('message', 'Description'),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ], dividerIndent: 0),
+
+                // --- Topic custom fields ---------------------------------
+                // Continues the "Ticket details" section above: the web groups
+                // the topic's fields with the subject/message under one header,
+                // so this renders as a second card with no heading of its own.
+                if (_loadingForm ||
+                    _formError != null ||
+                    _customFields.isNotEmpty) ...[
+                  KeyedSubtree(
+                    key: _customFieldsKey,
+                    child: const SizedBox(height: 10),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: RichMessageField(
-                      controller: _message,
-                      hintText: 'Type your message…',
-                      bordered: false,
-                      onInsertCanned: _insertCanned,
-                      onInsertFaq: _insertFaq,
-                      errorText: _messageError ?? _fieldErrors['message'],
+                  _group([
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      child: _loadingForm
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(8),
+                                child: SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2.4,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : _formError != null
+                          // The topic's fields couldn't be loaded — say so and
+                          // offer a retry rather than silently showing nothing.
+                          ? Row(
+                              children: [
+                                Icon(
+                                  Icons.error_outline,
+                                  size: 20,
+                                  color: scheme.error,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: AppText.subText(
+                                    context,
+                                    "Couldn't load this topic's fields",
+                                    color: scheme.error,
+                                  ),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      _loadTopicForm(topicId: _topic?.id),
+                                  child: const Text('Retry'),
+                                ),
+                              ],
+                            )
+                          : DynamicFieldsSection(
+                              fields: _customFields,
+                              values: _customValues,
+                              errors: _customErrors,
+                              onChanged: (v) => setState(() {
+                                _customValues = v;
+                                // Clear inline errors for now-answered fields.
+                                _customErrors = {
+                                  for (final e in _customErrors.entries)
+                                    if (!_hasValue(v[e.key])) e.key: e.value,
+                                };
+                              }),
+                            ),
                     ),
-                  ),
-                ], dividerIndent: 0),
+                  ], dividerIndent: 0),
+                ],
 
                 // --- Attachments -----------------------------------------
                 _sectionLabel('Attachments'),
@@ -500,133 +1463,35 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   ),
                 ]),
 
-                // --- Properties ------------------------------------------
-                _sectionLabel('Properties'),
+                // --- Response (optional first reply to the requester) -----
+                _sectionLabel('Response'),
                 _group([
-                  _ListRow(
-                    icon: Icons.podcasts_outlined,
-                    label: 'Source',
-                    value: _source,
-                    onTap: _pickSource,
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: RichMessageField(
+                      controller: _response,
+                      hintText: 'Optional reply to the requester…',
+                      bordered: false,
+                      onInsertCanned: _insertResponseCanned,
+                    ),
                   ),
-                  _ListRow(
-                    icon: Icons.topic_outlined,
-                    label: 'Help topic',
-                    value: _topic?.name,
-                    onTap: () async {
-                      final m = await pickMeta(
-                        context,
-                        ref,
-                        MetaKind.topics,
-                        title: 'Help topic',
-                        selectedId: _topic?.id,
-                      );
-                      if (m != null) setState(() => _topic = m);
-                    },
-                  ),
-                  _ListRow(
-                    icon: Icons.apartment_outlined,
-                    label: 'Department',
-                    value: _department?.name,
-                    onTap: () async {
-                      final m = await pickMeta(
-                        context,
-                        ref,
-                        MetaKind.departments,
-                        title: 'Department',
-                        selectedId: _department?.id,
-                      );
-                      if (m != null) setState(() => _department = m);
-                    },
-                  ),
-                  _ListRow(
-                    icon: Icons.flag_outlined,
-                    label: 'Priority',
-                    value: _priority?.name,
-                    onTap: () async {
-                      final m = await pickMeta(
-                        context,
-                        ref,
-                        MetaKind.priorities,
-                        title: 'Priority',
-                        selectedId: _priority?.id,
-                      );
-                      if (m != null) setState(() => _priority = m);
-                    },
-                  ),
-                  _ListRow(
-                    icon: Icons.event_outlined,
-                    label: 'Due date',
-                    value: _due == null ? null : Fmt.dateTime(_due),
-                    trailing: _due == null
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close, size: 20),
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => setState(() => _due = null),
-                          ),
-                    onTap: _pickDue,
-                  ),
-                  _ListRow(
-                    icon: Icons.assignment_ind_outlined,
-                    label: 'Assign to agent',
-                    value: _agent?.name,
-                    trailing: _agent == null
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close, size: 20),
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => setState(() => _agent = null),
-                          ),
-                    onTap: () async {
-                      final m = await pickMeta(
-                        context,
-                        ref,
-                        MetaKind.agents,
-                        title: 'Assign to agent',
-                        selectedId: _agent?.id,
-                      );
-                      if (m != null) setState(() => _agent = m);
-                    },
-                  ),
-                  _ListRow(
-                    icon: Icons.groups_outlined,
-                    label: 'Assign to team',
-                    value: _team?.name,
-                    trailing: _team == null
-                        ? null
-                        : IconButton(
-                            icon: const Icon(Icons.close, size: 20),
-                            visualDensity: VisualDensity.compact,
-                            onPressed: () => setState(() => _team = null),
-                          ),
-                    onTap: () async {
-                      final m = await pickMeta(
-                        context,
-                        ref,
-                        MetaKind.teams,
-                        title: 'Assign to team',
-                        selectedId: _team?.id,
-                      );
-                      if (m != null) setState(() => _team = m);
-                    },
+                  SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                    value: _responseAlert,
+                    onChanged: (v) => setState(() => _responseAlert = v),
+                    title: AppText.subText(context, 'Alert requester', fw: 0),
+                    subtitle: AppText.paraText(
+                      context,
+                      'Email this reply to the requester',
+                    ),
                   ),
                   _ListRow(
                     icon: Icons.label_outline,
                     label: 'Status',
                     value: _status?.name,
-                    onTap: () async {
-                      final m = await pickMeta(
-                        context,
-                        ref,
-                        MetaKind.statuses,
-                        title: 'Status',
-                        selectedId: _status?.id,
-                      );
-                      if (m != null) setState(() => _status = m);
-                    },
+                    onTap: _pickStatus,
                   ),
-                ]),
+                ], dividerIndent: 0),
 
                 // --- Internal note ---------------------------------------
                 _sectionLabel('Internal note'),
@@ -690,7 +1555,11 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                   const SizedBox(height: 8),
                 ],
                 FilledButton.icon(
-                  onPressed: (_saving || !_canSubmit) ? null : _submit,
+                  // Always tappable (except mid-save): tapping an incomplete
+                  // form runs validation and surfaces a clear inline error on
+                  // each missing field, rather than leaving the user stuck at a
+                  // disabled button with no explanation.
+                  onPressed: _saving ? null : _submit,
                   icon: _saving
                       ? const SizedBox.shrink()
                       : const Icon(Icons.check_circle_outline, size: 20),
@@ -714,12 +1583,15 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   }
 
   /// Human-readable list of the still-missing required fields, shown above the
-  /// disabled submit button.
+  /// submit button as a nudge.
   String get _missingHint {
     final missing = <String>[
       if (_user == null) 'requester',
-      if (_subject.text.trim().isEmpty) 'subject',
-      if (_messageText.isEmpty) 'message',
+      if (_effectiveSubject.isEmpty) 'subject',
+      if (_effectiveMessageText.isEmpty) 'message',
+      if (_topic == null) 'help topic',
+      if (_canSetDue && _due == null) 'due date',
+      for (final f in _missingCustomFields) f.label.toLowerCase(),
     ];
     if (missing.isEmpty) return '';
     return 'Add ${missing.join(', ')} to continue';
@@ -766,6 +1638,7 @@ class _ErrorBanner extends StatelessWidget {
 /// paints the value line in the error color.
 class _ListRow extends StatelessWidget {
   const _ListRow({
+    super.key,
     required this.icon,
     required this.label,
     required this.onTap,
@@ -814,7 +1687,7 @@ class _ListRow extends StatelessWidget {
                       context,
                       display,
                       color: valueColor,
-                      fw: value != null ? 1 : 0,
+                      fw: value != null ? 0 : 0,
                       align: TextAlign.right,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

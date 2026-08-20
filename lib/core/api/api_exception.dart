@@ -53,7 +53,12 @@ class ApiException implements Exception {
       final rawFields = err['fields'];
       final fields = <String, String>{};
       if (rawFields is Map) {
-        rawFields.forEach((k, v) => fields['$k'] = '$v');
+        // A field's error may arrive as a string or as a list of messages
+        // (custom-field validation returns the latter) — join lists so the
+        // message reads naturally instead of as "[Name is required]".
+        rawFields.forEach((k, v) {
+          fields['$k'] = v is List ? v.join(', ') : '$v';
+        });
       }
       return ApiException(
         statusCode: status,

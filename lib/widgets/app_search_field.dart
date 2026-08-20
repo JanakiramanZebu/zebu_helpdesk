@@ -98,13 +98,17 @@ class _AppSearchFieldState extends State<AppSearchField> {
             ),
           ),
           if (hasText)
-            InkResponse(
-              radius: 18,
-              onTap: () {
-                widget.controller.clear();
-                widget.onClear();
-              },
-              child: Icon(Icons.close, size: 18, color: muted),
+            // Part of the field as far as focus goes, so clearing doesn't put
+            // the keyboard away mid-search.
+            TextFieldTapRegion(
+              child: InkResponse(
+                radius: 18,
+                onTap: () {
+                  widget.controller.clear();
+                  widget.onClear();
+                },
+                child: Icon(Icons.close, size: 18, color: muted),
+              ),
             ),
           if (widget.trailing != null) ...[
             const SizedBox(width: 4),

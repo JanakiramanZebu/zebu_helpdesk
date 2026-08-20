@@ -108,6 +108,15 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
     if (old.refreshKey != widget.refreshKey) {
       _load(reset: true);
     }
+    // A host that pages between lists (tabs) passes `onItems` only to the
+    // ACTIVE one. While inactive the notify block below is skipped entirely,
+    // so [_lastNotified] keeps the items from the last time this list was
+    // active — and on return, unchanged items compare equal and the host is
+    // never re-notified. Its "visible ids" would then still describe whatever
+    // list it visited in between (breaking select-all / deselect-all over
+    // this one). Forget the last notification whenever this list is handed a
+    // listener again, so the next build always re-announces its items.
+    if (old.onItems == null && widget.onItems != null) _lastNotified = null;
   }
 
   @override

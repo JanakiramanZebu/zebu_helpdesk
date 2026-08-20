@@ -31,13 +31,18 @@ class ReassignResult {
 /// checkbox, and an optional free-text reason. Used by both the ticket and
 /// task detail screens so the two flows stay identical.
 ///
-/// [assignees] is the meta pick-list (e.g. `MetaKind.agents` / `MetaKind.teams`).
+/// [assignees] is the pick-list to offer — for agents that is the department's
+/// assignable agents (see `AgentDirectory`), which is what the server will
+/// actually accept. Pass [allAssignees] and [scopeDepartment] alongside it to
+/// give the picker a "Show all agents" way out of that scope.
 /// [currentAssignee] drives the banner; pass null to hide it (e.g. first
 /// assignment). [showReferral] hides the referral checkbox for flows where it
 /// does not apply (team assignment).
 Future<ReassignResult?> showReassignDialog(
   BuildContext context, {
   required List<MetaItem> assignees,
+  List<MetaItem>? allAssignees,
+  String? scopeDepartment,
   String title = 'Reassign',
   String assigneeLabel = 'Assignee',
   String? currentAssignee,
@@ -48,6 +53,8 @@ Future<ReassignResult?> showReassignDialog(
     context: context,
     builder: (_) => _ReassignDialog(
       assignees: assignees,
+      allAssignees: allAssignees,
+      scopeDepartment: scopeDepartment,
       title: title,
       assigneeLabel: assigneeLabel,
       currentAssignee: currentAssignee,
@@ -60,6 +67,8 @@ Future<ReassignResult?> showReassignDialog(
 class _ReassignDialog extends StatefulWidget {
   const _ReassignDialog({
     required this.assignees,
+    required this.allAssignees,
+    required this.scopeDepartment,
     required this.title,
     required this.assigneeLabel,
     required this.currentAssignee,
@@ -68,6 +77,13 @@ class _ReassignDialog extends StatefulWidget {
   });
 
   final List<MetaItem> assignees;
+
+  /// Full roster behind the picker's "Show all agents" toggle; null when the
+  /// list was never scoped.
+  final List<MetaItem>? allAssignees;
+
+  /// Department [assignees] was scoped to, named in the picker's scope strip.
+  final String? scopeDepartment;
   final String title;
   final String assigneeLabel;
   final String? currentAssignee;
@@ -98,7 +114,7 @@ class _ReassignDialogState extends State<_ReassignDialog> {
   MetaItem? get _selected {
     final id = _assigneeId;
     if (id == null) return null;
-    for (final item in widget.assignees) {
+    for (final item in [...widget.assignees, ...?widget.allAssignees]) {
       if (item.id == id) return item;
     }
     return null;
@@ -110,6 +126,8 @@ class _ReassignDialogState extends State<_ReassignDialog> {
       builder: (_) => _AssigneePickerDialog(
         title: widget.assigneeLabel,
         items: widget.assignees,
+        allItems: widget.allAssignees,
+        scopeDepartment: widget.scopeDepartment,
         selectedId: _assigneeId,
       ),
     );
@@ -327,16 +345,21 @@ class _SelectorField extends StatelessWidget {
 }
 
 /// Searchable single-select picker for the assignee list. Mirrors the meta
-/// picker used elsewhere in the detail screens.
+/// picker used elsewhere in the detail screens, plus the department scope strip
+/// when [allItems] carries a wider roster than [items].
 class _AssigneePickerDialog extends StatefulWidget {
   const _AssigneePickerDialog({
     required this.title,
     required this.items,
+    this.allItems,
+    this.scopeDepartment,
     this.selectedId,
   });
 
   final String title;
   final List<MetaItem> items;
+  final List<MetaItem>? allItems;
+  final String? scopeDepartment;
   final int? selectedId;
 
   @override
@@ -345,35 +368,49 @@ class _AssigneePickerDialog extends StatefulWidget {
 
 class _AssigneePickerDialogState extends State<_AssigneePickerDialog> {
   final _searchCtrl = TextEditingController();
-  late List<MetaItem> _filtered = widget.items;
+  String _query = '';
+  late bool _showAll =
+      widget.selectedId != null &&
+      _scoped &&
+      !widget.items.any((a) => a.id == widget.selectedId);
 
-  bool get _searchable => widget.items.length > 8;
+  /// Whether the caller narrowed the list to a department at all.
+  bool get _scoped =>
+      widget.allItems != null && widget.allItems!.length > widget.items.length;
+
+  List<MetaItem> get _source =>
+      _showAll && widget.allItems != null ? widget.allItems! : widget.items;
+
+  List<MetaItem> get _filtered {
+    final q = _query.toLowerCase();
+    if (q.isEmpty) return _source;
+    return [
+      for (final item in _source)
+        if (item.name.toLowerCase().contains(q)) item,
+    ];
+  }
+
+  bool get _searchable => _source.length > 8;
 
   @override
   void initState() {
     super.initState();
-    _searchCtrl.addListener(_updateFilter);
+    _searchCtrl.addListener(_updateQuery);
   }
 
   @override
   void dispose() {
-    _searchCtrl.removeListener(_updateFilter);
+    _searchCtrl.removeListener(_updateQuery);
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  void _updateFilter() {
-    final query = _searchCtrl.text.toLowerCase();
-    setState(() {
-      _filtered = widget.items
-          .where((item) => item.name.toLowerCase().contains(query))
-          .toList();
-    });
-  }
+  void _updateQuery() => setState(() => _query = _searchCtrl.text);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final filtered = _filtered;
     return AppDialog(
       title: widget.title,
       child: Column(
@@ -384,11 +421,38 @@ class _AssigneePickerDialogState extends State<_AssigneePickerDialog> {
             SheetSearchField(controller: _searchCtrl, hintText: 'Search'),
             const SizedBox(height: 12),
           ],
+          if (_scoped) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: AppText.subText(
+                    context,
+                    _showAll
+                        ? 'All agents'
+                        : 'Agents in ${widget.scopeDepartment?.trim().isNotEmpty == true ? widget.scopeDepartment!.trim() : 'this department'}',
+                    color: theme.colorScheme.onSurfaceVariant,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _showAll = !_showAll),
+                  child: AppText.subText(
+                    context,
+                    _showAll ? 'Department only' : 'Show all agents',
+                    color: theme.colorScheme.primary,
+                    fw: 2,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+          ],
           ConstrainedBox(
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.4,
             ),
-            child: _filtered.isEmpty
+            child: filtered.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.symmetric(vertical: 20),
                     child: AppText.subText(
@@ -400,7 +464,7 @@ class _AssigneePickerDialogState extends State<_AssigneePickerDialog> {
                 : ListView(
                     shrinkWrap: true,
                     children: [
-                      for (final item in _filtered)
+                      for (final item in filtered)
                         Material(
                           color: Colors.transparent,
                           child: InkWell(

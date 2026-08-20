@@ -17,13 +17,13 @@ import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
 import '../../widgets/app_search_field.dart';
-import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/filter_chip_tabs.dart';
 import '../../widgets/filter_sheet.dart';
 import '../../widgets/glass.dart';
 import '../../widgets/list_controls.dart';
 import '../../widgets/paged_list_view.dart';
+import '../../widgets/pickers.dart';
 import '../../widgets/selection_controls.dart';
 import '../../widgets/skeleton.dart';
 import 'widgets/task_row.dart';
@@ -93,6 +93,11 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   List<int> _visibleIds = const [];
   bool _bulkBusy = false;
 
+  /// Department name per row seen so far, so a bulk assign can scope its agent
+  /// picker the way the detail screen does. List rows only carry the name (the
+  /// summary payload has no department id), which is all the scope needs.
+  final Map<int, String> _deptOf = {};
+
   // Per-tab count badges.
   Map<String, int> _counts = const {};
 
@@ -129,7 +134,7 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
     if (view == _view) return;
     final from = _indexOf(_view);
     final to = _indexOf(view);
-    setState(() => _view = view);
+    _adoptView(view);
     if (!_pageController.hasClients) return;
     if ((to - from).abs() > 1) {
       _pageController.jumpToPage(to);
@@ -145,35 +150,58 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   /// Swipe settled on a new page → adopt that view.
   void _onPageChanged(int index) {
     final next = _views[index].key;
-    if (next != _view) setState(() => _view = next);
+    if (next != _view) _adoptView(next);
+  }
+
+  /// Switch the active view, dropping any multi-select that belonged to the
+  /// one we're leaving.
+  ///
+  /// Selection is inherently per-view: [_visibleIds] only ever tracks the
+  /// ACTIVE list, so a selection carried across tabs leaves the "N selected"
+  /// count — and every bulk action, including delete — pointing at tasks the
+  /// user can no longer see. Clearing [_visibleIds] too keeps select-all from
+  /// acting on the old tab's rows in the frame before the new list reports in.
+  void _adoptView(String next) {
+    setState(() {
+      _view = next;
+      _selected.clear();
+      _visibleIds = const [];
+    });
   }
 
   /// Jump the pager to [view] without animation (cross-tab filter requests).
   void _jumpToView(String view) {
-    setState(() => _view = view);
+    _adoptView(view);
     if (_pageController.hasClients) {
       _pageController.jumpToPage(_indexOf(view));
     }
   }
 
-  /// Fetch the count for every tab in parallel (cheap total-only queries).
-  ///
-  /// Uses the SAME query the list will run for each view ([_queryFor], limited
-  /// to one row) rather than a bare `view` count, so the badge can't disagree
-  /// with the list — notably the `status=open` scope on "My Tasks" and
-  /// "Collaborator". The server's pagination total is what we read.
+  /// True when [view]'s badge must be counted client-side: My Tasks (server
+  /// view=mine also counts completed assignments), or ANY filter / search /
+  /// date window active. In those cases [_matches]'s membership + facet + exact
+  /// date bounds + live-search checks produce the correct number, whereas a raw
+  /// server total ignores the search text and the exact (local) date window.
+  bool _clientCounted(String view) =>
+      view == 'mine' ||
+      _dateRange != DateRange.all ||
+      _search.trim().isNotEmpty ||
+      _filters.values.any((v) => v != null);
+
+  /// Fetch the count for every tab in parallel, honoring the active facet and
+  /// date filters + search so the badges always match what each tab shows.
   Future<void> _loadCounts() async {
     final repo = ref.read(tasksRepositoryProvider);
     final entries = await Future.wait(
       _views.map((v) async {
         try {
-          // Count My Tasks open-only client-side, matching the filtered list.
-          if (v.key == 'mine') {
-            final mine = await _gatherAll(_queryFor('mine'));
-            return MapEntry('mine', mine.where((t) => t.isOpen).length);
+          if (_clientCounted(v.key)) {
+            // _matches = membership + facets + exact date + live search text,
+            // so the badge counts exactly what the tab would display.
+            final rows = await _gatherAll(_queryFor(v.key));
+            return MapEntry(v.key, rows.where((t) => _matches(t, v.key)).length);
           }
-          final res = await repo.list(_queryFor(v.key).copyWith(limit: 1));
-          return MapEntry(v.key, res.total);
+          return MapEntry(v.key, await repo.count(query: _queryFor(v.key)));
         } catch (_) {
           return MapEntry(v.key, -1);
         }
@@ -212,19 +240,26 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
 
   void _toast(String msg) => AppSnack.info(context, msg);
 
-  /// Debounced live search — narrows the list as the user types.
+  /// Debounced live search — narrows the list as the user types, and recounts
+  /// the tab badges so they follow the search text.
   void _onSearchChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
       final next = value.trim();
-      if (next != _search && mounted) setState(() => _search = next);
+      if (next != _search && mounted) {
+        setState(() => _search = next);
+        _loadCounts();
+      }
     });
   }
 
   void _applySearch(String value) {
     _debounce?.cancel();
     final next = value.trim();
-    if (next != _search) setState(() => _search = next);
+    if (next != _search) {
+      setState(() => _search = next);
+      _loadCounts();
+    }
   }
 
 
@@ -279,6 +314,8 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
         ..clear()
         ..addAll(result.filters);
     });
+    // Badges follow the facet/date selection, so recount with the new filters.
+    _loadCounts();
   }
 
   // Search and the date range are also enforced client-side (see [_matches]);
@@ -291,8 +328,13 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
       view: view,
       sort: _sort,
       order: _order,
-      createdFrom: b == null ? null : Fmt.apiDate(b.$1),
-      createdTo: b == null ? null : Fmt.apiDate(b.$2),
+      // The server compares created_from/to against UTC timestamps while our
+      // bounds are local, so convert the window's endpoints to UTC before
+      // taking their calendar dates — the server window becomes a superset that
+      // fully covers the local range; [_countable] applies the exact local
+      // bounds on top.
+      createdFrom: b == null ? null : Fmt.apiDate(b.$1.toUtc()),
+      createdTo: b == null ? null : Fmt.apiDate(b.$2.toUtc()),
       deptId: _filters['dept']?.id,
       priorityId: _filters['priority']?.id,
       assigneeId: _filters['agent']?.id,
@@ -334,7 +376,28 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
 
   void _onItems(List<Task> items) {
     final ids = items.map((t) => t.id).toList();
+    for (final t in items) {
+      final dept = t.departmentName?.trim();
+      if (dept != null && dept.isNotEmpty) _deptOf[t.id] = dept;
+    }
     if (!listEquals(ids, _visibleIds)) setState(() => _visibleIds = ids);
+  }
+
+  /// The single department every selected row sits in, or null when the
+  /// selection spans departments (or a row's department is unknown) — then the
+  /// agent picker can't be scoped and offers everyone.
+  String? get _selectedDepartment {
+    String? shared;
+    for (final id in _selected) {
+      final dept = _deptOf[id];
+      if (dept == null) return null;
+      if (shared == null) {
+        shared = dept;
+      } else if (shared.toLowerCase() != dept.toLowerCase()) {
+        return null;
+      }
+    }
+    return shared;
   }
 
   void _toggle(int id) => setState(() {
@@ -356,27 +419,11 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
 
   // --- Bulk actions ---------------------------------------------------------
 
+  /// Bulk-action target picker — delegates to the shared searchable meta sheet
+  /// (search box for agents/departments), returning the chosen id.
   Future<int?> _pickMeta(String kind, String title) async {
-    final items = await ref.read(metaRepositoryProvider).get(kind);
-    if (!mounted) return null;
-    return showAppSheet<int>(
-      context: context,
-      builder: (_) => AppSheet(
-        title: title,
-        scrollable: false,
-        padding: EdgeInsets.zero,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final m in items)
-              ListTile(
-                title: AppText.subText(context, m.name),
-                onTap: () => Navigator.pop(context, m.id),
-              ),
-          ],
-        ),
-      ),
-    );
+    final m = await pickMeta(context, ref, kind, title: title, searchable: true);
+    return m?.id;
   }
 
   Future<void> _runBulk(String verb, Future<void> Function(int id) op) async {
@@ -410,9 +457,16 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
       case 'reopen':
         await _runBulk('Reopened', repo.reopen);
       case 'assign':
-        final id = await _pickMeta(MetaKind.agents, 'Assign to agent');
-        if (id != null) {
-          await _runBulk('Assigned', (t) => repo.assign(t, staffId: id));
+        // Scoped to the selection's department when they share one, so the
+        // sheet doesn't offer agents the server would reject.
+        final agent = await pickAgent(
+          context,
+          ref,
+          departmentName: _selectedDepartment,
+          title: 'Assign to agent',
+        );
+        if (agent != null) {
+          await _runBulk('Assigned', (t) => repo.assign(t, staffId: agent.id));
         }
       case 'priority':
         final id = await _pickMeta(MetaKind.taskPriorities, 'Set priority');
@@ -505,11 +559,19 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
   /// doesn't reliably carry the flags needed to reproduce that filter —
   /// overdue state, open vs closed, assignment. Re-deriving it silently dropped
   /// rows the server returned, which is what emptied the Overdue tab.
-  bool _matches(Task t, String view) {
-    // "My Tasks" shows only OPEN tasks assigned to me. The server scopes
-    // view=mine to status=open, but guard here too so a closed row can never
-    // leak into this tab (mirrors the Tickets screen).
+  /// Tab-membership + date-window + facet checks shared by the visible list
+  /// ([_matches]) and the tab count badges — everything except the live search
+  /// text, which narrows the list but not the shared count basis.
+  ///
+  /// Open/completed membership IS re-derived here (the status name marks it
+  /// reliably) so a facet/search that overrides the server's `view` can't leak
+  /// rows across tabs. Overdue/created/collaborator membership is left to the
+  /// server — the list rows don't carry those flags reliably.
+  bool _countable(Task t, String view) {
+    // Tab membership guards. "My Tasks" shows only OPEN tasks assigned to me.
     if (view == 'mine' && !t.isOpen) return false;
+    if (view == 'open' && !t.isOpen) return false;
+    if (view == 'closed' && t.isOpen) return false;
 
     final b = _dateBounds;
     if (b != null) {
@@ -519,11 +581,13 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
 
     // Facet filters (best-effort, by name; tags have no list-row data so they
     // rely on the server query).
-    if (!_facetOk(_filters['dept'], t.departmentName) ||
-        !_facetOk(_filters['priority'], t.priority?.name) ||
-        !_facetOk(_filters['agent'], t.assignee)) {
-      return false;
-    }
+    return _facetOk(_filters['dept'], t.departmentName) &&
+        _facetOk(_filters['priority'], t.priority?.name) &&
+        _facetOk(_filters['agent'], t.assignee);
+  }
+
+  bool _matches(Task t, String view) {
+    if (!_countable(t, view)) return false;
 
     final q = _search.trim();
     if (q.isEmpty) return true;
@@ -541,10 +605,16 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
 
   /// True when no facet is selected, or the row's [value] matches the selected
   /// item's name (case-insensitive).
+  ///
+  /// A row that doesn't carry the field at all (e.g. list rows omit priority
+  /// when it's the default) also passes — the server already filtered by the
+  /// facet's id, so unknown must not mean "drop", or the filter wipes out its
+  /// own results.
   static bool _facetOk(MetaItem? selected, String? value) {
     if (selected == null) return true;
-    return (value ?? '').trim().toLowerCase() ==
-        selected.name.trim().toLowerCase();
+    final v = (value ?? '').trim();
+    if (v.isEmpty) return true;
+    return v.toLowerCase() == selected.name.trim().toLowerCase();
   }
 
   // --- UI -------------------------------------------------------------------
@@ -633,6 +703,11 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Any task mutation (create/edit/bulk, from any screen) refetches the lists
+    // via refreshKey — recount the tab badges in the same beat (TC_150).
+    ref.listen<int>(tasksChangedProvider, (prev, next) {
+      if (prev != next) _loadCounts();
+    });
     // Apply a filter requested from another tab while this screen is already
     // alive (the shell keeps branches in an IndexedStack), then clear it.
     ref.listen<String?>(tasksViewRequestProvider, (_, next) {
@@ -687,14 +762,27 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
       separated: compact,
       refreshKey: '$view|${_dateRange.name}|$_sort|$_filterSig|$_refresh|$changed',
       itemFilter: (t) => _matches(t, view),
-      itemSort: _sort == 'thread' ? null : _compare,
+      // 'thread' and 'due' rely on the server's ordering: list rows don't carry
+      // thread length, and re-sorting locally on equal (null) keys scrambles
+      // the server's correct order (Dart's sort isn't stable).
+      itemSort: (_sort == 'thread' || _sort == 'due') ? null : _compare,
+      // Pull-to-refresh must also refresh the tab badges (TC_150).
+      onRefresh: _loadCounts,
       // Only the visible page feeds selection state and the app-bar total.
       onItems: active ? _onItems : null,
       onTotalChanged: active
           ? (t) {
-              // Mirror the client-side open-only count for My Tasks.
-              final shown = view == 'mine' ? (_counts['mine'] ?? t) : t;
+              // Tabs counted client-side (see _clientCounted) show the
+              // recounted badge value; the raw server total would ignore the
+              // client-enforced narrowing (search text, exact date window).
+              final clientCounted = _clientCounted(view);
+              final shown = clientCounted ? (_counts[view] ?? t) : t;
               if (mounted && shown != _total) setState(() => _total = shown);
+              // For server-counted tabs the list's total is the freshest truth
+              // — keep the badge in step without a full recount.
+              if (!clientCounted && _counts[view] != t) {
+                setState(() => _counts = {..._counts, view: t});
+              }
             }
           : null,
       emptyMessage: 'No tasks',

@@ -100,30 +100,41 @@ class TasksRepository {
     return Paginated.fromEnvelope(J.map(body), Task.fromJson);
   }
 
-  /// Total number of tasks matching [view] — cheap (fetches a single row and
-  /// reads the pagination total). Used for dashboard stat counts.
-  Future<int> count({String view = 'open'}) async {
+  /// Total number of tasks matching [view] (or a full [query], which lets the
+  /// tab badges reflect active filters) — cheap: fetches a single row and reads
+  /// the pagination total. Also used for dashboard stat counts.
+  Future<int> count({String view = 'open', TaskQuery? query}) async {
     final body = await _api.get(
       '/tasks',
-      query: TaskQuery(view: view, limit: 1).toMap(),
+      query: (query ?? TaskQuery(view: view)).copyWith(limit: 1).toMap(),
     );
     return Paginated.fromEnvelope(J.map(body), Task.fromJson).total;
   }
 
   Future<Task> get(int id) async => _task(await _api.get('/tasks/$id'));
 
-  /// Create a task. When [files] are supplied the request is sent as multipart
-  /// (the form fields + `files[]`), otherwise as a plain JSON body.
+  /// Create a task. The create endpoint accepts a JSON body only — it does not
+  /// parse multipart form fields — so the request is ALWAYS sent as JSON.
+  /// (Posting it as multipart, which older builds did when an attachment was
+  /// present, left every field empty server-side and failed the create with a
+  /// spurious "Required" on department/title/description.)
+  ///
+  /// Any [files] are uploaded in a best-effort follow-up note — which does
+  /// accept multipart `files[]` — so attachments stay on the task without a
+  /// failed upload ever failing the create itself.
   Future<Task> create(
     Map<String, dynamic> payload, {
     List<MultipartFile> files = const [],
   }) async {
-    if (files.isEmpty) {
-      return _task(await _api.post('/tasks', body: payload));
+    final task = _task(await _api.post('/tasks', body: payload));
+    if (files.isNotEmpty) {
+      try {
+        await note(task.id, title: 'Attachments', files: files);
+      } catch (_) {
+        // The task already exists; a hiccup attaching files must not fail it.
+      }
     }
-    return _task(
-      await _api.upload('/tasks', fields: payload, files: {'files[]': files}),
-    );
+    return task;
   }
 
   // --- Thread / events / attachments ---------------------------------------

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../core/api/api_client.dart';
+import '../core/api/api_exception.dart';
 import '../core/api/json.dart';
 import '../core/api/paginated.dart';
 import '../models/common.dart';
@@ -158,18 +159,37 @@ class TicketsRepository {
 
   // --- Create / delete ------------------------------------------------------
 
-  /// Create a ticket. When [files] are supplied the request is sent as
-  /// multipart (the form fields + `files[]`), otherwise as a plain JSON body.
+  /// Create a ticket. The create endpoint accepts a JSON body only — it does
+  /// not parse multipart form fields — so the request is ALWAYS sent as JSON.
+  /// (Posting it as multipart, which older builds did when an attachment was
+  /// present, left every field empty server-side and failed the create with a
+  /// spurious "Unknown or missing user" on the requester.)
+  ///
+  /// Any [files] are uploaded in a best-effort follow-up note — which does
+  /// accept multipart `files[]` — so attachments stay on the ticket without a
+  /// failed upload ever failing the create itself. That follow-up runs behind
+  /// the server's ticket-visibility gate, so it fails outright whenever the
+  /// new ticket isn't visible to its creator; [onFilesFailed] hands that back
+  /// to the caller rather than reporting a clean success it can't vouch for.
+  ///
+  /// Pass `assign_staff_id` / `assign_team_id` in [payload] to assign on
+  /// create: the endpoint applies them while it still holds the ticket, unlike
+  /// `POST /tickets/{id}/assign`, which the same visibility gate can reject.
   Future<Ticket> create(
     Map<String, dynamic> payload, {
     List<MultipartFile> files = const [],
+    void Function(Object error)? onFilesFailed,
   }) async {
-    if (files.isEmpty) {
-      return _ticket(await _api.post('/tickets', body: payload));
+    final ticket = _ticket(await _api.post('/tickets', body: payload));
+    if (files.isNotEmpty) {
+      try {
+        await note(ticket.id, title: 'Attachments', files: files);
+      } catch (e) {
+        // The ticket already exists; a hiccup attaching files must not fail it.
+        onFilesFailed?.call(e);
+      }
     }
-    return _ticket(
-      await _api.upload('/tickets', fields: payload, files: {'files[]': files}),
-    );
+    return ticket;
   }
 
   Future<void> delete(int id) => _api.delete('/tickets/$id');
@@ -339,6 +359,20 @@ class TicketsRepository {
         if (slaId != null) 'sla_id': slaId,
       });
 
+  /// Set the ticket's SLA plan (`POST /tickets/{id}/sla`). The server then
+  /// recomputes the due date from the new plan's grace period, so callers
+  /// should reload the ticket. Builds without that route answer 400 ("URL not
+  /// supported"); the due-date endpoint has always accepted `sla_id`, so fall
+  /// back to it rather than failing.
+  Future<Ticket> setSla(int id, int slaId) async {
+    try {
+      return await _post(id, 'sla', {'sla_id': slaId});
+    } on ApiException catch (e) {
+      if (e.statusCode != 400) rethrow;
+      return _post(id, 'duedate', {'sla_id': slaId});
+    }
+  }
+
   Future<Ticket> editFields(int id, Map<String, dynamic> fields) =>
       _post(id, 'edit', {'fields': fields});
 
@@ -403,6 +437,60 @@ class TicketsRepository {
   Future<List<TicketField>> fields(int id) async {
     final body = await _api.get('/tickets/$id/fields');
     return J.mapList(J.map(body)['data']).map(TicketField.fromJson).toList();
+  }
+
+  /// The staff "New Ticket" form for [topicId] — the topic's custom fields plus
+  /// its defaults (dept / priority / SLA / status / assignee / due date) and the
+  /// permission-aware Source + Status option lists.
+  ///
+  /// `GET /tickets/form` is the same schema the web renders once a Help Topic is
+  /// picked, so it works for a topic with NO tickets yet. Omitting [topicId]
+  /// asks for the system default topic's form.
+  ///
+  /// Falls back to [_borrowedFormFields] if the endpoint isn't available on the
+  /// deployed backend, so an older server still shows what it can.
+  Future<TicketCreateForm> createForm({int? topicId}) async {
+    try {
+      final body = await _api.get(
+        '/tickets/form',
+        query: {if (topicId != null) 'topic_id': topicId},
+      );
+      return TicketCreateForm.fromJson(J.map(J.map(body)['data']));
+    } on ApiException {
+      if (topicId == null) return const TicketCreateForm();
+      return TicketCreateForm(
+        topicId: topicId,
+        fields: await _borrowedFormFields(topicId),
+      );
+    }
+  }
+
+  /// Legacy fallback: borrow the field definitions off one existing ticket of
+  /// [topicId] (`GET /tickets/{id}/fields`), stripping its answers so the form
+  /// renders blank. Empty when the topic has no tickets to borrow from.
+  Future<List<TicketField>> _borrowedFormFields(int topicId) async {
+    try {
+      final sample = await list(TicketQuery(topicId: topicId, limit: 1));
+      if (sample.items.isEmpty) return const [];
+      final schema = await fields(sample.items.first.id);
+      return [
+        for (final f in schema)
+          TicketField(
+            name: f.name,
+            label: f.label,
+            hint: f.hint,
+            type: f.type,
+            required: f.required,
+            editable: f.editable,
+            choices: f.choices,
+            multiselect: f.multiselect,
+            id: f.id,
+            // value intentionally dropped — render blank for the new ticket.
+          ),
+      ];
+    } on ApiException {
+      return const [];
+    }
   }
 
   // --- Referrals ------------------------------------------------------------

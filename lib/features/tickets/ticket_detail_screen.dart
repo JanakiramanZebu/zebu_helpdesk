@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
+import '../../data/agent_directory.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
@@ -128,6 +129,17 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   Ticket? _ticket;
   List<ThreadEntry> _thread = [];
   List<ThreadEvent> _events = [];
+  // Side-data the ticket payload doesn't carry: the web shows both on the
+  // ticket page, the API serves them from their own endpoints.
+  List<Tag> _tags = [];
+  int? _collaborators;
+  // Set when the server refuses a due-date edit because an SLA plan drives it
+  // - a backend that doesn't publish the lock flag still tells us this way.
+  bool _dueLockedByServer = false;
+  // Whether the ticket's SLA plan is enabled, resolved from the plan list when
+  // the payload names a plan but doesn't say. osTicket happily attaches a
+  // DISABLED plan, which computes nothing.
+  bool? _slaActive;
   Object? _error;
   bool _loading = true;
   bool _acting = false;
@@ -179,17 +191,30 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       _error = null;
     });
     final repo = ref.read(ticketsRepositoryProvider);
+    // Kicked off first so they overlap the main loads. Each is optional: a
+    // failure (no permission, older backend) just drops its row.
+    final tagsF = _sideLoad(() => repo.tags(widget.ticketId), const <Tag>[]);
+    final collabF = _sideLoad(
+      () => repo.collaborators(widget.ticketId),
+      const <Collaborator>[],
+    );
     try {
       final ticket = await repo.get(widget.ticketId);
       final thread = await repo.thread(widget.ticketId, limit: 50);
       final events = await repo.events(widget.ticketId);
+      final tags = await tagsF;
+      final collaborators = await collabF;
       if (!mounted) return;
       setState(() {
         _ticket = ticket;
         _thread = thread.items;
         _events = events;
+        _tags = tags;
+        _collaborators = collaborators.length;
+        _slaActive = null;
         _loading = false;
       });
+      await _resolveSlaActive(ticket);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -197,6 +222,77 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         _loading = false;
       });
     }
+  }
+
+  /// Runs an optional side-load, swallowing failures so a missing permission
+  /// or an older backend never breaks the screen.
+  Future<T> _sideLoad<T>(Future<T> Function() op, T fallback) async {
+    try {
+      return await op();
+    } catch (_) {
+      return fallback;
+    }
+  }
+
+  /// Re-reads tags + collaborators after their sheets close.
+  Future<void> _refreshSideData() async {
+    final repo = ref.read(ticketsRepositoryProvider);
+    final tags = await _sideLoad(() => repo.tags(widget.ticketId), _tags);
+    final collabs = await _sideLoad<List<Collaborator>?>(
+      () => repo.collaborators(widget.ticketId),
+      null,
+    );
+    if (!mounted) return;
+    setState(() {
+      _tags = tags;
+      if (collabs != null) _collaborators = collabs.length;
+    });
+  }
+
+  /// True when the due date is SLA-driven and must not be hand-edited: either
+  /// the payload says so, or the server said so when we last tried. A plan we
+  /// know to be disabled overrides the payload's id-based guess - the server
+  /// still expects a manual date for those.
+  bool get _dueLocked {
+    if (_dueLockedByServer) return true;
+    if (_slaActive == false) return false;
+    return _ticket?.dueDateLocked ?? false;
+  }
+
+  /// Resolve the plan's enabled state from `GET /meta/sla` (cached per session)
+  /// when the ticket payload names a plan without saying whether it's active.
+  Future<void> _resolveSlaActive(Ticket t) async {
+    final id = t.sla?.id ?? 0;
+    if (id == 0 || t.sla?.locked != null) return;
+    final plans = await _sideLoad(
+      () => ref.read(metaRepositoryProvider).slaPlans(),
+      const <MetaItem>[],
+    );
+    if (!mounted || plans.isEmpty) return;
+    for (final p in plans) {
+      if (p.id == id) {
+        setState(() => _slaActive = p.active);
+        return;
+      }
+    }
+  }
+
+  /// The web's Last Message / Last Response. The payload doesn't carry them
+  /// yet, so fall back to the thread already loaded (page 1) - the server's
+  /// own values win the moment it publishes them.
+  DateTime? get _lastMessageAt =>
+      _ticket?.lastMessage ?? _latestEntryAt((e) => e.isMessage);
+  DateTime? get _lastResponseAt =>
+      _ticket?.lastResponse ?? _latestEntryAt((e) => e.isResponse);
+
+  DateTime? _latestEntryAt(bool Function(ThreadEntry) test) {
+    DateTime? best;
+    for (final e in _thread) {
+      final at = e.created;
+      if (at == null || !test(e)) continue;
+      if (best == null || at.isAfter(best)) best = at;
+    }
+    return best;
   }
 
   /// Composer transport: post the body (reply or internal note) plus any
@@ -295,6 +391,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         if (caps.canEdit)
           appMenuItem(value: 'topic', asset: Assets.actTopic, label: 'Change topic'),
         if (caps.canEdit)
+          appMenuItem(value: 'sla', asset: Assets.actDuedate, label: 'Set SLA plan'),
+        // Hidden when an SLA plan computes the due date - the web drops its
+        // inline editor for a padlock in exactly the same case.
+        if (caps.canEdit && !_dueLocked)
           appMenuItem(value: 'duedate', asset: Assets.actDuedate, label: 'Set due date'),
         if (caps.canEdit)
           appMenuItem(value: 'fields', asset: Assets.actEdit, label: 'Edit fields'),
@@ -406,7 +506,16 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                           onReply: (e) => setState(() => _replyTo = e),
                           headerController: _headerScroll,
                         ),
-                        _DetailsTab(ticket: t, caps: caps, onEdit: _onMenu),
+                        _DetailsTab(
+                          ticket: t,
+                          caps: caps,
+                          onEdit: _onMenu,
+                          dueLocked: _dueLocked,
+                          tags: _tags,
+                          collaborators: _collaborators,
+                          lastMessage: _lastMessageAt,
+                          lastResponse: _lastResponseAt,
+                        ),
                         _ActivityTab(events: _events),
                       ],
                     ),
@@ -522,6 +631,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
           );
           await _load();
         }
+      case 'sla':
+        await _setSla();
       case 'duedate':
         await _setDueDate();
       case 'fields':
@@ -555,7 +666,34 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     }
   }
 
+  /// Change the SLA plan, like the web's inline "SLA Plan" editor. The server
+  /// recomputes the due date from the new plan (restarting the grace clock at
+  /// now), so reload afterwards - and forget any lock we learned from a
+  /// refused write, since the new plan may hand the date back to the agent.
+  Future<void> _setSla() async {
+    await _pickMeta(
+      MetaKind.slaPlans,
+      title: 'SLA plan',
+      selectedId: _ticket?.sla?.id,
+      (id) async {
+        await _runAction(
+          () => ref.read(ticketsRepositoryProvider).setSla(widget.ticketId, id),
+          success: 'SLA plan updated',
+        );
+        _dueLockedByServer = false;
+        await _load();
+      },
+    );
+  }
+
   Future<void> _setDueDate() async {
+    // An active SLA plan computes the due date: the web shows a padlock in
+    // place of the editor and the API refuses the write, so never open the
+    // calendar for it.
+    if (_dueLocked) {
+      _toast('Due date is computed from the SLA plan');
+      return;
+    }
     final now = DateTime.now();
     final firstDate = DateTime(now.year, now.month, now.day); // today
     // A ticket may already carry a due date in the past; the picker asserts if
@@ -587,12 +725,23 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       _toast('Due date must be in the future');
       return;
     }
-    await _runAction(
-      () => ref
+    setState(() => _acting = true);
+    try {
+      final updated = await ref
           .read(ticketsRepositoryProvider)
-          .setDueDate(widget.ticketId, duedate: Fmt.apiDateTime(due)),
-      success: 'Due date set',
-    );
+          .setDueDate(widget.ticketId, duedate: Fmt.apiDateTime(due));
+      _apply(updated);
+      _toast('Due date set');
+    } on ApiException catch (e) {
+      // The SLA refusal arrives as a field error; the envelope message is only
+      // "Could not set due date", so show the field text and remember the lock
+      // so neither the row nor the menu offers the calendar again.
+      final detail = e.fields['field'] ?? e.fields['duedate'] ?? e.message;
+      if (detail.toLowerCase().contains('sla')) _dueLockedByServer = true;
+      _toast(detail);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
     await _load();
   }
 
@@ -632,6 +781,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       context: context,
       builder: (_) => _CollaboratorsSheet(ticketId: widget.ticketId),
     );
+    await _refreshSideData();
   }
 
   /// Edit the ticket's dynamic custom fields via `GET /tickets/{id}/fields`
@@ -653,6 +803,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       context: context,
       builder: (_) => _TagsSheet(ticketId: widget.ticketId),
     );
+    await _refreshSideData();
   }
 
   Future<void> _manageReferrals() async {
@@ -716,18 +867,31 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   /// a reason and keep the current assignee's referral access. Mirrors the web
   /// reassign form rather than the bare agent picker.
   Future<void> _reassign() async {
-    final List<MetaItem> agents;
+    // Scoped to the ticket's department: the server only accepts an assignee that
+    // department allows (Dept::canAssign), so the whole roster would offer
+    // picks that come back 422.
+    final AgentPickList agents;
+    setState(() => _acting = true);
     try {
-      agents = await ref.read(metaRepositoryProvider).get(MetaKind.agents);
+      agents = await ref
+          .read(agentDirectoryProvider)
+          .assignable(
+            departmentName: _ticket?.departmentName,
+            departmentId: _ticket?.departmentId,
+          );
     } on ApiException catch (e) {
       _toast(e.message);
       return;
+    } finally {
+      if (mounted) setState(() => _acting = false);
     }
     if (!mounted) return;
     final current = _ticket?.assignee;
     final result = await showReassignDialog(
       context,
-      assignees: agents,
+      assignees: agents.agents,
+      allAssignees: agents.scoped ? agents.all : null,
+      scopeDepartment: agents.departmentName,
       title: (current != null && current.isNotEmpty) ? 'Reassign' : 'Assign',
       assigneeLabel: 'Assignee',
       currentAssignee: current,
@@ -797,6 +961,16 @@ class _CollapsingHeader extends StatelessWidget {
   const _CollapsingHeader({required this.ticket});
   final Ticket ticket;
 
+  /// "SLA: High - 8h" once the backend names the plan, otherwise just the
+  /// remaining-time label it has always shown.
+  static String _slaLine(Sla sla) {
+    final parts = [
+      if (sla.name != null) sla.name!,
+      if (sla.label != null) sla.label!,
+    ];
+    return 'SLA: ${parts.isEmpty ? '-' : parts.join(' - ')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -838,7 +1012,7 @@ class _CollapsingHeader extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 4),
-            AppText.paraText(context, 'SLA: ${ticket.sla!.label ?? 'â€”'}'),
+            AppText.paraText(context, _slaLine(ticket.sla!)),
           ],
         ],
       ),
@@ -906,8 +1080,25 @@ class _DetailsTab extends StatelessWidget {
     required this.ticket,
     required this.caps,
     required this.onEdit,
+    required this.dueLocked,
+    this.tags = const [],
+    this.collaborators,
+    this.lastMessage,
+    this.lastResponse,
   });
   final Ticket ticket;
+
+  /// An SLA plan computes the due date, so the row is read-only (padlock).
+  final bool dueLocked;
+
+  /// Side-data loaded alongside the ticket (own endpoints).
+  final List<Tag> tags;
+  final int? collaborators;
+
+  /// Last inbound message / last agent response, served by the API when it
+  /// publishes them, otherwise derived from the loaded thread.
+  final DateTime? lastMessage;
+  final DateTime? lastResponse;
 
   /// Per-agent action gates — a null onTap below renders the row read-only when
   /// the agent lacks the matching permission.
@@ -928,7 +1119,9 @@ class _DetailsTab extends StatelessWidget {
         16 + MediaQuery.of(context).padding.bottom,
       ),
       children: [
-        // Editable attributes â€” tap to open the matching picker.
+        // Editable attributes â€” tap to open the matching picker. The order
+        // follows the web's ticket page (status/priority/department, then
+        // topic/source, assignment, SLA and due date).
         _DetailSection(
           title: 'Attributes',
           children: [
@@ -952,6 +1145,22 @@ class _DetailsTab extends StatelessWidget {
               placeholder: 'Transfer',
               onTap: caps.canTransfer ? () => onEdit('transfer') : null,
             ),
+            // Help topic and source only exist on backends that publish them;
+            // the row stays out rather than showing an empty placeholder for
+            // a value we can't read. "Change topic" remains in the menu.
+            if (ticket.topicName != null)
+              _DetailRow(
+                icon: Icons.topic_outlined,
+                label: 'Help topic',
+                value: ticket.topicName,
+                onTap: caps.canEdit ? () => onEdit('topic') : null,
+              ),
+            if (ticket.source != null)
+              _DetailRow(
+                icon: Icons.input,
+                label: 'Source',
+                value: ticket.source,
+              ),
             _DetailRow(
               icon: Icons.assignment_ind_outlined,
               label: 'Assignee',
@@ -959,19 +1168,43 @@ class _DetailsTab extends StatelessWidget {
               placeholder: 'Assign',
               onTap: caps.canAssign ? () => onEdit('assign') : null,
             ),
+            // Tappable like the web's inline SLA editor. The name shows once
+            // the payload carries it; until then the row is the action only,
+            // so it never claims a plan we can't read.
+            if (ticket.sla?.name != null || caps.canEdit)
+              _DetailRow(
+                icon: Icons.timer_outlined,
+                label: 'SLA plan',
+                value: ticket.sla?.name,
+                placeholder: 'Change SLA plan',
+                onTap: caps.canEdit ? () => onEdit('sla') : null,
+              ),
+            // Padlocked, not tappable, when the plan drives the date - same
+            // treatment as the web's ticket page.
             _DetailRow(
               icon: Icons.event_outlined,
               label: 'Due date',
               value: ticket.due == null ? null : Fmt.dateTime(ticket.due),
               placeholder: 'Set due date',
-              onTap: caps.canEdit ? () => onEdit('duedate') : null,
+              note: dueLocked ? 'Computed from SLA plan' : null,
+              trailingIcon: dueLocked ? Icons.lock_outline : null,
+              onTap: (caps.canEdit && !dueLocked)
+                  ? () => onEdit('duedate')
+                  : null,
+            ),
+            _DetailRow(
+              icon: Icons.local_offer_outlined,
+              label: 'Tags',
+              value: tags.isEmpty ? null : tags.map((t) => t.name).join(', '),
+              placeholder: 'No tags',
+              onTap: caps.canEdit ? () => onEdit('tags') : null,
             ),
           ],
         ),
         const SizedBox(height: 16),
-        // Read-only requester / timestamps.
+        // Requester side of the ticket.
         _DetailSection(
-          title: 'Information',
+          title: 'People',
           children: [
             _DetailRow(
               icon: Icons.person_outline,
@@ -983,22 +1216,63 @@ class _DetailsTab extends StatelessWidget {
               label: 'Email',
               value: ticket.userEmail,
             ),
+            if (ticket.organization != null)
+              _DetailRow(
+                icon: Icons.business_outlined,
+                label: 'Organization',
+                value: ticket.organization,
+              ),
+            _DetailRow(
+              icon: Icons.group_outlined,
+              label: 'Collaborators',
+              value: collaborators == null
+                  ? null
+                  : (collaborators == 0 ? 'None' : '$collaborators'),
+              placeholder: 'Manage',
+              onTap: () => onEdit('collaborators'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        // The web's date column: create / last message / last response /
+        // last update, plus the close date once the ticket is closed.
+        _DetailSection(
+          title: 'Dates',
+          children: [
             _DetailRow(
               icon: Icons.schedule,
               label: 'Created',
               value: Fmt.dateTime(ticket.created),
             ),
+            if (lastMessage != null)
+              _DetailRow(
+                icon: Icons.forum_outlined,
+                label: 'Last message',
+                value: Fmt.dateTime(lastMessage),
+              ),
+            if (lastResponse != null)
+              _DetailRow(
+                icon: Icons.reply_outlined,
+                label: 'Last response',
+                value: Fmt.dateTime(lastResponse),
+              ),
             _DetailRow(
               icon: Icons.update,
-              label: 'Updated',
+              label: 'Last update',
               value: Fmt.dateTime(ticket.updated),
             ),
+            if (ticket.closedAt != null)
+              _DetailRow(
+                icon: Icons.check_circle_outline,
+                label: 'Closed',
+                value: Fmt.dateTime(ticket.closedAt),
+              ),
           ],
         ),
         if (ticket.customFields.isNotEmpty) ...[
           const SizedBox(height: 16),
           _DetailSection(
-            title: 'Custom fields',
+            title: 'Ticket details',
             children: [
               for (final e in ticket.customFields.entries)
                 _DetailRow(
@@ -1058,6 +1332,8 @@ class _DetailRow extends StatelessWidget {
     required this.label,
     required this.value,
     this.placeholder,
+    this.note,
+    this.trailingIcon,
     this.onTap,
   });
 
@@ -1065,14 +1341,20 @@ class _DetailRow extends StatelessWidget {
   final String label;
   final String? value;
   final String? placeholder;
+
+  /// Secondary line under the value (why a row is read-only, typically).
+  final String? note;
+
+  /// Replaces the chevron - a padlock on an SLA-driven due date.
+  final IconData? trailingIcon;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final has = value != null && value!.isNotEmpty && value != 'â€”';
-    // Static rows with no value at all render nothing.
-    if (!has && onTap == null) return const SizedBox.shrink();
+    // Static rows with nothing to say at all render nothing.
+    if (!has && onTap == null && note == null) return const SizedBox.shrink();
 
     return InkWell(
       onTap: onTap,
@@ -1091,14 +1373,32 @@ class _DetailRow extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: AppText.subText(
-                context,
-                has ? value! : (placeholder ?? 'â€”'),
-                fw: has ? 1 : 3,
-                color: has ? scheme.onSurface : scheme.primary,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AppText.subText(
+                    context,
+                    has ? value! : (placeholder ?? 'â€”'),
+                    fw: has ? 1 : 3,
+                    color: has
+                        ? scheme.onSurface
+                        : (onTap == null ? scheme.onSurfaceVariant : scheme.primary),
+                  ),
+                  if (note != null) ...[
+                    const SizedBox(height: 2),
+                    AppText.captionText(
+                      context,
+                      note!,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ],
+                ],
               ),
             ),
-            if (onTap != null)
+            if (trailingIcon != null)
+              Icon(trailingIcon, size: 18, color: scheme.onSurfaceVariant)
+            else if (onTap != null)
               Icon(Icons.chevron_right, size: 20, color: scheme.onSurfaceVariant),
           ],
         ),

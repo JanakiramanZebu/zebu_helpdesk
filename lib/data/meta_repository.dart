@@ -30,6 +30,7 @@ class MetaRepository {
   Future<List<MetaItem>> topics() => get(MetaKind.topics);
   Future<List<MetaItem>> tags() => get(MetaKind.tags);
   Future<List<MetaItem>> taskPriorities() => get(MetaKind.taskPriorities);
+  Future<List<MetaItem>> slaPlans() => get(MetaKind.slaPlans);
 
   void clearCache() => _cache.clear();
 }

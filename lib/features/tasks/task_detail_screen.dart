@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
+import '../../data/agent_directory.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
@@ -521,18 +522,31 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   /// a reason and keep the current assignee's referral access. Mirrors the web
   /// reassign form rather than the bare agent picker.
   Future<void> _reassign() async {
-    final List<MetaItem> agents;
+    // Scoped to the task's department: the server only accepts an assignee that
+    // department allows (Dept::canAssign), so the whole roster would offer
+    // picks that come back 422.
+    final AgentPickList agents;
+    setState(() => _acting = true);
     try {
-      agents = await ref.read(metaRepositoryProvider).get(MetaKind.agents);
+      agents = await ref
+          .read(agentDirectoryProvider)
+          .assignable(
+            departmentName: _task?.departmentName,
+            departmentId: _task?.departmentId,
+          );
     } on ApiException catch (e) {
       _toast(e.message);
       return;
+    } finally {
+      if (mounted) setState(() => _acting = false);
     }
     if (!mounted) return;
     final current = _task?.assignee;
     final result = await showReassignDialog(
       context,
-      assignees: agents,
+      assignees: agents.agents,
+      allAssignees: agents.scoped ? agents.all : null,
+      scopeDepartment: agents.departmentName,
       title: (current != null && current.isNotEmpty) ? 'Reassign' : 'Assign',
       assigneeLabel: 'Assignee',
       currentAssignee: current,

@@ -31,6 +31,7 @@ import '../../features/users/users_list_screen.dart';
 import '../../models/saved_queue.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
+import '../../widgets/keyboard_dismisser.dart';
 import 'routes.dart';
 
 final _rootKey = GlobalKey<NavigatorState>();
@@ -46,6 +47,9 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: _rootKey,
     initialLocation: Routes.splash,
     refreshListenable: refresh,
+    // Every detail/secondary route is pushed here (parentNavigatorKey:
+    // _rootKey), so one observer covers leaving a page with the keyboard up.
+    observers: [KeyboardDismissObserver()],
     redirect: (context, state) {
       final auth = ref.read(authControllerProvider);
       final loc = state.matchedLocation;

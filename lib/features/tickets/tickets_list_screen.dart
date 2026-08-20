@@ -19,13 +19,13 @@ import '../../models/ticket.dart';
 import '../../providers.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_search_field.dart';
-import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/filter_chip_tabs.dart';
 import '../../widgets/filter_sheet.dart';
 import '../../widgets/glass.dart';
 import '../../widgets/list_controls.dart';
 import '../../widgets/paged_list_view.dart';
+import '../../widgets/pickers.dart';
 import '../../widgets/selection_controls.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/svg_icon.dart';
@@ -90,6 +90,11 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   List<int> _visibleIds = const [];
   bool _bulkBusy = false;
 
+  /// Department name per row seen so far, so a bulk assign can scope its agent
+  /// picker the way the detail screen does. List rows only carry the name (the
+  /// summary payload has no department id), which is all the scope needs.
+  final Map<int, String> _deptOf = {};
+
   // Per-tab count badges.
   Map<String, int> _counts = const {};
 
@@ -141,7 +146,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     if (view == _view) return;
     final from = _indexOf(_view);
     final to = _indexOf(view);
-    setState(() => _view = view);
+    _adoptView(view);
     if (!_pageController.hasClients) return;
     if ((to - from).abs() > 1) {
       _pageController.jumpToPage(to);
@@ -157,12 +162,28 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   /// Swipe settled on a new page → adopt that view.
   void _onPageChanged(int index) {
     final next = _views[index].key;
-    if (next != _view) setState(() => _view = next);
+    if (next != _view) _adoptView(next);
+  }
+
+  /// Switch the active view, dropping any multi-select that belonged to the
+  /// one we're leaving.
+  ///
+  /// Selection is inherently per-view: [_visibleIds] only ever tracks the
+  /// ACTIVE list, so a selection carried across tabs leaves the "N selected"
+  /// count — and every bulk action, including delete — pointing at tickets the
+  /// user can no longer see. Clearing [_visibleIds] too keeps select-all from
+  /// acting on the old tab's rows in the frame before the new list reports in.
+  void _adoptView(String next) {
+    setState(() {
+      _view = next;
+      _selected.clear();
+      _visibleIds = const [];
+    });
   }
 
   /// Jump the pager to [view] without animation (cross-tab filter requests).
   void _jumpToView(String view) {
-    setState(() => _view = view);
+    _adoptView(view);
     if (_pageController.hasClients) {
       _pageController.jumpToPage(_indexOf(view));
     }
@@ -401,7 +422,28 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
 
   void _onItems(List<Ticket> items) {
     final ids = items.map((t) => t.id).toList();
+    for (final t in items) {
+      final dept = t.departmentName?.trim();
+      if (dept != null && dept.isNotEmpty) _deptOf[t.id] = dept;
+    }
     if (!listEquals(ids, _visibleIds)) setState(() => _visibleIds = ids);
+  }
+
+  /// The single department every selected row sits in, or null when the
+  /// selection spans departments (or a row's department is unknown) — then the
+  /// agent picker can't be scoped and offers everyone.
+  String? get _selectedDepartment {
+    String? shared;
+    for (final id in _selected) {
+      final dept = _deptOf[id];
+      if (dept == null) return null;
+      if (shared == null) {
+        shared = dept;
+      } else if (shared.toLowerCase() != dept.toLowerCase()) {
+        return null;
+      }
+    }
+    return shared;
   }
 
   void _toggle(int id) => setState(() {
@@ -426,24 +468,15 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   Future<int?> _pickMeta(String kind, String title) async {
     final items = await ref.read(metaRepositoryProvider).get(kind);
     if (!mounted) return null;
-    return showAppSheet<int>(
-      context: context,
-      builder: (_) => AppSheet(
-        title: title,
-        scrollable: false,
-        padding: EdgeInsets.zero,
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            for (final m in items)
-              ListTile(
-                title: AppText.subText(context, m.name),
-                onTap: () => Navigator.pop(context, m.id),
-              ),
-          ],
-        ),
-      ),
+    // Shared sheet: height-capped and scrollable, and it grows a search box
+    // once the list is long enough to be tedious to scan — agent lists usually
+    // are. Same rule as the ticket-details pickers.
+    final picked = await pickChoice(
+      context,
+      title: title,
+      choices: {for (final m in items) '${m.id}': m.name},
     );
+    return picked == null ? null : int.tryParse(picked);
   }
 
   Future<void> _runBulk(String verb, Future<void> Function(int id) op) async {
@@ -475,9 +508,16 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     final repo = ref.read(ticketsRepositoryProvider);
     switch (action) {
       case 'assign':
-        final id = await _pickMeta(MetaKind.agents, 'Assign to agent');
-        if (id != null) {
-          await _runBulk('Assigned', (t) => repo.assign(t, staffId: id));
+        // Scoped to the selection's department when they share one, so the
+        // sheet doesn't offer agents the server would reject.
+        final agent = await pickAgent(
+          context,
+          ref,
+          departmentName: _selectedDepartment,
+          title: 'Assign to agent',
+        );
+        if (agent != null) {
+          await _runBulk('Assigned', (t) => repo.assign(t, staffId: agent.id));
         }
       case 'status':
         final id = await _pickMeta(MetaKind.statuses, 'Set status');
@@ -706,6 +746,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
               child: AppSearchField(
                 controller: _searchCtrl,
                 hintText: 'Search tickets',
+                autofocus: false,
                 onChanged: _onSearchChanged,
                 onSubmitted: _applySearch,
                 onClear: () => _applySearch(''),

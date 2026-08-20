@@ -98,7 +98,13 @@ class ThreadEntryTile extends StatelessWidget {
     }
 
     final html = entry.bodyHtml ?? entry.body ?? '';
-    final isEmpty = Fmt.stripHtml(html).trim().isEmpty;
+    // A reply that quotes an earlier message carries it as a leading
+    // <blockquote>. Split that off so it renders as a chat quote card; left in
+    // the HTML it would come out as bare indented text, indistinguishable from
+    // the reply itself.
+    final quote = splitLeadingQuote(html);
+    final bodyHtml = quote?.rest ?? html;
+    final isEmpty = Fmt.stripHtml(bodyHtml).trim().isEmpty;
 
     // Role chip: notes and agent replies are flagged; a plain customer message
     // needs no chip (the avatar + name already identify it).
@@ -173,14 +179,24 @@ class ThreadEntryTile extends StatelessWidget {
                 AppText.subText(context, entry.title!, fw: 1),
                 const SizedBox(height: 4),
               ],
-              if (isEmpty)
+              // The quoted message sits above the reply, like WhatsApp.
+              if (quote != null) ...[
+                _QuotedMessage(poster: quote.poster, excerpt: quote.excerpt),
+                const SizedBox(height: 6),
+              ],
+              // "(no content)" only when there's nothing at all — a quote with
+              // no typed body is still content.
+              if (isEmpty && quote == null)
                 AppText.subText(
                   context,
                   '(no content)',
                   color: scheme.onSurfaceVariant,
                 )
-              else
-                ThreadHtml(html: html, textStyle: theme.textTheme.bodyMedium),
+              else if (!isEmpty)
+                ThreadHtml(
+                  html: bodyHtml,
+                  textStyle: theme.textTheme.bodyMedium,
+                ),
               if (entry.attachments.isNotEmpty) ...[
                 const SizedBox(height: 6),
                 for (final a in entry.attachments)
@@ -236,6 +252,66 @@ class ThreadEntryTile extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The quoted message shown at the top of a reply bubble: an accent rail, a
+/// soft tint of the quoted sender's colour, their name, and a two-line excerpt
+/// — the same shape as the "replying to" banner above the composer, so what you
+/// compose and what you send look like the same thing.
+class _QuotedMessage extends StatelessWidget {
+  const _QuotedMessage({required this.poster, required this.excerpt});
+
+  /// Quoted sender's display name; null when the quote carries no attribution.
+  final String? poster;
+  final String excerpt;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // The quoted sender keeps their own avatar colour (WhatsApp group style),
+    // so the card reads as "them" rather than as part of this bubble's text.
+    final accent =
+        poster == null ? scheme.primary : UserAvatar.colorFor(poster!);
+    // Clip so the tinted fill follows the rounded corners; the rail is a left
+    // border, which the clip keeps square-ended against the bubble padding.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: isDark ? 0.20 : 0.10),
+          border: Border(left: BorderSide(color: accent, width: 3)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(9, 6, 10, 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (poster != null) ...[
+                AppText.paraText(
+                  context,
+                  poster!,
+                  fw: 2,
+                  color: accent,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+              ],
+              AppText.paraText(
+                context,
+                excerpt.isEmpty ? '(attachment)' : excerpt,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -421,6 +497,50 @@ class _DateChip extends StatelessWidget {
       ),
     );
   }
+}
+
+/// A leading `<blockquote>` peeled off a thread entry's HTML: the quoted
+/// sender and excerpt to draw as a quote card, plus the [rest] of the body
+/// (the actual reply) to render as HTML.
+typedef ThreadQuote = ({String? poster, String excerpt, String rest});
+
+// Our own quotes (see [quoteReplyHtml]) are `<blockquote><strong>Name</strong>
+// <br>excerpt</blockquote><p></p>`, so match that shape leniently enough to
+// also catch a quote a web client wrote.
+final _leadingQuoteRe = RegExp(
+  r'^\s*<blockquote[^>]*>(.*?)</blockquote>',
+  caseSensitive: false,
+  dotAll: true,
+);
+final _quotePosterRe = RegExp(
+  r'^\s*<(strong|b)>(.*?)</\1>\s*(?:<br\s*/?>)?',
+  caseSensitive: false,
+  dotAll: true,
+);
+// The composer separates the quote from the typed reply with an empty
+// paragraph; drop it so the card doesn't sit above a blank line.
+final _leadingBlankRe = RegExp(
+  r'^(?:\s|<br\s*/?>|<p>\s*(?:<br\s*/?>)?\s*</p>)+',
+  caseSensitive: false,
+);
+
+/// Splits a leading quote off [html], or returns null when there isn't one.
+ThreadQuote? splitLeadingQuote(String html) {
+  final m = _leadingQuoteRe.firstMatch(html);
+  if (m == null) return null;
+  final inner = m.group(1) ?? '';
+  // A forwarded email chain nests blockquotes, which the non-greedy match would
+  // cut in the wrong place — leave those to the HTML renderer.
+  if (inner.toLowerCase().contains('<blockquote')) return null;
+  final p = _quotePosterRe.firstMatch(inner);
+  final poster = p == null ? '' : Fmt.stripHtml(p.group(2));
+  final excerpt = Fmt.stripHtml(p == null ? inner : inner.substring(p.end));
+  if (poster.isEmpty && excerpt.isEmpty) return null;
+  return (
+    poster: poster.isEmpty ? null : poster,
+    excerpt: excerpt,
+    rest: html.substring(m.end).replaceFirst(_leadingBlankRe, ''),
+  );
 }
 
 /// Builds the HTML `<blockquote>` prepended to a reply that quotes [entry],
