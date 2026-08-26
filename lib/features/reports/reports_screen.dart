@@ -1,106 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../models/reports.dart';
-import '../../providers.dart';
-import '../../widgets/states.dart';
-import 'widgets/activity_chart_card.dart';
-import 'widgets/report_range_selector.dart';
-import 'widgets/report_summary_card.dart';
+import 'records_view.dart';
 
-class ReportsScreen extends ConsumerStatefulWidget {
+/// Reports & Exports — the mobile port of the SCP's Reports tab.
+///
+/// One page, the same one `scp/reports.php` renders: the four export types
+/// (Tickets, Tasks, Users, Organizations) with their counts, each type's own
+/// filters, a column picker, and a single Download CSV.
+///
+/// The dashboard's tabular statistics are deliberately not here. On the web
+/// they live on `scp/dashboard.php`, not on the Reports page, and the mobile
+/// Dashboard already carries the same ground in its own shape — the activity
+/// chart plus the by-priority / by-department / by-agent breakdowns from
+/// `GET /reports/summary`.
+///
+/// Reached from Menu → Workspace → Reports, which — like the web's `reports`
+/// tab — is gated on `reports.export` (see `Me.canViewReports`). Every route
+/// behind it re-checks that permission server-side, accepting it either
+/// globally or from any department role, exactly as `scp/reports.php` does.
+class ReportsScreen extends StatelessWidget {
   const ReportsScreen({super.key});
-
-  @override
-  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
-}
-
-class _ReportsScreenState extends ConsumerState<ReportsScreen> {
-  int _days = 30;
-  VolumeReport? _report;
-  Object? _error;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final report = await ref
-          .read(reportsRepositoryProvider)
-          .volume(days: _days);
-      if (!mounted) return;
-      setState(() {
-        _report = report;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e;
-        _loading = false;
-      });
-    }
-  }
-
-  void _selectDays(int days) {
-    if (days == _days) return;
-    setState(() => _days = days);
-    _load();
-  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Reports')),
-      body: SafeArea(
-        child: RefreshIndicator(onRefresh: _load, child: _buildBody(context)),
-      ),
+      appBar: AppBar(title: const Text('Reports & Exports')),
+      body: const SafeArea(child: RecordsExportView()),
     );
-  }
-
-  Widget _buildBody(BuildContext context) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(12, 14, 12, 24),
-      children: [
-        ReportRangeSelector(days: _days, onSelected: _selectDays),
-        const SizedBox(height: 16),
-        ..._content(context),
-      ],
-    );
-  }
-
-  List<Widget> _content(BuildContext context) {
-    if (_loading) {
-      return const [
-        Padding(padding: EdgeInsets.only(top: 80), child: LoadingView()),
-      ];
-    }
-    if (_error != null) {
-      return [
-        Padding(
-          padding: const EdgeInsets.only(top: 80),
-          child: ErrorView(error: _error!, onRetry: _load),
-        ),
-      ];
-    }
-    final report = _report;
-    if (report == null) {
-      return [ErrorView(error: 'No data', onRetry: _load)];
-    }
-
-    return [
-      ReportSummaryCard(report: report),
-      const SizedBox(height: 12),
-      ActivityChartCard(report: report),
-    ];
   }
 }

@@ -21,19 +21,51 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/states.dart';
 import '../../widgets/user_avatar.dart';
 
-/// Filter tabs, matching the ticket/task list pattern. Filtering is client-side
-/// (the `/notifications` endpoint returns the full inbox).
+/// Filter tabs. osTicket's Activity Inbox offers exactly two views — All and
+/// Unread (n) — so the mobile inbox carries the same pair and nothing more.
+/// Unread is asked for in the query (`read=0`); the search text stays local,
+/// because it also matches the actor and the event label, which the server's
+/// own `q` does not.
 const _views = <({String key, String label})>[
   (key: 'all', label: 'All'),
   (key: 'unread', label: 'Unread'),
-  (key: 'tickets', label: 'Tickets'),
-  (key: 'tasks', label: 'Tasks'),
-  (key: 'mentions', label: 'Mentions'),
 ];
 
-/// The agent's notification inbox (`GET /notifications`), styled to match the
-/// Tickets / Tasks list screens: a list-screen app bar with a pill search
-/// field, segmented filter tabs, and card-based rows.
+/// event => human label, mirroring `$LABELS` in `include/staff/inbox.inc.php`.
+/// The server already resolves the per-viewer wording for `assigned`
+/// ("Assigned to you" / "Assigned to that agent") and sends it as `label`.
+const _eventLabels = <String, String>{
+  'message': 'New reply',
+  'note': 'Internal note',
+  'assigned': 'Assigned to you',
+  'transfer': 'Transferred',
+  'status': 'Status changed',
+  'mention': 'You were mentioned',
+  'overdue': 'Overdue',
+  'new_unassigned': 'New unassigned',
+};
+
+/// The snippet/timeline label for one activity — `label` when the server
+/// resolved one, else the static event label, else the raw event.
+String _labelFor(AppNotification n) =>
+    n.label ?? _eventLabels[n.event] ?? n.event;
+
+/// The card's subject line: the object's stored notification title, falling
+/// back the way inbox.inc.php does when the object no longer exists.
+String _subjectOf(NotificationGroup g) {
+  for (final a in g.activities) {
+    if (a.title.trim().isNotEmpty) return a.title.trim();
+  }
+  return '(no subject)';
+}
+
+/// The agent's notification inbox (`GET /notifications`), ported from the web's
+/// Activity Inbox (`include/staff/inbox.inc.php` + `scp/js/inbox.js`): All /
+/// Unread(n) filters, one card per ticket/task showing `#number`, the subject,
+/// a TICKET/TASK chip and an `actor · label · time` snippet, and a selected
+/// card that expands into the web's recent-activity detail panel. The pill
+/// search field and actor avatars are mobile additions the web has no room
+/// for.
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -50,18 +82,21 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   // delete completes) rather than waiting for a refetch.
   final Set<int> _deleted = {};
   String _view = 'all';
+  /// The selected card, whose recent-activity detail is expanded below it —
+  /// the mobile stand-in for the web's right-hand `.inbox-detail` panel.
+  String? _expandedKey;
+  /// Objects marked read in place this session. inbox.js drops `.unread` and
+  /// the dot on select without reloading the list, so the card must stay put
+  /// (and stay visible under the Unread filter) until the next refresh.
+  final Set<String> _readKeys = {};
   String _search = '';
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
 
-  /// Semantic dot color per filter chip, distinct so the tabs read at a glance:
-  /// unread = red (attention, matches the nav badge), tickets = blue,
-  /// tasks = green, mentions = amber, all = neutral grey.
+  /// Semantic dot color per filter chip: unread = red (attention, matches the
+  /// nav badge), all = neutral grey.
   static Color _viewColor(String key) => switch (key) {
     'unread' => AppTheme.overdue,
-    'tickets' => Glass.indigo,
-    'tasks' => AppTheme.open,
-    'mentions' => AppTheme.warning,
     _ => AppTheme.closed, // 'all'
   };
 
@@ -71,11 +106,17 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       // The list reloads from the server (which no longer has the deleted
       // rows), so the local tombstones are no longer needed.
       _deleted.clear();
+      _readKeys.clear();
+      _expandedKey = null;
     });
     ref.invalidate(unreadCountProvider);
   }
 
   void _toast(String msg) => AppSnack.error(context, msg);
+
+  void _ok(String msg) {
+    if (mounted) AppSnack.success(context, msg);
+  }
 
   void _onSearchChanged(String value) {
     _debounce?.cancel();
@@ -95,6 +136,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     try {
       await ref.read(notificationsRepositoryProvider).readAll();
       _refresh();
+      _ok('All notifications marked read');
     } on ApiException catch (e) {
       _toast(e.message);
     }
@@ -110,8 +152,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     );
     if (ok != true) return;
     try {
-      await ref.read(notificationsRepositoryProvider).deleteAll();
+      final deleted =
+          await ref.read(notificationsRepositoryProvider).deleteAll();
       _refresh();
+      _ok(deleted == 1
+          ? '1 notification deleted'
+          : '$deleted notifications deleted');
     } on ApiException catch (e) {
       _toast(e.message);
     }
@@ -130,6 +176,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
             ref.read(notificationsRepositoryProvider).deleteOne(id)),
       );
       ref.invalidate(unreadCountProvider);
+      _ok(ids.length == 1
+          ? 'Notification deleted'
+          : '${ids.length} notifications deleted');
     } on ApiException catch (e) {
       // Restore the rows so the failed delete isn't silently lost.
       setState(() => _deleted.removeAll(ids));
@@ -145,18 +194,39 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       await ref
           .read(notificationsRepositoryProvider)
           .readObject(g.type, g.objectId);
+      if (mounted) setState(() => _readKeys.add(g.key));
       ref.invalidate(unreadCountProvider);
-      _refresh();
     } on ApiException catch (e) {
       _toast(e.message);
     }
   }
 
-  Future<void> _openGroup(NotificationGroup g) async {
+  /// Select a card — the web's `selectCard()` in `scp/js/inbox.js`: reveal the
+  /// object's recent activity and mark ALL of its notifications read in place
+  /// (POST /notifications/read-object), without reloading the list. Tapping the
+  /// selected card again collapses it.
+  Future<void> _selectGroup(NotificationGroup g) async {
+    final opening = _expandedKey != g.key;
+    setState(() => _expandedKey = opening ? g.key : null);
+    if (!opening || !g.hasUnread || _readKeys.contains(g.key)) return;
+    setState(() => _readKeys.add(g.key));
     try {
-      // Match osTicket's inbox flow: selecting a ticket/task marks ALL of the
-      // agent's notifications for that object read (POST /notifications/
-      // read-object) — mirrors NotificationsV2Controller::readObject.
+      await ref
+          .read(notificationsRepositoryProvider)
+          .readObject(g.type, g.objectId);
+      ref.invalidate(unreadCountProvider);
+    } on ApiException catch (_) {
+      if (mounted) setState(() => _readKeys.remove(g.key));
+    }
+  }
+
+  /// Open the ticket/task itself — the panel's "Open" / "View All Activity"
+  /// links. Selecting already marked the object read; do it again defensively
+  /// for the case where the card was opened without being selected first.
+  /// [tab] pre-selects a tab on the detail screen: "View All Activity" asks for
+  /// the Activity tab (the object's full event log), "Open" for the default.
+  Future<void> _openGroup(NotificationGroup g, {String? tab}) async {
+    try {
       await ref
           .read(notificationsRepositoryProvider)
           .readObject(g.type, g.objectId);
@@ -168,30 +238,31 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     // Await the detail route so that on return we refetch — the object is now
     // read on the server, so a refresh clears the card's unread state.
     if (g.type == 'task') {
-      await context.push(Routes.task(g.objectId));
+      await context.push(Routes.task(g.objectId, tab: tab));
     } else {
-      await context.push(Routes.ticket(g.objectId));
+      await context.push(Routes.ticket(g.objectId, tab: tab));
     }
     if (mounted) _refresh();
   }
 
-  /// Client-side tab + search filter, applied per collapsed object card.
-  bool _groupMatches(NotificationGroup g) {
-    final viewOk = switch (_view) {
-      'unread' => g.hasUnread,
-      'tickets' => g.type == 'ticket',
-      'tasks' => g.type == 'task',
-      // osTicket records an explicit `mention` event ("You were mentioned").
-      'mentions' => g.activities.any((a) => a.event == 'mention'),
-      _ => true,
-    };
-    if (!viewOk) return false;
+  /// The Unread view's predicate: an object with any unread activity — or one
+  /// marked read in place this session, which stays listed until the next
+  /// refresh (the web only drops the dot, it never removes the card).
+  bool _isUnread(NotificationGroup g) =>
+      g.hasUnread || _readKeys.contains(g.key);
+
+  bool _searchMatches(NotificationGroup g) {
     if (_search.isEmpty) return true;
     return '${g.objectId}'.contains(_search) ||
+        _subjectOf(g).toLowerCase().contains(_search) ||
         g.activities.any((n) =>
-            n.displayLabel.toLowerCase().contains(_search) ||
+            _labelFor(n).toLowerCase().contains(_search) ||
             (n.actor ?? '').toLowerCase().contains(_search));
   }
+
+  /// Client-side tab + search filter, applied per collapsed object card.
+  bool _groupMatches(NotificationGroup g) =>
+      (_view != 'unread' || _isUnread(g)) && _searchMatches(g);
 
   @override
   void dispose() {
@@ -203,11 +274,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(notificationsRepositoryProvider);
-    // The Unread chip shows the live unread count; other views are filtered
-    // client-side and have no cheap total, so they stay count-less.
+    // The same number the nav bell shows: unread *conversations* off
+    // `/notifications/count`, so the chip no longer drifts as pages load in.
     final unread = ref
         .watch(unreadCountProvider)
-        .maybeWhen(data: (c) => c, orElse: () => null);
+        .maybeWhen(data: (c) => c, orElse: () => 0);
 
     return Scaffold(
       appBar: AppBar(
@@ -245,7 +316,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               FilterChipTabs(
                 items: _views,
                 selectedKey: _view,
-                counts: {if (unread != null) 'unread': unread},
+                // The Unread chip badges the server's unread-conversation
+                // total; All stays count-less.
+                counts: {if (unread > 0) 'unread': unread},
                 colorFor: _viewColor,
                 onSelected: (k) => setState(() => _view = k),
               ),
@@ -262,12 +335,23 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           onGroupCount: (n) {
             if (mounted && n != _total) setState(() => _total = n);
           },
-          // Larger page so an object's recent activity is captured in one fetch
-          // (grouping is done client-side; see [NotificationGroup]).
-          fetchPage: (page) => repo.list(page: page, limit: 50),
+          onRefreshed: () => ref.invalidate(unreadCountProvider),
+          // Larger page so an object's recent activity is captured in one
+          // fetch (grouping is done client-side; see [NotificationGroup]).
+          // The Unread tab narrows server-side, so it no longer pulls page
+          // after page hoping for a screenful of unread cards.
+          fetchPage: (page) => repo.list(
+            page: page,
+            limit: 50,
+            read: _view == 'unread' ? false : null,
+          ),
           cardBuilder: (context, g) => _NotificationGroupCard(
             group: g,
-            onTap: () => _openGroup(g),
+            unread: g.hasUnread && !_readKeys.contains(g.key),
+            expanded: _expandedKey == g.key,
+            onTap: () => _selectGroup(g),
+            onOpen: () => _openGroup(g),
+            onOpenActivity: () => _openGroup(g, tab: 'activity'),
             onDelete: () => _deleteGroup(g),
             onMarkRead: () => _markGroupRead(g),
           ),
@@ -375,6 +459,7 @@ class _GroupedInbox extends StatefulWidget {
     required this.groupFilter,
     required this.cardBuilder,
     required this.onGroupCount,
+    required this.onRefreshed,
   });
 
   final Future<Paginated<AppNotification>> Function(int page) fetchPage;
@@ -386,6 +471,10 @@ class _GroupedInbox extends StatefulWidget {
   final Widget Function(BuildContext context, NotificationGroup group)
       cardBuilder;
   final ValueChanged<int> onGroupCount;
+
+  /// Pull-to-refresh reloads the list in place; the host uses this to refetch
+  /// the unread badge alongside it.
+  final VoidCallback onRefreshed;
 
   @override
   State<_GroupedInbox> createState() => _GroupedInboxState();
@@ -456,7 +545,10 @@ class _GroupedInboxState extends State<_GroupedInbox> {
     }
   }
 
-  Future<void> _refresh() => _load(reset: true);
+  Future<void> _refresh() async {
+    widget.onRefreshed();
+    await _load(reset: true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -466,9 +558,8 @@ class _GroupedInboxState extends State<_GroupedInbox> {
     }
 
     final visible = _all.where((n) => !widget.excludeIds.contains(n.id));
-    final groups = NotificationGroup.from(visible)
-        .where(widget.groupFilter)
-        .toList(growable: false);
+    final all = NotificationGroup.from(visible).toList(growable: false);
+    final groups = all.where(widget.groupFilter).toList(growable: false);
 
     // Surface the visible object count to the host — only when it changes, so
     // we don't schedule a redundant post-frame setState on every rebuild.
@@ -558,52 +649,54 @@ class _GroupedInboxState extends State<_GroupedInbox> {
 }
 
 /// One collapsed inbox card = all of an agent's notifications for a single
-/// ticket/task, Gmail-style: a type avatar, an unread left rail, the latest
-/// activity message (bold when the object has any unread), an "N updates" pill
-/// when more than one activity was collapsed, the event chip, and the latest
-/// timestamp. Swipe left to delete the whole object's notifications, swipe
-/// right to mark them all read.
+/// ticket/task, laid out like osTicket's `.inbox-card`: an unread rail and dot,
+/// `#number`, the subject, a TICKET/TASK chip and a single
+/// `actor · label · time` snippet — plus the actor avatar the mobile design
+/// keeps. Tapping selects the card, which marks the object read in place and
+/// expands its recent activity (the web's `.inbox-detail` panel, inlined).
+/// Swipe left to delete the object's notifications, swipe right to mark read.
 class _NotificationGroupCard extends StatelessWidget {
   const _NotificationGroupCard({
     required this.group,
+    required this.unread,
+    required this.expanded,
     required this.onTap,
+    required this.onOpen,
+    required this.onOpenActivity,
     required this.onDelete,
     required this.onMarkRead,
   });
 
   final NotificationGroup group;
+
+  /// Unread *for the viewer* — false once the card has been selected this
+  /// session, even though the loaded rows still say otherwise.
+  final bool unread;
+
+  /// True while this card is the selected one and its detail is showing.
+  final bool expanded;
   final VoidCallback onTap;
+  final VoidCallback onOpen;
+
+  /// Opens the object on its **Activity** tab — the full event log this panel
+  /// only shows the latest five of.
+  final VoidCallback onOpenActivity;
   final VoidCallback onDelete;
   final VoidCallback onMarkRead;
 
   bool get _isTask => group.type == 'task';
 
-  /// (label, color) for the event chip — keyed on the latest activity's event.
-  /// Keys are the raw osTicket events (see inbox.inc.php $LABELS): message |
-  /// note | assigned | transfer | status | mention | overdue | new_unassigned.
-  ({String label, Color color})? _eventChip(String event) => switch (event) {
-    'message' => (label: 'Reply', color: AppTheme.open),
-    'note' => (label: 'Note', color: AppTheme.brandLight),
-    'assigned' => (label: 'Assigned', color: AppTheme.brand),
-    'transfer' => (label: 'Transferred', color: AppTheme.warning),
-    'status' => (label: 'Status', color: AppTheme.brandLight),
-    'mention' => (label: 'Mention', color: AppTheme.warning),
-    'overdue' => (label: 'Overdue', color: AppTheme.overdue),
-    'new_unassigned' => (label: 'Unassigned', color: AppTheme.brand),
-    _ => null,
-  };
+  /// The web panel windows each object's activity to the latest five and offers
+  /// "View All Activity" beyond that (`rn <= 5`, `total_count > 5`).
+  static const _maxActivities = 5;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
     final latest = group.latest;
-    final unread = group.hasUnread;
-    final chip = _eventChip(latest.event);
     final actor = (latest.actor ?? '').trim();
     final refLabel =
         _isTask ? 'Task #${group.objectId}' : 'Ticket #${group.objectId}';
-    final more = group.count;
 
     return Dismissible(
       key: ValueKey('notif-group-${group.key}'),
@@ -634,123 +727,50 @@ class _NotificationGroupCard extends StatelessWidget {
         alignment: Alignment.centerRight,
       ),
       child: Material(
-        color: Colors.transparent,
+        // `.inbox-card.selected` tints with --accent-muted.
+        color: expanded
+            ? scheme.primary.withValues(alpha: 0.05)
+            : Colors.transparent,
         child: InkWell(
           onTap: onTap,
           child: IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Unread left rail.
+                // `.inbox-card.unread { border-left:3px solid var(--accent) }`
                 Container(
-                  width: 4,
+                  width: 3,
                   color: unread ? scheme.primary : Colors.transparent,
                 ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 12, 16, 12),
-                    child: Row(
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Leading: type-tinted avatar with an unread dot.
-                        Stack(
-                          clipBehavior: Clip.none,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            UserAvatar(
+                            _TypeAvatar(
                               name: actor.isEmpty ? refLabel : actor,
-                              radius: 19,
+                              isTask: _isTask,
                             ),
-                            Positioned(
-                              right: -2,
-                              bottom: -2,
-                              child: Container(
-                                padding: const EdgeInsets.all(3),
-                                decoration: BoxDecoration(
-                                  color: scheme.surface,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Icon(
-                                  _isTask
-                                      ? Icons.task_alt
-                                      : Icons.confirmation_number_outlined,
-                                  size: 12,
-                                  color: scheme.primary,
-                                ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _titleRow(context),
+                                  const SizedBox(height: 3),
+                                  _snippet(context),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              // Header: reference + latest time.
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: AppText.paraText(
-                                      context,
-                                      refLabel,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      color: scheme.primary,
-                                      fw: 2,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  AppText.captionText(
-                                    context,
-                                    Fmt.ago(group.lastActivity),
-                                    color: scheme.onSurfaceVariant,
-                                    fw: unread ? 2 : 0,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 3),
-                              // Latest activity message.
-                              AppText.subText(
-                                context,
-                                latest.displayLabel,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                fw: unread ? 2 : 3,
-                                color: unread
-                                    ? scheme.onSurface
-                                    : scheme.onSurfaceVariant,
-                                lineHeight: 1.3,
-                              ),
-                              if (actor.isNotEmpty || chip != null || more > 1) ...[
-                                const SizedBox(height: 6),
-                                Row(
-                                  children: [
-                                    if (actor.isNotEmpty)
-                                      Expanded(
-                                        child: AppText.paraText(
-                                          context,
-                                          actor,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          color: scheme.onSurfaceVariant,
-                                        ),
-                                      )
-                                    else
-                                      const Spacer(),
-                                    if (more > 1) ...[
-                                      const SizedBox(width: 8),
-                                      _CountChip(count: more, unread: unread),
-                                    ],
-                                    if (chip != null) ...[
-                                      const SizedBox(width: 8),
-                                      _EventChip(chip: chip),
-                                    ],
-                                  ],
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
+                        if (expanded) _detail(context),
                       ],
                     ),
                   ),
@@ -762,30 +782,343 @@ class _NotificationGroupCard extends StatelessWidget {
       ),
     );
   }
+
+  /// `● #1234  Subject…  [TICKET]` — the web's `.inbox-card-title`.
+  Widget _titleRow(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Row(
+      children: [
+        if (unread) ...[
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: scheme.primary,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+        ],
+        AppText.captionText(
+          context,
+          '#${group.objectId}',
+          color: scheme.onSurfaceVariant,
+          fw: 2,
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: AppText.subText(
+            context,
+            _subjectOf(group),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            fw: unread ? 1 : 2,
+            color: scheme.onSurface,
+          ),
+        ),
+        const SizedBox(width: 6),
+        _TypeChip(isTask: _isTask),
+      ],
+    );
+  }
+
+  /// `actor · label · time` on one clipped line — `.inbox-card-snippet`.
+  Widget _snippet(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final latest = group.latest;
+    final actor = (latest.actor ?? '').trim();
+    final base = theme.textTheme.bodySmall?.copyWith(
+      fontSize: 11.5,
+      height: 1.3,
+      color: scheme.onSurfaceVariant,
+    );
+    final sep = TextSpan(
+      text: '  ·  ',
+      style: base?.copyWith(
+        color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
+      ),
+    );
+    return Text.rich(
+      TextSpan(
+        children: [
+          if (actor.isNotEmpty) ...[
+            TextSpan(
+              text: actor,
+              style: base?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface,
+              ),
+            ),
+            sep,
+          ],
+          TextSpan(text: _labelFor(latest), style: base),
+          sep,
+          TextSpan(text: Fmt.ago(latest.created), style: base),
+        ],
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// The expanded panel: the latest five activities on a timeline rail, then
+  /// "View All Activity" (when more were collapsed) and "Open".
+  Widget _detail(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final acts = group.activities.take(_maxActivities).toList(growable: false);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Divider(
+            height: 1,
+            thickness: 0.4,
+            color: scheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+          const SizedBox(height: 10),
+          for (var i = 0; i < acts.length; i++)
+            _ActivityRow(item: acts[i], isLast: i == acts.length - 1),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              if (group.count > _maxActivities)
+                _PanelLink(
+                  label: 'View All Activity',
+                  onTap: onOpenActivity,
+                ),
+              const Spacer(),
+              _PanelLink(label: 'Open', onTap: onOpen),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-/// Small "N updates" pill shown when a card collapses more than one activity.
-class _CountChip extends StatelessWidget {
-  const _CountChip({required this.count, required this.unread});
-  final int count;
-  final bool unread;
+/// The card's leading avatar: the actor's initials with a small ticket/task
+/// badge, so the object type reads even before the chip.
+class _TypeAvatar extends StatelessWidget {
+  const _TypeAvatar({required this.name, required this.isTask});
+
+  final String name;
+  final bool isTask;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = unread ? scheme.primary : scheme.onSurfaceVariant;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        UserAvatar(name: name, radius: 19),
+        Positioned(
+          right: -2,
+          bottom: -2,
+          child: Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isTask ? Icons.task_alt : Icons.confirmation_number_outlined,
+              size: 12,
+              color: scheme.primary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// `.inbox-chip` — a small uppercase TICKET / TASK pill (blue / amber).
+class _TypeChip extends StatelessWidget {
+  const _TypeChip({required this.isTask});
+
+  final bool isTask;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isTask ? AppTheme.warning : AppTheme.brandLight;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: AppText.custmText(
         context,
-        '$count updates',
-        fs: 10.5,
-        color: color,
+        isTask ? 'TASK' : 'TICKET',
+        fs: 9.5,
         fw: 2,
+        color: color,
+      ),
+    );
+  }
+}
+
+/// One activity in the expanded panel — `.inbox-activity`: an initials avatar
+/// on a continuous rail, an `actor · label · time` head, and (for replies only)
+/// the message body in a clamped bubble with a See more / See less toggle.
+class _ActivityRow extends StatefulWidget {
+  const _ActivityRow({required this.item, required this.isLast});
+
+  final AppNotification item;
+  final bool isLast;
+
+  @override
+  State<_ActivityRow> createState() => _ActivityRowState();
+}
+
+class _ActivityRowState extends State<_ActivityRow> {
+  bool _showFull = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final n = widget.item;
+    final actor = (n.actor ?? '').trim();
+    // Only real replies carry useful text; assigned/status/transfer do not.
+    final body = n.event == 'message' ? (n.body ?? '').trim() : '';
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      fontSize: 11.5,
+      height: 1.3,
+      color: scheme.onSurfaceVariant,
+    );
+    final sep = TextSpan(
+      text: '  ·  ',
+      style: muted?.copyWith(
+        color: scheme.onSurfaceVariant.withValues(alpha: 0.5),
+      ),
+    );
+
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 24,
+            child: Column(
+              children: [
+                UserAvatar(name: actor.isEmpty ? 'System' : actor, radius: 12),
+                if (!widget.isLast)
+                  Expanded(
+                    child: Center(
+                      child: Container(
+                        width: 2,
+                        color: scheme.outlineVariant.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: widget.isLast ? 0 : 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: actor.isEmpty ? 'System' : actor,
+                          style: muted?.copyWith(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                        sep,
+                        TextSpan(
+                          text: _labelFor(n),
+                          style: muted?.copyWith(fontWeight: FontWeight.w600),
+                        ),
+                        sep,
+                        TextSpan(text: Fmt.ago(n.created), style: muted),
+                      ],
+                    ),
+                  ),
+                  if (body.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: scheme.onSurface.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: AppText.paraText(
+                        context,
+                        body,
+                        maxLines: _showFull ? null : 5,
+                        overflow: _showFull
+                            ? TextOverflow.clip
+                            : TextOverflow.ellipsis,
+                        color: scheme.onSurfaceVariant,
+                        height: 1.45,
+                      ),
+                    ),
+                    // The web offers the toggle past 70 characters.
+                    if (body.length > 70)
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _showFull = !_showFull),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: AppText.captionText(
+                            context,
+                            _showFull ? 'See less' : 'See more',
+                            color: scheme.primary,
+                            fw: 2,
+                          ),
+                        ),
+                      ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// `.inbox-panel-open` / `.inbox-viewall` — a small accent text action with a
+/// trailing chevron.
+class _PanelLink extends StatelessWidget {
+  const _PanelLink({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppText.captionText(context, label, color: scheme.primary, fw: 2),
+            Icon(Icons.chevron_right, size: 15, color: scheme.primary),
+          ],
+        ),
       ),
     );
   }
@@ -820,29 +1153,6 @@ class _SwipeBg extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: leading ? content : content.reversed.toList(),
-      ),
-    );
-  }
-}
-
-class _EventChip extends StatelessWidget {
-  const _EventChip({required this.chip});
-  final ({String label, Color color}) chip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: chip.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: AppText.custmText(
-        context,
-        chip.label,
-        fs: 10.5,
-        color: chip.color,
-        fw: 2,
       ),
     );
   }

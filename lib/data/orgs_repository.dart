@@ -1,20 +1,43 @@
 import '../core/api/api_client.dart';
 import '../core/api/json.dart';
 import '../core/api/paginated.dart';
-import '../models/common.dart';
-import '../models/organization.dart';
-import '../models/ticket.dart';
-import '../models/user.dart';
 
-/// All `/organizations` endpoints.
+/// One row of `GET /organizations` — everything that list serializer returns.
+///
+/// Account Manager, domain, sharing flags and custom fields live only on the
+/// `GET /organizations/{id}` payload, so a report built from the list cannot
+/// carry them.
+class OrgSummary {
+  const OrgSummary({
+    required this.id,
+    required this.name,
+    required this.userCount,
+    this.created,
+  });
+
+  final int id;
+  final String name;
+  final int userCount;
+  final DateTime? created;
+
+  factory OrgSummary.fromJson(Map<String, dynamic> j) => OrgSummary(
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    userCount: J.intOr(j['user_count']),
+    created: J.dateTime(j['created']),
+  );
+}
+
+/// Read-only `/organizations` access.
+///
+/// The Organizations *browse* screens were removed with the web's hidden Users
+/// tab, but the web's Reports & Exports page still offers an Organizations
+/// report — so the list endpoint is still needed to build one.
 class OrgsRepository {
   OrgsRepository(this._api);
   final ApiClient _api;
 
-  Organization _org(dynamic body) =>
-      Organization.fromJson(J.map(J.map(body)['data']));
-
-  Future<Paginated<Organization>> list({
+  Future<Paginated<OrgSummary>> list({
     String? q,
     int page = 1,
     int limit = 25,
@@ -23,63 +46,6 @@ class OrgsRepository {
       '/organizations',
       query: {'q': q, 'page': page, 'limit': limit},
     );
-    return Paginated.fromEnvelope(J.map(body), Organization.fromJson);
+    return Paginated.fromEnvelope(J.map(body), OrgSummary.fromJson);
   }
-
-  Future<Organization> get(int id) async =>
-      _org(await _api.get('/organizations/$id'));
-
-  Future<Organization> create(Map<String, dynamic> payload) async =>
-      _org(await _api.post('/organizations', body: payload));
-
-  Future<Organization> update(int id, Map<String, dynamic> changes) async =>
-      _org(await _api.post('/organizations/$id', body: changes));
-
-  Future<void> delete(int id) => _api.delete('/organizations/$id');
-
-  Future<Paginated<AppUser>> users(
-    int id, {
-    int page = 1,
-    int limit = 25,
-  }) async {
-    final body = await _api.get(
-      '/organizations/$id/users',
-      query: {'page': page, 'limit': limit},
-    );
-    return Paginated.fromEnvelope(J.map(body), AppUser.fromJson);
-  }
-
-  Future<void> addUser(int id, int userId) =>
-      _api.post('/organizations/$id/users', body: {'user_id': userId});
-
-  Future<void> removeUser(int id, int uid) =>
-      _api.delete('/organizations/$id/users/$uid');
-
-  Future<Paginated<Ticket>> tickets(
-    int id, {
-    int page = 1,
-    int limit = 25,
-  }) async {
-    final body = await _api.get(
-      '/organizations/$id/tickets',
-      query: {'page': page, 'limit': limit},
-    );
-    return Paginated.fromEnvelope(J.map(body), Ticket.fromJson);
-  }
-
-  Future<List<StaffNote>> notes(int id) async {
-    final body = await _api.get('/organizations/$id/notes');
-    return J.mapList(J.map(body)['data']).map(StaffNote.fromJson).toList();
-  }
-
-  Future<StaffNote> addNote(int id, String note) async {
-    final body = await _api.post(
-      '/organizations/$id/notes',
-      body: {'note': note},
-    );
-    return StaffNote.fromJson(J.map(J.map(body)['data']));
-  }
-
-  Future<void> deleteNote(int id, int noteId) =>
-      _api.delete('/organizations/$id/notes/$noteId');
 }

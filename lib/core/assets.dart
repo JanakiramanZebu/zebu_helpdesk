@@ -16,12 +16,9 @@ class Assets {
 
   // Menu ("More" tab) tile glyphs (custom line set).
   static const menuInbox = 'assets/icon/menu_inbox.svg';
-  static const menuUsers = 'assets/icon/menu_users.svg';
-  static const menuOrgs = 'assets/icon/menu_orgs.svg';
   static const menuReports = 'assets/icon/menu_reports.svg';
   static const menuKnowledge = 'assets/icon/menu_knowledge.svg';
   static const menuCanned = 'assets/icon/menu_canned.svg';
-  static const menuQueues = 'assets/icon/menu_queues.svg';
   static const menuAgents = 'assets/icon/menu_agents.svg';
 
   // Ticket/task detail â‹®-menu action glyphs (custom line set).

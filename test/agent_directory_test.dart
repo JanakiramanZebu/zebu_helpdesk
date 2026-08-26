@@ -2,18 +2,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zebu_helpdesk/core/api/api_client.dart';
 import 'package:zebu_helpdesk/core/auth/token_storage.dart';
 import 'package:zebu_helpdesk/data/agent_directory.dart';
-import 'package:zebu_helpdesk/data/me_repository.dart';
 import 'package:zebu_helpdesk/data/meta_repository.dart';
 import 'package:zebu_helpdesk/models/me.dart';
 import 'package:zebu_helpdesk/models/meta.dart';
 
-/// `/meta/{kind}` without the network — the lists the pickers would load.
+/// `/meta/{kind}` without the network. [byDept] is what
+/// `GET /meta/agents?dept_id=` answers — the server's own `Dept::getAssignees()`
+/// result — and every call is recorded so the tests can prove the roster is
+/// narrowed server-side rather than guessed here.
 class _FakeMeta extends MetaRepository {
-  _FakeMeta({required this.agentList, this.depts = const []})
-    : super(ApiClient(tokenStorage: TokenStorage()));
+  _FakeMeta({
+    required this.agentList,
+    this.depts = const [],
+    this.byDept = const {},
+    this.deptCallFails = false,
+  }) : super(ApiClient(tokenStorage: TokenStorage()));
 
   final List<MetaItem> agentList;
   final List<MetaItem> depts;
+  final Map<int, List<MetaItem>> byDept;
+  final bool deptCallFails;
+  final List<int> scopedCalls = [];
 
   @override
   Future<List<MetaItem>> get(String kind, {bool refresh = false}) async =>
@@ -21,183 +30,173 @@ class _FakeMeta extends MetaRepository {
 
   @override
   Future<List<MetaItem>> departments() => get(MetaKind.departments);
-}
-
-/// `GET /agents/{id}`, counting lookups so the session cache can be checked.
-class _FakeMe extends MeRepository {
-  _FakeMe(this.profiles) : super(ApiClient(tokenStorage: TokenStorage()));
-
-  final Map<int, AgentProfile> profiles;
-  final List<int> lookups = [];
 
   @override
-  Future<AgentProfile> getAgent(int id) async {
-    lookups.add(id);
-    final p = profiles[id];
-    if (p == null) throw StateError('no profile for $id');
-    return p;
+  Future<List<MetaItem>> agentsInDepartment(
+    int deptId, {
+    bool refresh = false,
+  }) async {
+    scopedCalls.add(deptId);
+    if (deptCallFails) throw StateError('forbidden');
+    return byDept[deptId] ?? const [];
   }
 }
 
-AgentProfile _profile(
-  int id,
-  String name, {
-  String? department,
-  bool available = true,
-}) => AgentProfile(
-  id: id,
-  name: name,
-  department: department,
-  available: available,
-);
-
 const _agents = [
-  MetaItem(id: 1, name: 'Asha Rao'),
-  MetaItem(id: 2, name: 'Bala Krishnan'),
-  MetaItem(id: 3, name: 'Chitra Devi'),
+  MetaItem(id: 1, name: 'Asha Rao', deptId: 3, deptName: 'Support'),
+  MetaItem(id: 2, name: 'Bala Krishnan', deptId: 4, deptName: 'Billing'),
+  MetaItem(id: 3, name: 'Chitra Devi', deptId: 3, deptName: 'Support'),
 ];
+
+const _support = [MetaItem(id: 1, name: 'Asha Rao'), MetaItem(id: 3, name: 'Chitra Devi')];
+
+/// Agent 7 holding [perms] in department 3.
+Me _me({Map<String, int> global = const {}, List<int> depts = const [3]}) =>
+    Me.fromJson({
+      'id': 7,
+      'name': 'Agent Seven',
+      'global_permissions': global,
+      'permissions_by_department': {for (final d in depts) '$d': {'ticket.edit': 1}},
+    });
 
 void main() {
   group('AgentDirectory.assignable', () {
-    test('keeps only the department\'s agents', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Support'),
-        2: _profile(2, 'Bala Krishnan', department: 'Billing'),
-        3: _profile(3, 'Chitra Devi', department: 'Support'),
-      });
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
+    test('takes the department roster from the server', () async {
+      final meta = _FakeMeta(
+        agentList: _agents,
+        depts: const [MetaItem(id: 3, name: 'Support')],
+        byDept: const {3: _support},
+      );
+      final list = await AgentDirectory(meta).assignable(departmentId: 3);
 
-      final list = await dir.assignable(departmentName: 'Support');
-
+      expect(meta.scopedCalls, [3]);
       expect(list.scoped, isTrue);
       expect(list.agents.map((a) => a.id), [1, 3]);
       expect(list.all.length, 3, reason: 'full roster stays available');
       expect(list.departmentName, 'Support');
     });
 
-    test('matches the department case-insensitively and resolves it by id',
-        () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Support'),
-        2: _profile(2, 'Bala Krishnan', department: 'Billing'),
-        3: _profile(3, 'Chitra Devi', department: ' support '),
-      });
-      final dir = AgentDirectory(
-        _FakeMeta(
-          agentList: _agents,
-          depts: const [MetaItem(id: 7, name: 'SUPPORT')],
-        ),
-        me,
+    // Callers that only know the department by name (a list row, a bulk
+    // action) must still reach the id-based endpoint.
+    test('resolves a department name to its id first', () async {
+      final meta = _FakeMeta(
+        agentList: _agents,
+        depts: const [MetaItem(id: 3, name: 'SUPPORT')],
+        byDept: const {3: _support},
+      );
+      final list = await AgentDirectory(meta).assignable(
+        departmentName: ' support ',
       );
 
-      final list = await dir.assignable(departmentId: 7);
-
+      expect(meta.scopedCalls, [3]);
       expect(list.agents.map((a) => a.id), [1, 3]);
     });
 
-    test('drops agents who are unavailable', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Support'),
-        2: _profile(2, 'Bala Krishnan', department: 'Support', available: false),
-        3: _profile(3, 'Chitra Devi', department: 'Billing'),
-      });
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
-
-      final list = await dir.assignable(departmentName: 'Support');
-
-      expect(list.agents.map((a) => a.id), [1]);
-    });
-
-    test('keeps agents whose profile lookup failed', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Support'),
-        3: _profile(3, 'Chitra Devi', department: 'Billing'),
-      }); // id 2 throws
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
-
-      final list = await dir.assignable(departmentName: 'Support');
-
-      expect(list.agents.map((a) => a.id), [1, 2]);
-    });
-
-    test('falls back to the full roster when nothing matches', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Billing'),
-        2: _profile(2, 'Bala Krishnan', department: 'Billing'),
-        3: _profile(3, 'Chitra Devi', department: 'Billing'),
-      });
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
-
-      final list = await dir.assignable(departmentName: 'Support');
-
-      expect(list.scoped, isFalse);
-      expect(list.agents.length, 3);
-    });
-
     test('stays unscoped without a department', () async {
-      final me = _FakeMe({});
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
+      final meta = _FakeMeta(agentList: _agents);
+      final list = await AgentDirectory(meta).assignable();
 
-      final list = await dir.assignable();
+      expect(meta.scopedCalls, isEmpty);
+      expect(list.scoped, isFalse);
+      expect(list.agents.length, 3);
+    });
+
+    test('stays unscoped when the name matches no department', () async {
+      final meta = _FakeMeta(
+        agentList: _agents,
+        depts: const [MetaItem(id: 4, name: 'Billing')],
+      );
+      final list = await AgentDirectory(meta).assignable(
+        departmentName: 'Support',
+      );
+
+      expect(meta.scopedCalls, isEmpty);
+      expect(list.scoped, isFalse);
+      expect(list.agents.length, 3);
+    });
+
+    // Offering a list we can't vouch for is worse than offering all of them:
+    // the server re-checks the pick anyway.
+    test('falls back to the full roster when the scoped call fails', () async {
+      final meta = _FakeMeta(
+        agentList: _agents,
+        depts: const [MetaItem(id: 3, name: 'Support')],
+        deptCallFails: true,
+      );
+      final list = await AgentDirectory(meta).assignable(departmentId: 3);
 
       expect(list.scoped, isFalse);
       expect(list.agents.length, 3);
-      expect(me.lookups, isEmpty, reason: 'no department, no hydration');
+      expect(list.departmentName, 'Support');
     });
 
-    test('looks each agent up once per session', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Support'),
-        2: _profile(2, 'Bala Krishnan', department: 'Billing'),
-        3: _profile(3, 'Chitra Devi', department: 'Support'),
-      });
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
+    // An install that ignores ?dept_id= answers with everyone; a department
+    // note over an unnarrowed list would be a lie.
+    test('reports unscoped when the filter narrowed nothing', () async {
+      final meta = _FakeMeta(
+        agentList: _agents,
+        depts: const [MetaItem(id: 3, name: 'Support')],
+        byDept: const {3: _agents},
+      );
+      final list = await AgentDirectory(meta).assignable(departmentId: 3);
 
-      await dir.assignable(departmentName: 'Support');
-      await dir.assignable(departmentName: 'Billing');
-
-      expect(me.lookups..sort(), [1, 2, 3]);
-    });
-
-    test('concurrent opens share one hydration pass', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Support'),
-        2: _profile(2, 'Bala Krishnan', department: 'Billing'),
-        3: _profile(3, 'Chitra Devi', department: 'Support'),
-      });
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
-
-      await Future.wait([
-        dir.assignable(departmentName: 'Support'),
-        dir.assignable(departmentName: 'Support'),
-      ]);
-
-      expect(me.lookups..sort(), [1, 2, 3]);
+      expect(list.scoped, isFalse);
+      expect(list.agents.length, 3);
     });
   });
 
   group('AgentDirectory.isAssignable', () {
-    test('rejects an agent outside the department', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Support'),
-        2: _profile(2, 'Bala Krishnan', department: 'Billing'),
-        3: _profile(3, 'Chitra Devi', department: 'Support'),
-      });
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
+    test('rejects an agent the department does not allow', () async {
+      final dir = AgentDirectory(
+        _FakeMeta(
+          agentList: _agents,
+          depts: const [MetaItem(id: 3, name: 'Support')],
+          byDept: const {3: _support},
+        ),
+      );
 
-      expect(await dir.isAssignable(2, departmentName: 'Support'), isFalse);
-      expect(await dir.isAssignable(1, departmentName: 'Support'), isTrue);
+      expect(await dir.isAssignable(2, departmentId: 3), isFalse);
+      expect(await dir.isAssignable(1, departmentId: 3), isTrue);
     });
 
     test('accepts anyone when the scope could not be applied', () async {
-      final me = _FakeMe({
-        1: _profile(1, 'Asha Rao', department: 'Billing'),
-        2: _profile(2, 'Bala Krishnan', department: 'Billing'),
-        3: _profile(3, 'Chitra Devi', department: 'Billing'),
-      });
-      final dir = AgentDirectory(_FakeMeta(agentList: _agents), me);
+      final dir = AgentDirectory(_FakeMeta(agentList: _agents));
 
-      expect(await dir.isAssignable(2, departmentName: 'Support'), isTrue);
+      expect(await dir.isAssignable(2), isTrue);
+    });
+  });
+
+  group('AgentDirectory.visible', () {
+    test('narrows the directory to the departments I can access', () async {
+      final list = await AgentDirectory(
+        _FakeMeta(agentList: _agents),
+      ).visible(_me(depts: const [3]));
+
+      expect(list.scoped, isTrue);
+      expect(list.agents.map((a) => a.id), [1, 3]);
+    });
+
+    test('visibility.agents sees the whole roster', () async {
+      final list = await AgentDirectory(_FakeMeta(agentList: _agents)).visible(
+        _me(global: const {'visibility.agents': 1}, depts: const [3]),
+      );
+
+      expect(list.scoped, isFalse);
+      expect(list.agents.length, 3);
+    });
+
+    // A row that names no department proves nothing, so it stays in.
+    test('keeps an agent whose department the payload omits', () async {
+      const roster = [
+        MetaItem(id: 1, name: 'Asha Rao', deptId: 3),
+        MetaItem(id: 2, name: 'Bala Krishnan', deptId: 4),
+        MetaItem(id: 3, name: 'Chitra Devi'),
+      ];
+      final list = await AgentDirectory(
+        _FakeMeta(agentList: roster),
+      ).visible(_me(depts: const [3]));
+
+      expect(list.agents.map((a) => a.id), [1, 3]);
     });
   });
 }

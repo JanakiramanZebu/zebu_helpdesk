@@ -214,6 +214,32 @@ class TicketsRepository {
     return Paginated.fromEnvelope(J.map(body), ThreadEntry.fromJson);
   }
 
+  /// Prior versions of an edited thread entry, oldest→newest (the current
+  /// version is not included). Empty when the entry was never edited.
+  Future<List<ThreadEntryVersion>> threadHistory(int id, int entryId) async {
+    final body = await _api.get('/tickets/$id/thread/$entryId/history');
+    return J
+        .mapList(J.map(body)['data'])
+        .map(ThreadEntryVersion.fromJson)
+        .toList();
+  }
+
+  /// Rewrites a thread entry's body, mirroring the web's pencil action. The
+  /// server files the edit as a NEW entry (the old one becomes history), so the
+  /// returned entry carries a different id than [entryId].
+  Future<ThreadEntry> editThreadEntry(
+    int id,
+    int entryId, {
+    required String body,
+    String? title,
+  }) async {
+    final res = await _api.post(
+      '/tickets/$id/thread/$entryId',
+      body: {'body': body, if (title != null) 'title': title},
+    );
+    return ThreadEntry.fromJson(J.map(J.map(res)['data']));
+  }
+
   Future<List<ThreadEvent>> events(int id) async {
     final body = await _api.get('/tickets/$id/events');
     return J.mapList(J.map(body)['data']).map(ThreadEvent.fromJson).toList();
@@ -249,11 +275,15 @@ class TicketsRepository {
 
   // --- Replies / notes ------------------------------------------------------
 
+  /// [replyTo] picks the email recipients, using osTicket's own `reply-to`
+  /// values: `all` (owner + collaborators) or `user` (ticket owner only).
+  /// Omitted, the server applies its default.
   Future<Ticket> reply(
     int id, {
     String? body,
     int? statusId,
     bool? alert,
+    String? replyTo,
     List<MultipartFile> files = const [],
   }) async {
     if (files.isEmpty) {
@@ -264,6 +294,7 @@ class TicketsRepository {
             if (body != null) 'body': body,
             if (statusId != null) 'status_id': statusId,
             if (alert != null) 'alert': alert,
+            if (replyTo != null) 'reply-to': replyTo,
           },
         ),
       );
@@ -275,6 +306,7 @@ class TicketsRepository {
           if (body != null) 'body': body,
           if (statusId != null) 'status_id': statusId,
           if (alert != null) 'alert': alert ? 1 : 0,
+          if (replyTo != null) 'reply-to': replyTo,
         },
         files: {'files[]': files},
       ),

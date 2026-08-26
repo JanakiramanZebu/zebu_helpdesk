@@ -341,10 +341,14 @@ class AppTheme {
   }
 
   /// Accent color for a priority name (high/emergency = red, low = grey,
-  /// else amber). Used for the left accent bar on list cards. Falls back to a
-  /// neutral outline tone when no priority is set.
+  /// else amber). Used for the left accent bar on list cards.
+  ///
+  /// "No priority" falls back to [ColorScheme.outline] rather than the fainter
+  /// outlineVariant: the rail is 3px wide, and at hairline contrast it reads as
+  /// a rendering fault instead of "nothing set". Reachable since list rows stop
+  /// substituting a default priority.
   static Color priorityAccent(String? priority, ColorScheme scheme) {
-    if (priority == null || priority.isEmpty) return scheme.outlineVariant;
+    if (priority == null || priority.isEmpty) return scheme.outline;
     final p = priority.toLowerCase();
     if (p.contains('emergency') || p.contains('high')) return overdue;
     if (p.contains('low')) return closed;

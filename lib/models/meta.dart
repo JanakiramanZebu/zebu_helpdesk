@@ -10,12 +10,20 @@ class MetaItem {
     this.state,
     this.color,
     this.active,
+    this.deptId,
+    this.deptName,
   });
 
   final int id;
   final String name;
   final String? state; // statuses: open | closed
   final String? color; // tags, task-priorities
+
+  /// Agents only: the agent's own home department. Present whether or not the
+  /// request narrowed the roster with `?dept_id=` — it names where the agent
+  /// belongs, not what was filtered on.
+  final int? deptId;
+  final String? deptName;
 
   /// SLA plans only: whether the plan is enabled. osTicket lists **disabled**
   /// plans alongside active ones (`SLA::getSLAs()` filters nothing) and only an
@@ -44,6 +52,8 @@ class MetaItem {
       state: J.str(j['state']),
       color: J.str(j['color']),
       active: active,
+      deptId: J.intOrNull(j['dept_id']),
+      deptName: J.strNonBlank(j['dept_name']),
     );
   }
 

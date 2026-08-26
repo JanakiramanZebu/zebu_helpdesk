@@ -46,6 +46,8 @@ class FaqCategory {
   const FaqCategory({
     required this.id,
     required this.name,
+    this.parentId,
+    this.fullName,
     this.public = false,
     this.type,
     this.faqCount = 0,
@@ -53,15 +55,34 @@ class FaqCategory {
   });
 
   final int id;
+
+  /// The category's own (local) name — "Pay in".
   final String name;
+
+  /// Parent category, `0` for a top-level one. Null when unpublished.
+  final int? parentId;
+
+  /// The parent path the web's Categories list renders via `getFullName()` —
+  /// "Funds / Pay in". Null when unpublished; use [displayName].
+  final String? fullName;
+
   final bool public;
   final String? type; // Private | Public | Featured
   final int faqCount;
   final List<Faq> faqs;
 
+  /// What to put on the row: the parent path when the server states one,
+  /// otherwise the local name.
+  String get displayName {
+    final full = fullName?.trim() ?? '';
+    return full.isEmpty ? name : full;
+  }
+
   factory FaqCategory.fromJson(Map<String, dynamic> j) => FaqCategory(
     id: J.intOr(j['id']),
     name: J.strOr(j['name']),
+    parentId: J.intOrNull(j['pid']),
+    fullName: J.strNonBlank(j['full_name']),
     public: J.boolOr(j['public']),
     type: J.str(j['type']),
     faqCount: J.intOr(j['faq_count']),

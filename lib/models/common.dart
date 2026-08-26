@@ -115,6 +115,10 @@ class ThreadEntry {
     this.bodyHtml,
     this.attachments = const [],
     this.created,
+    this.edited = false,
+    this.editedAt,
+    this.editor,
+    this.hasHistory = false,
   });
 
   final int id;
@@ -126,6 +130,17 @@ class ThreadEntry {
   final String? bodyHtml;
   final List<Attachment> attachments;
   final DateTime? created;
+
+  /// This entry is a revision of an earlier one (osTicket's FLAG_EDITED): the
+  /// bubble shows an "Edited" marker the way the web does.
+  final bool edited;
+
+  /// When the edit was saved, and who saved it (display name).
+  final DateTime? editedAt;
+  final String? editor;
+
+  /// A prior version exists behind `/thread/{id}/history`.
+  final bool hasHistory;
 
   bool get isNote => type == 'N';
   bool get isResponse => type == 'R';
@@ -141,7 +156,45 @@ class ThreadEntry {
     bodyHtml: J.str(j['body_html']),
     attachments: J.mapList(j['attachments']).map(Attachment.fromJson).toList(),
     created: J.dateTime(j['created']),
+    edited: J.boolOr(j['edited']),
+    editedAt: J.dateTime(j['edited_at']),
+    editor: J.str(j['editor']),
+    hasHistory: J.boolOr(j['has_history']),
   );
+}
+
+/// One PRIOR version of an edited thread entry
+/// (`GET /tickets/{id}/thread/{entryId}/history`), oldest first. The original
+/// version carries no [editedAt] — only later revisions do.
+class ThreadEntryVersion {
+  const ThreadEntryVersion({
+    required this.id,
+    required this.poster,
+    this.body,
+    this.bodyHtml,
+    this.created,
+    this.editedAt,
+    this.editor,
+  });
+
+  final int id;
+  final String poster;
+  final String? body;
+  final String? bodyHtml;
+  final DateTime? created;
+  final DateTime? editedAt;
+  final String? editor;
+
+  factory ThreadEntryVersion.fromJson(Map<String, dynamic> j) =>
+      ThreadEntryVersion(
+        id: J.intOr(j['id']),
+        poster: J.strOr(j['poster']),
+        body: J.str(j['body']),
+        bodyHtml: J.str(j['body_html']),
+        created: J.dateTime(j['created']),
+        editedAt: J.dateTime(j['edited_at']),
+        editor: J.str(j['editor']),
+      );
 }
 
 /// A non-noise thread event (created/assigned/transferred/...).
@@ -167,6 +220,23 @@ class ThreadEvent {
     description: J.str(j['description']),
     created: J.dateTime(j['created']),
   );
+
+  /// Activity-timeline order: newest first, so "Created" lands at the bottom.
+  ///
+  /// The API orders by `timestamp` alone, which says nothing about events that
+  /// share a second — "Created" and the assignment written in the same request
+  /// can come back either way round. Sorting on (timestamp, id) first restores
+  /// true insertion order, since `id` is auto-increment; only then is it safe
+  /// to reverse. Events missing a timestamp fall back to id rather than
+  /// dragging the rest of the list out of order.
+  static List<ThreadEvent> newestFirst(Iterable<ThreadEvent> events) {
+    final ordered = [...events]..sort((a, b) {
+      final ta = a.created, tb = b.created;
+      final byTime = (ta == null || tb == null) ? 0 : ta.compareTo(tb);
+      return byTime != 0 ? byTime : a.id.compareTo(b.id);
+    });
+    return ordered.reversed.toList();
+  }
 }
 
 /// Internal staff note on a user/org.
@@ -223,15 +293,107 @@ class Collaborator {
 }
 
 /// A tag with a display color.
+///
+/// Two payloads land here. A tag *applied* to a ticket/task (and the
+/// `/meta/tags` picker list) carries only id/name/color; the catalogue
+/// (`GET /tags`, the port of `scp/managetags.php`) adds the management fields
+/// below, which keep their defaults everywhere else.
 class Tag {
-  const Tag({required this.id, required this.name, this.color = '#666666'});
+  const Tag({
+    required this.id,
+    required this.name,
+    this.color = '#666666',
+    this.isActive = true,
+    this.deptId = 0,
+    this.objectCount = 0,
+    this.createdLabel,
+    this.updatedLabel,
+  });
+
   final int id;
   final String name;
   final String color;
+
+  /// A disabled tag still exists and stays on the objects that carry it; it is
+  /// just not offered for new tagging.
+  final bool isActive;
+
+  /// Department the tag is scoped to; 0 = global (visible to everyone).
+  final int deptId;
+
+  /// How many tickets/tasks currently carry the tag — what a destructive
+  /// action has to state before it runs.
+  final int objectCount;
+
+  /// Timestamps as the catalogue serializes them (the install's display
+  /// format, not a parseable timestamp).
+  final String? createdLabel;
+  final String? updatedLabel;
+
+  bool get isGlobal => deptId == 0;
 
   factory Tag.fromJson(Map<String, dynamic> j) => Tag(
     id: J.intOr(j['id']),
     name: J.strOr(j['name']),
     color: J.strOr(j['color'], '#666666'),
+    // `is_active` on the catalogue; `active` / flag bits on the picker list.
+    isActive: J.boolOr(j['is_active'] ?? j['active'], true),
+    deptId: J.intOr(j['dept_id']),
+    objectCount: J.intOr(j['object_count']),
+    createdLabel: J.strNonBlank(j['created']),
+    updatedLabel: J.strNonBlank(j['updated']),
+  );
+}
+
+/// What `DELETE /tags/{id}` reports back: the delete happened, and what the
+/// tag had been applied to.
+class TagDeleteResult {
+  const TagDeleteResult({required this.ok, required this.objectCount});
+  final bool ok;
+  final int objectCount;
+
+  factory TagDeleteResult.fromJson(Map<String, dynamic> j) => TagDeleteResult(
+    ok: J.boolOr(j['ok'], true),
+    objectCount: J.intOr(j['object_count']),
+  );
+}
+
+/// The outcome of `POST /tags/merge`. [into] is the survivor **after** the
+/// merge, [merged] the tags it consumed, and [skipped] ids the server ignored
+/// rather than merged — so nothing disappears unaccounted for.
+class TagMergeResult {
+  const TagMergeResult({
+    required this.into,
+    this.merged = const [],
+    this.skipped = const [],
+  });
+
+  final Tag into;
+  final List<MergedTag> merged;
+  final List<int> skipped;
+
+  factory TagMergeResult.fromJson(Map<String, dynamic> j) => TagMergeResult(
+    into: Tag.fromJson(J.map(j['into'])),
+    merged: J.mapList(j['merged']).map(MergedTag.fromJson).toList(),
+    skipped: J.list(j['skipped']).map((e) => J.intOr(e)).toList(),
+  );
+}
+
+/// One consumed tag, with what it contributed to the survivor.
+class MergedTag {
+  const MergedTag({
+    required this.id,
+    required this.name,
+    required this.objectsBefore,
+  });
+
+  final int id;
+  final String name;
+  final int objectsBefore;
+
+  factory MergedTag.fromJson(Map<String, dynamic> j) => MergedTag(
+    id: J.intOr(j['id']),
+    name: J.strOr(j['name']),
+    objectsBefore: J.intOr(j['objects_before']),
   );
 }

@@ -149,11 +149,11 @@ class Ticket {
     // Organization: on the ticket or nested under `user`.
     final orgRaw = j['organization'] ?? j['org'] ?? user['organization'];
 
-    // Due-date lock. The server is authoritative when it publishes a flag
-    // (`sla_locked` / `can_set_duedate`, the same keys `GET /tickets/form`
-    // already uses); otherwise fall back to the web's rule - any real plan
-    // (id > 0) drives the date. Unknown means unlocked, so a backend that
-    // says nothing keeps today's behaviour.
+    // Due-date lock. `GET /tickets/{id}` publishes `sla_locked` /
+    // `can_set_duedate` (the same keys `GET /tickets/form` uses) straight from
+    // `Ticket::updateField()`'s own rejection rule, so the server wins whenever
+    // it speaks. The plan-id fallback below only covers payloads that carry no
+    // flag at all - a list row promoted to a Ticket, say.
     final bool locked;
     if (j['sla_locked'] != null) {
       locked = J.boolOr(j['sla_locked']);
@@ -171,10 +171,13 @@ class Ticket {
       subject: J.strOr(j['subject']),
       statusName: statusName,
       statusId: statusId,
-      // List rows omit `priority` for tickets without an explicitly-set one;
-      // the effective value is the system default — "Normal" — which is what
-      // the detail endpoint (and the web UI) resolve and display.
-      priority: J.str(j['priority']) ?? 'Normal',
+      // Never substitute a default for display — the web doesn't. Its ticket
+      // page renders the priority answer as-is (blank when unset) and the
+      // queue reads the same empty cdata column, so "unset" must stay unset
+      // and let the UI prompt for it. The two endpoints spell it differently:
+      // detail sends "" for an unset priority, list rows omit the key, and
+      // blank-aware parsing collapses both to null.
+      priority: J.strNonBlank(j['priority']),
       departmentName: deptName,
       departmentId: deptId,
       // Blank-aware: the summary payload can carry an empty `requester`
@@ -677,4 +680,68 @@ class TicketCreateForm {
       slas: slaOptions(j),
     );
   }
+}
+
+/// One row of the ticket's "Ticket details" panel: a form field's label, its
+/// display value, whether a *required* answer is still missing, and the field
+/// definition behind it ([field] is null when the form couldn't be read, so
+/// the row can't be edited on its own).
+typedef TicketFieldRow = ({
+  String label,
+  String? value,
+  bool missing,
+  TicketField? field,
+});
+
+/// Merge a ticket's answers with its topic's form definition for display.
+///
+/// `GET /tickets/{id}` carries only a flat `{label: displayValue}` map, which
+/// can't say which answers are required; `GET /tickets/{id}/fields` carries the
+/// required flag and the form's own order. With [fields] present the form
+/// drives the list (so an unanswered required field still gets a row, marked
+/// [TicketFieldRow.missing] - the web draws a warning triangle on those and
+/// osTicket refuses to close the ticket until they're filled in). Without it,
+/// the flat map stands alone and nothing is marked.
+List<TicketFieldRow> ticketFieldRows(
+  Map<String, String> customFields,
+  List<TicketField> fields,
+) {
+  if (fields.isEmpty) {
+    return [
+      for (final e in customFields.entries)
+        (label: e.key, value: e.value, missing: false, field: null),
+    ];
+  }
+  final rows = <TicketFieldRow>[];
+  for (final f in fields) {
+    final value = _nonBlank(customFields[f.label]) ?? _displayValue(f);
+    rows.add((
+      label: f.label,
+      value: value,
+      missing: f.required && value == null,
+      // Only an editable field opens its own dialog; a read-only one still
+      // shows its row.
+      field: f.editable ? f : null,
+    ));
+  }
+  return rows;
+}
+
+String? _nonBlank(String? s) => (s == null || s.trim().isEmpty) ? null : s;
+
+/// A field's own answer rendered for display: choice keys resolved to their
+/// labels, a multiselect joined, a switch as Yes/No.
+String? _displayValue(TicketField f) {
+  final v = f.value;
+  if (v == null) return null;
+  if (v is bool) return v ? 'Yes' : 'No';
+  if (v is List) {
+    final parts = v
+        .map((e) => f.choices?[e.toString()] ?? e.toString())
+        .where((e) => e.trim().isNotEmpty);
+    return parts.isEmpty ? null : parts.join(', ');
+  }
+  final s = v.toString().trim();
+  if (s.isEmpty) return null;
+  return f.choices?[s] ?? s;
 }

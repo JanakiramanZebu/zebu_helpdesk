@@ -42,6 +42,23 @@ class ApiException implements Exception {
   /// Best validation message to surface for [field], falling back to [message].
   String fieldOr(String field) => fields[field] ?? message;
 
+  /// The most specific reason worth showing. A 422 often pairs a generic
+  /// headline (`Could not add dependency`) with the real cause in [fields]
+  /// (`{'err': 'That dependency already exists'}`), so a field detail wins
+  /// whenever it says something; the placeholder the server sends when it has
+  /// no reason of its own does not.
+  String get detail {
+    final detailed = fields.values
+        .map((v) => v.trim())
+        .where((v) => v.isNotEmpty && v.toLowerCase() != 'unknown error')
+        .join('\n');
+    if (detailed.isNotEmpty) return detailed;
+    final headline = message.trim();
+    return headline.isNotEmpty
+        ? headline
+        : _defaultMessage(statusCode, code: code);
+  }
+
   /// Build from a Dio error, decoding the standard `{ "error": {...} }` body.
   factory ApiException.fromDio(DioException e) {
     final response = e.response;

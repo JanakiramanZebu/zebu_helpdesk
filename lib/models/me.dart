@@ -1,4 +1,5 @@
 import '../core/api/json.dart';
+import 'common.dart';
 
 /// The authenticated agent (`GET /me`) — identity, profile, roles, permissions,
 /// computed visibility, and file limits.
@@ -22,6 +23,7 @@ class Me {
     required this.managedDepartments,
     required this.teamIds,
     required this.limits,
+    this.cannedEnabled,
   });
 
   final int id;
@@ -37,9 +39,10 @@ class Me {
   final MeProfile profile;
   final NamedDeptRole? primaryDepartment;
 
-  /// Primary-role permission map (`code -> 0|1`). Serves as the collaborator
-  /// fallback in [canOn] — same role osTicket falls back to when the agent
-  /// holds no role in an object's own department.
+  /// The agent's **own** permission map (`code -> 0|1`) — `/me` builds it from
+  /// `Staff::getPermission()`, i.e. the per-agent grants set in Admin Panel →
+  /// Agents → Permissions. Equivalent to osTicket's `hasPerm($code)` (the
+  /// `$global = true` arm). Also serves as the collaborator fallback in [canOn].
   final Map<String, int> globalPermissions;
 
   /// Per-department role permission maps: `deptId -> { code: 0|1, ... }`. The
@@ -59,8 +62,118 @@ class Me {
 
   final FileLimits limits;
 
-  /// Global (primary-role) permission test.
+  /// `config.canned_enabled` — the install-wide switch behind osTicket's
+  /// `$cfg->isCannedResponseEnabled()`. Null when the install doesn't publish
+  /// the `config` block, in which case the flag falls open the same way an
+  /// unpublished permission does (see [publishes]).
+  final bool? cannedEnabled;
+
+  /// `Staff::PERM_STAFF` — the grant that lets an agent see every colleague
+  /// rather than just those in their own departments.
+  static const permViewAgents = 'visibility.agents';
+
+  /// Per-agent permission test — osTicket's `hasPerm($permission)`.
   bool can(String permission) => (globalPermissions[permission] ?? 0) == 1;
+
+  /// Whether **any** role this agent holds grants [permission] — their primary
+  /// department's role or any extended dept-access role. Ports osTicket's
+  /// `Staff::hasPerm($permission, false)` (`include/class.staff.php`), which
+  /// walks `getRole()` then every `dept_access` role; `/me` publishes exactly
+  /// that role set as [permissionsByDepartment].
+  ///
+  /// Note there is no admin bypass: `RolePermission::has()` is a plain map
+  /// lookup, so the web hides these entries from an admin who lacks the grant
+  /// too.
+  bool canInAnyRole(String permission) =>
+      permissionsByDepartment.values.any((m) => (m[permission] ?? 0) == 1);
+
+  /// Whether this install's `/me` publishes [permission] at all.
+  ///
+  /// `MeV2Controller::allPermissionCodes()` walks `RolePermission::allPermissions()`
+  /// and writes an explicit `1`/`0` for **every** code it knows, so a code that
+  /// is simply *absent* was never registered — not denied.
+  ///
+  /// That distinction matters because osTicket registers each permission from
+  /// the bottom of the class file that owns it, and `scp/api.php`'s **bearer
+  /// token** bootstrap (the one the app uses) loads far fewer of those files
+  /// than the session bootstrap does. `reports.export` is the live example:
+  /// `include/class.report.php` is pulled in only via `class.nav.php`, which
+  /// only `staff.inc.php` (the cookie path) requires — so the app's `/me` never
+  /// carries it, while the same endpoint opened in a logged-in browser does.
+  bool publishes(String permission) =>
+      globalPermissions.containsKey(permission) ||
+      permissionsByDepartment.values.any((m) => m.containsKey(permission));
+
+  /// [test] applied to [permission], but only when this install actually
+  /// publishes it — an unpublished permission falls open.
+  ///
+  /// Gating a menu entry on a code the server never sends would hide it from
+  /// **everyone**, forever, which is strictly worse than showing an entry the
+  /// backend will refuse anyway (it re-checks server-side). The moment the
+  /// install starts publishing the code, the real rule takes over with no app
+  /// change needed.
+  bool _gate(String permission, bool Function() test) =>
+      publishes(permission) ? test() : true;
+
+  /// Whether the Canned Responses **management** screen is available.
+  ///
+  /// Mirrors `scp/canned.php` + the `kbase` sub-nav in `include/class.nav.php`:
+  /// the entry needs `canned.manage` on one of the agent's roles (the
+  /// `hasPerm(Canned::PERM_MANAGE, false)` arm). Using a canned response while
+  /// replying is a separate, ungated path — this only gates authoring them.
+  ///
+  /// The page also requires `$cfg->isCannedResponseEnabled()`, published as
+  /// [cannedEnabled]; with the feature switched off install-wide the web hides
+  /// the entry from everyone, admins included.
+  bool get canManageCanned =>
+      (cannedEnabled ?? true) &&
+      _gate('canned.manage', () => canInAnyRole('canned.manage'));
+
+  /// Whether this agent manages any department — the gate osTicket puts on
+  /// its manager-only pages (`Dept::objects()->filter(manager_id = me)`).
+  bool get managesAnyDepartment => managedDepartments.isNotEmpty;
+
+  /// Whether the **tag catalogue** is manageable: rename, recolor, enable /
+  /// disable, merge, delete. Ports `Tag::canManage()` — an admin, or the
+  /// manager of any department.
+  ///
+  /// (The web shows its Tags *tab* to non-admin managers only, because admins
+  /// curate tags from the Admin Panel; mobile has no admin panel, so an admin
+  /// gets the same screen rather than no route at all.)
+  bool get canManageTags => isAdmin || managesAnyDepartment;
+
+  /// Whether new tags may be created. `Tag::canCreate()` is a separate
+  /// permission from managing — it resolves to the same set on this install,
+  /// but the destructive controls are gated on [canManageTags] independently
+  /// so the two can diverge server-side without the app offering a control
+  /// that 403s.
+  bool get canCreateTags => isAdmin || managesAnyDepartment;
+
+  /// Whether the agent may author knowledgebase content — currently only the
+  /// "Add New Category" action on the Knowledgebase screen.
+  ///
+  /// Mirrors `scp/categories.php`, which guards its create/update/delete
+  /// actions with `hasPerm(FAQ::PERM_MANAGE)` (`faq.manage`). Browsing the KB
+  /// is ungated, exactly as the web's `kbase` tab is.
+  bool get canManageFaq =>
+      _gate('faq.manage', () => can('faq.manage') || canInAnyRole('faq.manage'));
+
+  /// Whether the Reports & Exports screen is available.
+  ///
+  /// Mirrors the `reports` tab in `include/class.nav.php` and the guard at the
+  /// top of `scp/reports.php`, which both read
+  /// `hasPerm(ReportModel::PERM_EXPORT) || hasPerm(ReportModel::PERM_EXPORT,
+  /// false)` — the agent's own grant OR any of their roles. No admin bypass,
+  /// same as the web.
+  ///
+  /// Note this currently falls open in practice: the app authenticates with a
+  /// bearer token, and that bootstrap never registers `reports.export` (see
+  /// [publishes]). Until the backend loads `class.report.php` on the API path
+  /// the entry shows for every agent, exactly as it did before it was gated.
+  bool get canViewReports => _gate(
+    'reports.export',
+    () => can('reports.export') || canInAnyRole('reports.export'),
+  );
 
   /// Whether this agent may perform [permission] on an object owned by
   /// [departmentId]. Ports osTicket's `checkStaffPerm()` permission phase
@@ -78,29 +191,26 @@ class Me {
     return can(permission);
   }
 
-  /// Whether this agent could open a ticket that sits in [departmentId] and is
-  /// assigned to [assigneeId] / [teamId].
+  /// Whether this agent may rewrite thread entry [entry] on an object in
+  /// [departmentId].
   ///
-  /// Ports the *visibility* phase of osTicket's `Ticket::checkStaffPerm()`
-  /// (`include/class.ticket.php`), which this install tightened: admins see
-  /// everything, otherwise it takes a department the agent **manages**
-  /// (`Staff::getVisibilityDepts()`, published here as
-  /// [visibilityDepartments]), being the assignee, or being on the assigned
-  /// team. Plain department membership is deliberately not honored, and
-  /// **opening a ticket grants its creator nothing** — so a ticket filed into a
-  /// department the agent merely belongs to, and left unassigned, is invisible
-  /// to them the moment it exists (`GET /tickets/{id}` → `404 No such ticket`).
+  /// Ports `TEA_EditThreadEntry` (`include/class.thread_actions.php`), the same
+  /// action that draws the web's pencil: system posts (no poster) and agent
+  /// **responses** are never editable, and beyond that it takes authoring the
+  /// post, managing the department, or a role holding `thread.edit`.
   ///
-  /// Staff-collaborator and referral access also grant visibility server-side,
-  /// but neither can be set while a ticket is being created, so this is exact
-  /// for the create form. A null [departmentId] means "not known yet": only an
-  /// assignment can promise visibility then.
-  bool canSeeTicket({int? departmentId, int? assigneeId, int? teamId}) {
-    if (isAdmin) return true;
-    if (assigneeId != null && assigneeId == id) return true;
-    if (teamId != null && teamIds.contains(teamId)) return true;
-    return departmentId != null &&
-        visibilityDepartments.contains(departmentId);
+  /// One approximation: the thread payload carries the poster's *name*, not
+  /// their staff id, so "I wrote this" is a name match. It only ever widens the
+  /// menu — the endpoint runs the real check and 403s a mismatch.
+  bool canEditThreadEntry(ThreadEntry entry, int? departmentId) {
+    if (entry.isResponse || entry.poster.trim().isEmpty) return false;
+    if (entry.poster.trim().toLowerCase() == name.trim().toLowerCase()) {
+      return true;
+    }
+    if (departmentId != null && managedDepartments.contains(departmentId)) {
+      return true;
+    }
+    return canOn('thread.edit', departmentId);
   }
 
   factory Me.fromJson(Map<String, dynamic> j) {
@@ -144,6 +254,11 @@ class Me {
       managedDepartments: intList(caps['managed_departments']),
       teamIds: intList(caps['team_ids']),
       limits: FileLimits.fromJson(J.map(j['limits'])),
+      cannedEnabled: j['config'] is Map
+          ? (J.map(j['config'])['canned_enabled'] == null
+                ? null
+                : J.boolOr(J.map(j['config'])['canned_enabled']))
+          : null,
     );
   }
 }

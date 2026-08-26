@@ -19,12 +19,16 @@ import '../../widgets/action_menu.dart';
 import '../../widgets/app_dialog.dart';
 import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
+import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/message_composer.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/reassign_dialog.dart';
 import '../../widgets/states.dart';
+import '../../widgets/thread_entry_edit.dart';
 import '../../widgets/status_chip.dart';
+import '../../widgets/tags_dialog.dart';
 import '../tickets/widgets/thread_entry_tile.dart';
+import 'widgets/edit_task_sheet.dart';
 import 'widgets/task_card.dart';
 
 /// Per-agent action gates for a task, ported from osTicket's
@@ -68,14 +72,17 @@ class _TaskCaps {
 }
 
 class TaskDetailScreen extends ConsumerStatefulWidget {
-  const TaskDetailScreen({super.key, required this.taskId, this.seed});
+  const TaskDetailScreen({
+    super.key,
+    required this.taskId,
+    this.initialTab = 0,
+  });
+
   final int taskId;
 
-  /// The list row's task, passed via the route's `extra` when navigating from a
-  /// list/subtask. The detail endpoint (`/tasks/{id}`) omits the due date, but
-  /// the list summary carries it — so we graft the seed's due date onto the
-  /// fetched detail when the response lacks one. Null for deep-link/push entry.
-  final Task? seed;
+  /// Tab to open on (0 Conversation, 1 Details, 2 Activity). The inbox's
+  /// "View All Activity" link lands straight on the Activity tab.
+  final int initialTab;
 
   @override
   ConsumerState<TaskDetailScreen> createState() => _TaskDetailScreenState();
@@ -83,7 +90,11 @@ class TaskDetailScreen extends ConsumerStatefulWidget {
 
 class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 3, vsync: this);
+  late final TabController _tabs = TabController(
+    length: 3,
+    vsync: this,
+    initialIndex: widget.initialTab,
+  );
   // Controls the outer (header) scroll view of the NestedScrollView, so its
   // offset tells us when the collapsing header (which holds the title) has
   // scrolled behind the pinned app bar.
@@ -94,6 +105,9 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   List<ThreadEvent> _events = [];
   List<Task> _subtasks = [];
   List<TaskDependency> _dependencies = [];
+  // Seeded from the task payload's own `tags`, then replaced in place by the
+  // Tags dialog's write (which answers with the saved set).
+  List<Tag> _tags = const [];
   Object? _error;
   bool _loading = true;
   bool _acting = false;
@@ -146,16 +160,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
     });
     final repo = ref.read(tasksRepositoryProvider);
     try {
-      var task = await repo.get(widget.taskId);
-      // The detail endpoint omits the due date; graft it from the list row we
-      // came in with (same task) so the Due row and overdue chip still show.
-      final seed = widget.seed;
-      if (task.duedate == null &&
-          seed != null &&
-          seed.id == task.id &&
-          seed.duedate != null) {
-        task = task.copyWith(duedate: seed.duedate, overdue: seed.overdue);
-      }
+      final task = await repo.get(widget.taskId);
       final thread = await repo.thread(widget.taskId, limit: 50);
       final events = await repo.events(widget.taskId);
       final subtasks = await repo.subtasks(widget.taskId);
@@ -167,6 +172,7 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
         _events = events;
         _subtasks = subtasks;
         _dependencies = dependencies;
+        _tags = task.tags;
         _loading = false;
       });
     } catch (e) {
@@ -177,6 +183,35 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
       });
     }
   }
+
+  /// Rewrites a thread entry (the web's pencil action). The edit lands as a new
+  /// entry with the old one hidden behind /history, so the task is reloaded
+  /// rather than the bubble patched in place.
+  Future<void> _editEntry(ThreadEntry entry) async {
+    final html = await showEditEntryDialog(context, entry: entry);
+    // Null means dismissed, or saved with nothing actually changed.
+    if (html == null || !mounted) return;
+    setState(() => _acting = true);
+    try {
+      await ref
+          .read(tasksRepositoryProvider)
+          .editThreadEntry(widget.taskId, entry.id, body: html);
+      await _load(silent: true);
+      _markChanged();
+      if (mounted) _toast('Message updated');
+    } on ApiException catch (e) {
+      if (mounted) _toast(e.message);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  /// Earlier versions of an edited entry (the web's "View History").
+  Future<void> _entryHistory(ThreadEntry entry) => showEntryHistorySheet(
+    context,
+    load: () =>
+        ref.read(tasksRepositoryProvider).threadHistory(widget.taskId, entry.id),
+  );
 
   /// Composer transport: post the body (reply or internal note) plus any
   /// attachments, then silently refresh the thread. Returns false on failure so
@@ -271,6 +306,16 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               asset: Assets.actPriority,
               label: 'Set priority',
             ),
+          // The web offers the due date as an inline pencil on an OPEN task
+          // only — a closed one shows its completion date instead.
+          if (caps.canEdit && t.isOpen)
+            appMenuItem(
+              value: 'duedate',
+              asset: Assets.actDuedate,
+              label: 'Set due date',
+            ),
+          if (caps.canEdit)
+            appMenuItem(value: 'fields', asset: Assets.actEdit, label: 'Edit task'),
           if (caps.hasMenuAction) const PopupMenuDivider(),
           // Metadata.
           appMenuItem(
@@ -363,15 +408,24 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                         _ConversationTab(
                           thread: _thread,
                           onReply: (e) => setState(() => _replyTo = e),
+                          canEdit: (e) =>
+                              me?.canEditThreadEntry(
+                                e,
+                                _task?.departmentId,
+                              ) ??
+                              false,
+                          onEdit: _editEntry,
+                          onHistory: _entryHistory,
                           headerController: _headerScroll,
                         ),
                         _DetailsTab(
                           task: t,
                           caps: caps,
+                          tags: _tags,
                           onEdit: _onMenu,
                           subtasks: _subtasks,
                           onSubtaskTap: (st) =>
-                              context.push(Routes.task(st.id), extra: st),
+                              context.push(Routes.task(st.id)),
                           onAddSubtask: _addSubtask,
                           dependencies: _dependencies,
                           onAddDependency: _addDependency,
@@ -403,12 +457,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
                       replyTo: _replyTo,
                       onClearReply: () => setState(() => _replyTo = null),
                       onSend:
-                          ({required note, required html, required files}) =>
-                              _sendMessage(
-                                note: note,
-                                html: html,
-                                files: files,
-                              ),
+                          ({
+                            required note,
+                            required html,
+                            required files,
+                            // Tasks email their whole thread audience; there is
+                            // no per-reply recipient choice to honour.
+                            recipient,
+                          }) => _sendMessage(note: note, html: html, files: files),
                     )
                   : const SizedBox.shrink(),
             ),
@@ -457,44 +513,133 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           );
           await _load();
         });
+      case 'duedate':
+        await _setDueDate();
+      case 'fields':
+        await _editTask();
       case 'collaborators':
         await showDialog<void>(
           context: context,
           builder: (_) => _TaskCollaboratorsSheet(taskId: widget.taskId),
         );
       case 'tags':
-        await showDialog<void>(
-          context: context,
-          builder: (_) => _TaskTagsSheet(taskId: widget.taskId),
-        );
+        await _manageTags();
     }
   }
 
-  Future<void> _addSubtask() async {
-    final created = await showAppSheet<bool>(
-      context: context,
-      builder: (_) => _SubtaskSheet(taskId: widget.taskId),
+  /// The web's inline due-date pencil (`#tasks/{id}/field/duedate/edit`): pick
+  /// a date + time and post it as the task's own `duedate` field.
+  Future<void> _setDueDate() async {
+    final t = _task;
+    if (t == null) return;
+    final now = DateTime.now();
+    final firstDate = DateTime(now.year, now.month, now.day);
+    // An already-overdue task sits before `first`, which the picker asserts on.
+    final current = t.duedate;
+    final initial = (current == null || current.isBefore(firstDate))
+        ? firstDate
+        : current;
+    final date = await pickDate(
+      context,
+      initial: initial,
+      first: firstDate,
+      last: DateTime(now.year + 3, now.month, now.day),
     );
-    if (created == true) {
-      _markChanged();
-      await _load();
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current ?? now),
+    );
+    if (!mounted) return;
+    final due = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time?.hour ?? 17,
+      time?.minute ?? 0,
+    );
+    // `Task::updateField()` refuses a past date outright; say so here rather
+    // than spending a round trip on it.
+    if (due.isBefore(DateTime.now())) {
+      AppSnack.info(context, 'Due date must be in the future');
+      return;
     }
+    await _runAction(
+      () => ref.read(tasksRepositoryProvider).edit(
+        widget.taskId,
+        fields: {'duedate': Fmt.apiDateTime(due)},
+      ),
+      success: 'Due date updated',
+    );
+    await _load();
+  }
+
+  /// The mobile twin of the web's Edit Task dialog — Title, Due Date, Priority,
+  /// Parent Task and an optional internal note.
+  Future<void> _editTask() async {
+    final t = _task;
+    if (t == null) return;
+    final saved = await showEditTaskDialog(context, task: t);
+    if (saved == true && mounted) await _load();
+  }
+
+  Future<void> _manageTags() async {
+    final repo = ref.read(tasksRepositoryProvider);
+    final meta = ref.read(metaRepositoryProvider);
+    final saved = await showTagsDialog(
+      context,
+      loadApplied: () => repo.tags(widget.taskId),
+      loadShared: () => meta.get(MetaKind.tags),
+      addTag: (tagId) => repo.addTag(widget.taskId, tagId: tagId),
+      removeTag: (tagId) => repo.removeTag(widget.taskId, tagId),
+    );
+    if (!mounted || saved == null) return;
+    setState(() => _tags = saved);
+    _markChanged();
+    AppSnack.success(context, 'Tags updated');
+  }
+
+  /// Opens the full create form with this task as the parent. A subtask goes
+  /// through the same `POST /tasks` as any other task — osTicket validates it
+  /// with the same required set (department, title, description, due date), so
+  /// a title-and-description sheet could never satisfy it.
+  Future<void> _addSubtask() async {
+    final parent = _task;
+    if (parent == null) return;
+    await context.push(Routes.taskNew, extra: parent);
+    // The create screen replaces itself with the new subtask's detail, so we
+    // come back here with no result to inspect — reload either way and let the
+    // subtask list speak for itself.
+    if (!mounted) return;
+    await _load();
   }
 
   Future<void> _addDependency() async {
-    final id = await showDialog<int>(
-      context: context,
-      builder: (_) => const _DependencyDialog(),
+    // Pick a real task: the blocker is addressed by its internal id, which an
+    // agent never sees (the UI shows #number), so an id prompt is unusable.
+    // Already-linked blockers and this task itself are filtered out — the
+    // server rejects both (duplicate / self).
+    final picked = await pickTask(
+      context,
+      title: 'Select blocking task',
+      excludeIds: {
+        widget.taskId,
+        for (final d in _dependencies)
+          if (d.blocker != null) d.blocker!.id,
+      },
     );
-    if (id == null) return;
+    if (picked == null) return;
     setState(() => _acting = true);
     try {
       final deps = await ref
           .read(tasksRepositoryProvider)
-          .addDependency(widget.taskId, id);
+          .addDependency(widget.taskId, picked.id);
       if (mounted) setState(() => _dependencies = deps);
     } on ApiException catch (e) {
-      _toast(e.message);
+      // The endpoint answers every rejection with the same headline
+      // ("Could not add dependency") and puts the reason an agent can act on
+      // — already linked, loop, no access to that task — in `fields.err`.
+      _toast(e.detail);
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -509,8 +654,14 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
           .read(tasksRepositoryProvider)
           .removeDependency(widget.taskId, depId);
       if (mounted) setState(() => _dependencies = deps);
+      // The server discards `Task::removeDependency()`'s result and always
+      // answers 200 with the current edges, so a refused removal arrives
+      // looking like a success. The edge still being there is the only tell.
+      if (deps.any((d) => d.id == depId)) {
+        _toast('Could not remove dependency');
+      }
     } on ApiException catch (e) {
-      _toast(e.message);
+      _toast(e.detail);
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -742,10 +893,16 @@ class _ConversationTab extends StatelessWidget {
   const _ConversationTab({
     required this.thread,
     this.onReply,
+    this.onEdit,
+    this.canEdit,
+    this.onHistory,
     this.headerController,
   });
   final List<ThreadEntry> thread;
   final ValueChanged<ThreadEntry>? onReply;
+  final ValueChanged<ThreadEntry>? onEdit;
+  final bool Function(ThreadEntry entry)? canEdit;
+  final ValueChanged<ThreadEntry>? onHistory;
   final ScrollController? headerController;
 
   @override
@@ -757,6 +914,9 @@ class _ConversationTab extends StatelessWidget {
     return ConversationList(
       thread: thread,
       onReply: onReply,
+      onEdit: onEdit,
+      canEdit: canEdit,
+      onHistory: onHistory,
       headerController: headerController,
       bottomReserve: 104 + MediaQuery.of(context).padding.bottom,
     );
@@ -767,6 +927,7 @@ class _DetailsTab extends StatelessWidget {
   const _DetailsTab({
     required this.task,
     required this.caps,
+    required this.tags,
     required this.onEdit,
     required this.subtasks,
     required this.onSubtaskTap,
@@ -780,6 +941,11 @@ class _DetailsTab extends StatelessWidget {
   /// Per-agent action gates — a null onTap/actionLabel below renders the row or
   /// button read-only when the agent lacks the matching permission.
   final _TaskCaps caps;
+
+  /// Tags applied to the task. Shown to every agent (the ⋮ → Tags editor is
+  /// gated on task.edit, so without this row an agent who can't edit couldn't
+  /// see them at all); the row only becomes tappable with that permission.
+  final List<Tag> tags;
 
   /// Routes an edit intent (matching the â‹®-menu action keys) back to the host.
   final ValueChanged<String> onEdit;
@@ -839,6 +1005,24 @@ class _DetailsTab extends StatelessWidget {
                 placeholder: 'Assign',
                 onTap: caps.canAssign ? () => onEdit('assign') : null,
               ),
+              // The web keeps the due date inline-editable while the task is
+              // open, and swaps the row for its completion date once it closes.
+              if (task.isOpen)
+                _DetailRow(
+                  icon: Icons.event_outlined,
+                  label: 'Due date',
+                  value: Fmt.dateTime(task.duedate),
+                  placeholder: 'Set due date',
+                  onTap: caps.canEdit ? () => onEdit('duedate') : null,
+                  alwaysShow: true,
+                ),
+              _DetailRow(
+                icon: Icons.local_offer_outlined,
+                label: 'Tags',
+                value: tags.isEmpty ? null : tags.map((t) => t.name).join(', '),
+                placeholder: 'No tags',
+                onTap: caps.canEdit ? () => onEdit('tags') : null,
+              ),
             ],
           ),
         ),
@@ -864,11 +1048,24 @@ class _DetailsTab extends StatelessWidget {
                 label: 'Updated',
                 value: Fmt.dateTime(task.updated),
               ),
-              _DetailRow(
-                icon: Icons.event_outlined,
-                label: 'Due',
-                value: Fmt.dateTime(task.duedate),
-              ),
+              // Rolled up from the subtasks, so the web only shows it on a
+              // parent — and never as an editable field.
+              if (task.subtaskCount > 0)
+                _DetailRow(
+                  icon: Icons.donut_large_outlined,
+                  label: 'Progress',
+                  value: '${task.progress}%',
+                ),
+              // A closed task loses its editable due-date row above; keep the
+              // date visible here so closing a task doesn't hide when it was
+              // due. (The payload carries no completion date, which is what
+              // the web shows in its place.)
+              if (!task.isOpen)
+                _DetailRow(
+                  icon: Icons.event_outlined,
+                  label: 'Due',
+                  value: Fmt.dateTime(task.duedate),
+                ),
             ],
           ),
         ),
@@ -879,11 +1076,17 @@ class _DetailsTab extends StatelessWidget {
             child: _DetailSection(
               title: 'Custom fields',
               children: [
+                // Blank answers arrive in the payload too, so an all-empty
+                // form used to render as a heading over an empty card. Mark
+                // the unset ones the way the web does instead of dropping
+                // them. No tap: tasks have no "Edit fields" action.
                 for (final e in task.customFields.entries)
                   _DetailRow(
                     icon: Icons.list_alt_outlined,
                     label: e.key,
                     value: e.value,
+                    placeholder: '—Empty—',
+                    alwaysShow: true,
                   ),
               ],
             ),
@@ -1069,9 +1272,9 @@ class _DetailSection extends StatelessWidget {
           margin: EdgeInsets.zero,
           child: Column(
             children: [
-              for (var i = 0; i < children.length; i++) ...[
+              for (var i = 0; i < _visible.length; i++) ...[
                 if (i != 0) const Divider(height: 1, indent: 52),
-                children[i],
+                _visible[i],
               ],
             ],
           ),
@@ -1079,6 +1282,14 @@ class _DetailSection extends StatelessWidget {
       ],
     );
   }
+
+  /// Rows that actually render. A static row with nothing to show collapses to
+  /// an empty box, so it has to be dropped here too — otherwise it leaves its
+  /// divider behind as a stray hairline.
+  List<Widget> get _visible => [
+    for (final c in children)
+      if (c is! _DetailRow || c.isVisible) c,
+  ];
 }
 
 /// A single detail row. When [onTap] is set it renders as tappable (chevron +
@@ -1091,6 +1302,7 @@ class _DetailRow extends StatelessWidget {
     required this.value,
     this.placeholder,
     this.onTap,
+    this.alwaysShow = false,
   });
 
   final IconData icon;
@@ -1099,12 +1311,24 @@ class _DetailRow extends StatelessWidget {
   final String? placeholder;
   final VoidCallback? onTap;
 
+  /// Render the row even with nothing to show — see the ticket screen's copy.
+  /// Custom fields set this so an unanswered one reads as "—Empty—" instead of
+  /// vanishing and leaving its section an empty card.
+  final bool alwaysShow;
+
+  /// Whether the row carries a real value. [Fmt.dateTime] and friends render a
+  /// bare em dash for a null date, which is a placeholder, not a value.
+  bool get _has => value != null && value!.isNotEmpty && value != '—';
+
+  /// Whether this row renders anything at all. Static rows with no value
+  /// collapse; [_DetailSection] reads this so it can drop their dividers too.
+  bool get isVisible => _has || onTap != null || alwaysShow;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final has = value != null && value!.isNotEmpty && value != 'â€”';
-    // Static rows with no value at all render nothing.
-    if (!has && onTap == null) return const SizedBox.shrink();
+    final has = _has;
+    if (!isVisible) return const SizedBox.shrink();
 
     return InkWell(
       onTap: onTap,
@@ -1125,7 +1349,7 @@ class _DetailRow extends StatelessWidget {
             Expanded(
               child: AppText.subText(
                 context,
-                has ? value! : (placeholder ?? 'â€”'),
+                has ? value! : (placeholder ?? '—'),
                 fw: has ? 1 : 3,
                 color: has ? scheme.onSurface : scheme.primary,
               ),
@@ -1361,264 +1585,7 @@ class _ActivityTab extends StatelessWidget {
   }
 }
 
-// --- Subtask sheet ----------------------------------------------------------
-
-class _SubtaskSheet extends ConsumerStatefulWidget {
-  const _SubtaskSheet({required this.taskId});
-  final int taskId;
-
-  @override
-  ConsumerState<_SubtaskSheet> createState() => _SubtaskSheetState();
-}
-
-class _SubtaskSheetState extends ConsumerState<_SubtaskSheet> {
-  final _title = TextEditingController();
-  final _description = TextEditingController();
-  bool _saving = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _title.dispose();
-    _description.dispose();
-    super.dispose();
-  }
-
-  Future<void> _save() async {
-    if (_title.text.trim().isEmpty || _description.text.trim().isEmpty) {
-      setState(() => _error = 'Title and description are required');
-      return;
-    }
-    setState(() {
-      _saving = true;
-      _error = null;
-    });
-    try {
-      // dept_id is inherited from the parent task.
-      await ref.read(tasksRepositoryProvider).createSubtask(widget.taskId, {
-        'title': _title.text.trim(),
-        'description': _description.text.trim(),
-      });
-      if (mounted) Navigator.pop(context, true);
-    } on ApiException catch (e) {
-      setState(() => _error = e.message);
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppSheet(
-      title: 'New subtask',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (_error != null) ...[
-            AppText.subText(
-              context,
-              _error!,
-              color: Theme.of(context).colorScheme.error,
-            ),
-            const SizedBox(height: 8),
-          ],
-          TextField(
-            controller: _title,
-            textInputAction: TextInputAction.next,
-            decoration: const InputDecoration(labelText: 'Title'),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _description,
-            minLines: 2,
-            maxLines: 5,
-            decoration: const InputDecoration(
-              labelText: 'Description',
-              alignLabelWithHint: true,
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: _saving
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Text('Create subtask'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // --- Dependency dialog ------------------------------------------------------
-
-class _DependencyDialog extends StatefulWidget {
-  const _DependencyDialog();
-
-  @override
-  State<_DependencyDialog> createState() => _DependencyDialogState();
-}
-
-class _DependencyDialogState extends State<_DependencyDialog> {
-  final _ctrl = TextEditingController();
-  String? _error;
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final id = int.tryParse(_ctrl.text.trim());
-    if (id == null || id <= 0) {
-      setState(() => _error = 'Enter a valid task id');
-      return;
-    }
-    Navigator.pop(context, id);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppDialog(
-      title: 'Add dependency',
-      actionLabel: 'Add',
-      onAction: _submit,
-      child: TextField(
-        controller: _ctrl,
-        keyboardType: TextInputType.number,
-        autofocus: true,
-        onSubmitted: (_) => _submit(),
-        decoration: InputDecoration(
-          labelText: 'Blocking task id',
-          hintText: 'e.g. 412',
-          errorText: _error,
-        ),
-      ),
-    );
-  }
-}
-
-// --- Tags sheet -------------------------------------------------------------
-
-/// Lists a task's tags and lets the agent add/remove them
-/// (`GET/POST/DELETE /tasks/{id}/tags`). Mirrors the ticket Tags sheet.
-class _TaskTagsSheet extends ConsumerStatefulWidget {
-  const _TaskTagsSheet({required this.taskId});
-  final int taskId;
-
-  @override
-  ConsumerState<_TaskTagsSheet> createState() => _TaskTagsSheetState();
-}
-
-class _TaskTagsSheetState extends ConsumerState<_TaskTagsSheet> {
-  List<Tag> _tags = const [];
-  bool _loading = true;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final t = await ref.read(tasksRepositoryProvider).tags(widget.taskId);
-      if (mounted) {
-        setState(() {
-          _tags = t;
-          _loading = false;
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        AppSnack.error(context, e.message);
-      }
-    }
-  }
-
-  Future<void> _add() async {
-    final List<MetaItem> items;
-    try {
-      items = await ref.read(metaRepositoryProvider).get(MetaKind.tags);
-    } on ApiException catch (e) {
-      if (mounted) AppSnack.error(context, e.message);
-      return;
-    }
-    if (!mounted) return;
-    final chosen = await showDialog<int>(
-      context: context,
-      builder: (_) => _MetaPickerDialog(title: 'Add tag', items: items),
-    );
-    if (chosen == null) return;
-    setState(() => _busy = true);
-    try {
-      final t = await ref
-          .read(tasksRepositoryProvider)
-          .addTag(widget.taskId, tagId: chosen);
-      if (mounted) setState(() => _tags = t);
-    } on ApiException catch (e) {
-      if (mounted) AppSnack.error(context, e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _remove(int tagId) async {
-    setState(() => _busy = true);
-    try {
-      final t = await ref
-          .read(tasksRepositoryProvider)
-          .removeTag(widget.taskId, tagId);
-      if (mounted) setState(() => _tags = t);
-    } on ApiException catch (e) {
-      if (mounted) AppSnack.error(context, e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppDialog(
-      title: 'Tags',
-      actionLabel: 'Add tag',
-      onAction: _busy ? null : _add,
-      actionEnabled: !_busy,
-      child: _loading
-          ? const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : _tags.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: AppText.subText(context, 'No tags'),
-            )
-          : Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final t in _tags)
-                  Chip(
-                    label: Text(t.name),
-                    onDeleted: _busy ? null : () => _remove(t.id),
-                  ),
-              ],
-            ),
-    );
-  }
-}
 
 // --- Collaborators sheet ----------------------------------------------------
 

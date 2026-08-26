@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -27,6 +28,13 @@ enum ExportFormat {
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     icon: Icons.grid_on_outlined,
     tint: Color(0xFF1E8E3E),
+  ),
+  csv(
+    label: 'CSV',
+    ext: 'csv',
+    mimeType: 'text/csv',
+    icon: Icons.description_outlined,
+    tint: Color(0xFF5F6368),
   );
 
   const ExportFormat({
@@ -138,6 +146,7 @@ Future<File> exportTable({
   final bytes = switch (format) {
     ExportFormat.pdf => await _buildPdf(title, columns, rows),
     ExportFormat.excel => _buildExcel(title, columns, rows),
+    ExportFormat.csv => _buildCsv(columns, rows),
   };
 
   // Write to the app's cache dir and hand the path to open_filex, which exposes
@@ -147,6 +156,27 @@ Future<File> exportTable({
   final file = File('${dir.path}/$baseName.${format.ext}');
   await file.writeAsBytes(bytes, flush: true);
   final result = await OpenFilex.open(file.path, type: format.mimeType);
+  if (result.type != ResultType.done) {
+    throw ExportOpenException(file, result.message);
+  }
+  return file;
+}
+
+/// Open bytes the **server** already rendered — the Reports screen's CSV comes
+/// from `GET /reports/download` rather than from [exportTable]'s local
+/// builders, and is written out verbatim (BOM and quoting included) under the
+/// server's own [filename] so a mobile download matches the web's byte for byte.
+///
+/// Throws [ExportOpenException] on the same terms as [exportTable].
+Future<File> openDownloadedFile({
+  required Uint8List bytes,
+  required String filename,
+  String mimeType = 'text/csv',
+}) async {
+  final dir = await getTemporaryDirectory();
+  final file = File('${dir.path}/$filename');
+  await file.writeAsBytes(bytes, flush: true);
+  final result = await OpenFilex.open(file.path, type: mimeType);
   if (result.type != ResultType.done) {
     throw ExportOpenException(file, result.message);
   }
@@ -234,6 +264,26 @@ Future<Uint8List> _buildPdf(
   );
 
   return doc.save();
+}
+
+/// RFC 4180 CSV — the format the web's Reports page downloads. A BOM is
+/// prepended so Excel opens non-ASCII (names, subjects) as UTF-8 instead of
+/// the local codepage, and rows are CRLF-terminated as the spec calls for.
+Uint8List _buildCsv(List<String> columns, List<List<String>> rows) {
+  const crlf = '\r\n';
+  // Quote every field: it costs nothing and removes any question about commas,
+  // quotes or newlines inside a subject line. `"` doubles, per the spec.
+  String cell(String v) => '"${v.replaceAll('"', '""')}"';
+  String line(List<String> r) => r.map(cell).join(',');
+
+  final body = StringBuffer()..write(line(columns))..write(crlf);
+  for (final r in rows) {
+    body..write(line(r))..write(crlf);
+  }
+  return Uint8List.fromList([
+    0xEF, 0xBB, 0xBF, // UTF-8 BOM, so Excel reads it as UTF-8
+    ...utf8.encode(body.toString()),
+  ]);
 }
 
 Uint8List _buildExcel(

@@ -15,10 +15,23 @@ class CannedRepository {
   CannedResponse _canned(dynamic body) =>
       CannedResponse.fromJson(J.map(J.map(body)['data']));
 
-  Future<Paginated<CannedResponse>> list({int page = 1, int limit = 25}) async {
+  /// List responses. [includeDisabled] opts into the management scope — every
+  /// response in a department the agent can manage, plus the global pool,
+  /// whatever its status. The server honours it only for an agent who holds
+  /// `canned.manage`; the composer's own list never sets it, because a
+  /// disabled response must not be insertable into a reply.
+  Future<Paginated<CannedResponse>> list({
+    int page = 1,
+    int limit = 25,
+    bool includeDisabled = false,
+  }) async {
     final body = await _api.get(
       '/canned',
-      query: {'page': page, 'limit': limit},
+      query: {
+        'page': page,
+        'limit': limit,
+        if (includeDisabled) 'include_disabled': 1,
+      },
     );
     return Paginated.fromEnvelope(J.map(body), CannedResponse.fromJson);
   }

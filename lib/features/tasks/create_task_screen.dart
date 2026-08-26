@@ -12,26 +12,36 @@ import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
-import '../../data/tasks_repository.dart';
 import '../../models/meta.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
-import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/composer_actions.dart';
 import '../../widgets/date_picker_sheet.dart';
 import '../../widgets/pickers.dart';
 import '../../widgets/rich_message_field.dart';
-import '../../widgets/states.dart';
 
 /// `POST /tasks` — create a task.
 class CreateTaskScreen extends ConsumerStatefulWidget {
-  const CreateTaskScreen({super.key, this.ticketId, this.ticketNumber});
+  const CreateTaskScreen({
+    super.key,
+    this.ticketId,
+    this.ticketNumber,
+    this.parentTask,
+  });
 
   /// When opened from a ticket ("Create task"), the task is linked to it via
   /// `ticket_id`. [ticketNumber] is only for display.
   final int? ticketId;
   final String? ticketNumber;
+
+  /// When opened from a task's "Add subtask", the parent it hangs under. The
+  /// subtask is created through the same `POST /tasks` as any other task, with
+  /// `parent_id` set — which is what the web does ("New Subtask of #6090" is
+  /// the ordinary task form with Parent Task pre-filled). A subtask is validated
+  /// like any staff-created task, so it still needs a department and a due date;
+  /// the department is seeded from the parent and both stay editable.
+  final Task? parentTask;
 
   @override
   ConsumerState<CreateTaskScreen> createState() => _CreateTaskScreenState();
@@ -63,6 +73,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   String? _error;
   String? _titleError;
   String? _descriptionError;
+  String? _dueError;
 
   @override
   void initState() {
@@ -70,6 +81,18 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     // Rebuild the submit button's enabled state as the required text changes.
     _title.addListener(_onRequiredChanged);
     _description.addListener(_onRequiredChanged);
+    final parent = widget.parentTask;
+    if (parent != null) {
+      _parent = parent;
+      // The server does not inherit the parent's department, so seed it here
+      // rather than making the agent re-pick the one it is already looking at.
+      if (parent.departmentId != null) {
+        _department = MetaItem(
+          id: parent.departmentId!,
+          name: parent.departmentName ?? 'Department',
+        );
+      }
+    }
   }
 
   void _onRequiredChanged() => setState(() {
@@ -78,6 +101,43 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       _descriptionError = null;
     }
   });
+
+  /// The field-error keys this form has a row for. A server error keyed
+  /// anything else has nowhere to land, so it goes to the banner instead.
+  static const _renderedFieldKeys = {
+    'title',
+    'description',
+    'dept_id',
+    'duedate',
+  };
+
+  /// `TaskInternalForm` field ids, as the API returns them in a 422. Priority
+  /// and parent go through the form now, so an inactive priority or an invalid
+  /// parent comes back keyed by 4 / 5 instead of being silently dropped.
+  static const _taskFieldIds = {
+    '1': 'dept_id',
+    '3': 'duedate',
+    '4': 'priority_id',
+    '5': 'parent_id',
+  };
+
+  static const _fieldLabels = {
+    'title': 'Title',
+    'description': 'Description',
+    'dept_id': 'Department',
+    'duedate': 'Due date',
+    'priority_id': 'Priority',
+    'parent_id': 'Parent task',
+  };
+
+  /// "Priority: Invalid" — an error with no row on this form still names the
+  /// field it came from instead of arriving as a bare message.
+  static String _labelled(String key, String message) {
+    final label = _fieldLabels[key];
+    final msg = message.trim();
+    if (label == null) return msg;
+    return msg.isEmpty ? '$label is invalid' : '$label: $msg';
+  }
 
   /// A field-level error to show for [key], preferring a clear, field-named
   /// message over the API's terse `"Required"` (or an empty string). Any other
@@ -95,7 +155,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     if (_title.text.trim().isEmpty) return _titleKey;
     if (_descriptionText.isEmpty) return _descriptionKey;
     if (_department == null) return _departmentKey;
-    if (_due == null) return _dueKey;
+    if (_due == null || _dueError != null) return _dueKey;
     return null;
   }
 
@@ -129,14 +189,20 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     setState(() => _attempted = true);
     final titleOk = _title.text.trim().isNotEmpty;
     final descriptionOk = _descriptionText.isNotEmpty;
+    // A due date chosen a while ago can have gone stale while the form was
+    // being filled in (picked 5 pm, submitted at 6). The server refuses it
+    // either way, so catch it here and say so on the row rather than letting
+    // the create round-trip and fail.
+    final dueOk = _due == null || _due!.isAfter(DateTime.now());
     setState(() {
       _titleError = titleOk ? null : 'Title is required';
       _descriptionError = descriptionOk ? null : 'Description is required';
+      _dueError = dueOk ? null : 'Due date must be in the future';
     });
     // Any missing required field (title, description, department or due date)
     // surfaces its own inline error — scroll the first one into view and stop
     // before calling the API.
-    if (!_canSubmit || !titleOk || !descriptionOk) {
+    if (!_canSubmit || !titleOk || !descriptionOk || !dueOk) {
       final ctx = _firstInvalidKey?.currentContext;
       if (ctx != null) {
         Scrollable.ensureVisible(
@@ -154,6 +220,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       _fieldErrors = const {};
     });
     try {
+      // `POST /tasks` now feeds parent_id and priority_id through
+      // TaskInternalForm (field ids 5 and 4) the way the web does, so both are
+      // stamped on the row before the insert — and both are validated, which
+      // is what [_taskFieldIds] maps back onto this form.
+      final parentId = _parent?.id;
       final task = await ref.read(tasksRepositoryProvider).create(
         {
           'dept_id': _department!.id,
@@ -161,9 +232,16 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
           'description': parchmentHtml.encode(_description.document),
           if (_priority != null) 'priority_id': _priority!.id,
           if (_due != null) 'duedate': Fmt.apiDateTime(_due!),
-          if (_parent != null) 'parent_id': _parent!.id,
+          if (parentId != null) 'parent_id': parentId,
           if (widget.ticketId != null) 'ticket_id': widget.ticketId,
         },
+        // Only the seeded parent may address the parent-scoped endpoint: it is
+        // gated on task.create in *that* task's department, which is what the
+        // "Add subtask" action already checks. A parent picked by hand goes
+        // through POST /tasks with `parent_id` in the body.
+        parentId: parentId != null && parentId == widget.parentTask?.id
+            ? parentId
+            : null,
         files: [
           for (final f in _files)
             if (f.bytes != null)
@@ -174,12 +252,29 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       // Tell the list screens a task now exists so they refetch rows and tab
       // count badges without waiting for a manual pull-to-refresh (TC_150).
       ref.read(tasksChangedProvider.notifier).bump();
-      _toast('Task #${task.number} created');
+      _toast(
+        widget.parentTask == null
+            ? 'Task #${task.number} created'
+            : 'Subtask #${task.number} created',
+      );
       context.pushReplacement(Routes.task(task.id));
     } on ApiException catch (e) {
+      // The task forms report errors keyed by osTicket's DB field id; name
+      // them first so each one either lands on its row or reaches the banner
+      // saying which field it belongs to (a rejected due date used to vanish).
+      final fields = <String, String>{
+        for (final f in e.fields.entries)
+          (_taskFieldIds[f.key] ?? f.key): f.value,
+      };
       setState(() {
-        _error = e.fields.isEmpty ? e.message : null;
-        _fieldErrors = e.fields;
+        _fieldErrors = fields;
+        final unplaced = [
+          for (final f in fields.entries)
+            if (!_renderedFieldKeys.contains(f.key)) _labelled(f.key, f.value),
+        ];
+        _error = unplaced.isNotEmpty
+            ? unplaced.join('\n')
+            : (fields.isEmpty ? e.message : null);
       });
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -232,27 +327,46 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     });
   }
 
+  /// Due date, on the web's terms. osTicket builds this field with
+  /// `'min' => Misc::gmtime(), 'future' => true` (`Task::getForm()`,
+  /// class.task.php) — the calendar starts at today and the server refuses
+  /// anything at or before now with **Due date must be in the future**
+  /// (class.task.php:2166). Offering yesterday only produced a date the API
+  /// would bounce. The far end is a mobile-only bound: the web's picker has no
+  /// maxDate, but a swipeable month grid needs one, so it stops at a true three
+  /// years out (not 365×3 days, which falls a day short across a leap year).
   Future<void> _pickDue() async {
     final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final date = await pickDate(
       context,
       initial: _due ?? now,
-      first: now.subtract(const Duration(days: 1)),
-      last: now.add(const Duration(days: 365 * 3)),
+      first: today,
+      last: DateTime(now.year + 3, now.month, now.day),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(_due ?? now),
     );
+    final picked = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time?.hour ?? 17,
+      time?.minute ?? 0,
+    );
+    // Today plus an hour already gone is still in the past — the same case the
+    // server rejects.
+    if (!mounted) return;
+    if (picked.isBefore(DateTime.now())) {
+      AppSnack.info(context, 'Due date must be in the future');
+      return;
+    }
     setState(() {
-      _due = DateTime(
-        date.year,
-        date.month,
-        date.day,
-        time?.hour ?? 17,
-        time?.minute ?? 0,
-      );
+      _due = picked;
+      _dueError = null;
+      _fieldErrors = {..._fieldErrors}..remove('duedate');
     });
   }
 
@@ -301,7 +415,13 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: AppText.titleText(context, 'New task', fw: 1)),
+      appBar: AppBar(
+        title: AppText.titleText(
+          context,
+          widget.parentTask == null ? 'New task' : 'New subtask',
+          fw: 1,
+        ),
+      ),
       body: SafeArea(
         child: AbsorbPointer(
           absorbing: _saving,
@@ -324,6 +444,14 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                   message: widget.ticketNumber != null
                       ? 'This task will be linked to ticket #${widget.ticketNumber}'
                       : 'This task will be linked to the ticket',
+                ),
+              ],
+              if (widget.parentTask != null) ...[
+                const SizedBox(height: 8),
+                _LinkBanner(
+                  message:
+                      'This subtask will be added under '
+                      '#${widget.parentTask!.number}',
                 ),
               ],
 
@@ -465,6 +593,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                   hint: 'Required · tap to set',
                   error:
                       _apiFieldError('duedate', 'Due date') ??
+                      _dueError ??
                       (_attempted && _due == null
                           ? 'Due date is required'
                           : null),
@@ -491,9 +620,9 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                           onPressed: () => setState(() => _parent = null),
                         ),
                   onTap: () async {
-                    final t = await showAppSheet<Task>(
-                      context: context,
-                      builder: (_) => const _ParentTaskSheet(),
+                    final t = await pickTask(
+                      context,
+                      title: 'Select parent task',
                     );
                     if (t != null) setState(() => _parent = t);
                   },
@@ -554,7 +683,11 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                             color: Colors.white,
                           ),
                         )
-                      : const Text('Create task'),
+                      : Text(
+                          widget.parentTask == null
+                              ? 'Create task'
+                              : 'Create subtask',
+                        ),
                 ),
               ],
             ),
@@ -706,122 +839,6 @@ class _ListRow extends StatelessWidget {
                 ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// Bottom-sheet task search/picker (`GET /tasks?q=`) for choosing a parent task.
-class _ParentTaskSheet extends ConsumerStatefulWidget {
-  const _ParentTaskSheet();
-
-  @override
-  ConsumerState<_ParentTaskSheet> createState() => _ParentTaskSheetState();
-}
-
-class _ParentTaskSheetState extends ConsumerState<_ParentTaskSheet> {
-  final _ctrl = TextEditingController();
-  List<Task> _results = [];
-  bool _loading = false;
-  Object? _error;
-  String _lastQuery = '';
-  Timer? _debounce;
-
-  @override
-  void initState() {
-    super.initState();
-    _search('');
-  }
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  /// Debounce keystrokes so we issue one `GET /tasks?q=` after the user pauses,
-  /// not one per character.
-  void _onChanged(String q) {
-    _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () => _search(q));
-  }
-
-  Future<void> _search(String q) async {
-    _debounce?.cancel();
-    _lastQuery = q;
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final page = await ref.read(tasksRepositoryProvider).list(
-        TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25),
-      );
-      if (!mounted) return;
-      setState(() {
-        _results = page.items;
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _error = e;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppSheet(
-      title: 'Select parent task',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SheetSearchField(
-            controller: _ctrl,
-            autofocus: true,
-            hintText: 'Search task by number or title',
-            onChanged: _onChanged,
-            onSubmitted: _search,
-            onClear: () => _search(''),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 320,
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _error != null
-                ? ErrorView(
-                    error: _error!,
-                    compact: true,
-                    onRetry: () => _search(_lastQuery),
-                  )
-                : _results.isEmpty
-                ? Center(child: AppText.subText(context, 'No tasks found'))
-                : ListView.builder(
-                    itemCount: _results.length,
-                    itemBuilder: (_, i) {
-                      final t = _results[i];
-                      return ListTile(
-                        title: AppText.subText(
-                          context,
-                          t.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: AppText.subText(
-                          context,
-                          '#${t.number} · ${t.statusName}',
-                        ),
-                        onTap: () => Navigator.pop(context, t),
-                      );
-                    },
-                  ),
-          ),
-        ],
       ),
     );
   }

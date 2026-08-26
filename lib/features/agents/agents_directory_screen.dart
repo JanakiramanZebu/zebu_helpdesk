@@ -15,6 +15,10 @@ import '../../widgets/user_avatar.dart';
 /// Colleague directory. Lists active agents from `GET /meta/agents` and, on tap,
 /// loads the full profile from `GET /agents/{id}` (name, contact, department,
 /// role, availability, open-ticket count) in a bottom sheet.
+///
+/// The roster is narrowed the way the web's `scp/directory.php` narrows it —
+/// to the departments this agent can access, unless they hold
+/// `visibility.agents` — via [AgentDirectory.visible].
 class AgentsDirectoryScreen extends ConsumerStatefulWidget {
   const AgentsDirectoryScreen({super.key});
 
@@ -26,6 +30,10 @@ class AgentsDirectoryScreen extends ConsumerStatefulWidget {
 class _AgentsDirectoryScreenState extends ConsumerState<AgentsDirectoryScreen> {
   final _searchCtrl = TextEditingController();
   List<MetaItem> _agents = const [];
+
+  /// Whether [_agents] is actually narrower than the full roster — drives the
+  /// scope note, so a short list never reads as "these are all the agents".
+  bool _scoped = false;
   String _query = '';
   bool _loading = true;
   String? _error;
@@ -48,10 +56,15 @@ class _AgentsDirectoryScreenState extends ConsumerState<AgentsDirectoryScreen> {
       _error = null;
     });
     try {
-      final items = await ref.read(metaRepositoryProvider).get(MetaKind.agents);
+      // Scoping needs /me for the permission + department set; without it (a
+      // cold cache or a failed refresh) fall back to the unscoped roster
+      // rather than showing nobody.
+      final me = await ref.read(meProvider.future);
+      final list = await ref.read(agentDirectoryProvider).visible(me);
       if (mounted) {
         setState(() {
-          _agents = items;
+          _agents = list.agents;
+          _scoped = list.scoped;
           _loading = false;
         });
       }
@@ -83,46 +96,69 @@ class _AgentsDirectoryScreenState extends ConsumerState<AgentsDirectoryScreen> {
     final items = _filtered;
     return Scaffold(
       appBar: AppBar(title: AppText.titleText(context, 'Agent Directory', fw: 1)),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-            child: AppSearchField(
-              controller: _searchCtrl,
-              hintText: 'Search agents',
-              onChanged: (v) => setState(() => _query = v.trim()),
-              onSubmitted: (v) => setState(() => _query = v.trim()),
-              onClear: () => setState(() => _query = ''),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+              child: AppSearchField(
+                controller: _searchCtrl,
+                hintText: 'Search agents',
+                onChanged: (v) => setState(() => _query = v.trim()),
+                onSubmitted: (v) => setState(() => _query = v.trim()),
+                onClear: () => setState(() => _query = ''),
+              ),
             ),
-          ),
-          Expanded(
-            child: _loading
-                ? const LoadingView()
-                : _error != null
-                ? ErrorView(error: _error!, onRetry: _load)
-                : items.isEmpty
-                ? const EmptyView(message: 'No agents found')
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    child: ListView.separated(
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(
-                        height: 1,
-                        indent: 68,
-                      ),
-                      itemBuilder: (_, i) {
-                        final a = items[i];
-                        return ListTile(
-                          leading: UserAvatar(name: a.name),
-                          title: AppText.subText(context, a.name, fw: 1),
-                          trailing: const Icon(Icons.chevron_right),
-                          onTap: () => _openAgent(a.id),
-                        );
-                      },
+            if (_scoped && !_loading && _error == null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
-                  ),
-          ),
-        ],
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: AppText.paraText(
+                        context,
+                        'Agents in your departments',
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: _loading
+                  ? const LoadingView()
+                  : _error != null
+                  ? ErrorView(error: _error!, onRetry: _load)
+                  : items.isEmpty
+                  ? const EmptyView(message: 'No agents found')
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const Divider(
+                          height: 1,
+                          indent: 68,
+                        ),
+                        itemBuilder: (_, i) {
+                          final a = items[i];
+                          return ListTile(
+                            leading: UserAvatar(name: a.name),
+                            title: AppText.subText(context, a.name, fw: 1),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => _openAgent(a.id),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

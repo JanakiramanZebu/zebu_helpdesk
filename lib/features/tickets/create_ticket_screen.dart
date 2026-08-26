@@ -10,7 +10,6 @@ import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
-import '../../models/me.dart';
 import '../../models/meta.dart';
 import '../../models/ticket.dart';
 import '../../models/user.dart';
@@ -89,6 +88,9 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   // The SLA plan the topic implies. Sent back unchanged on create — the server
   // uses it to decide whether a due date is required/computed.
   int? _slaId;
+  // True once the agent picks a plan themselves. Until then the due-date lock
+  // comes from the server, not from the selection (see [_canSetDue]).
+  bool _slaTouched = false;
   // Plans from `GET /meta/sla`, used when the create form doesn't publish its
   // own list. This is the same set the web's create dropdown renders.
   List<FormOption> _metaSlas = const [];
@@ -98,16 +100,26 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
 
   List<TicketField> get _customFields => _form?.fields ?? const [];
 
-  /// The agent may set the due date only when no SLA plan drives it. Where the
-  /// plans are listable we decide from the selection, like the web's
-  /// `toggleDueDateLock` — except the web locks on `slaId > 0` alone, which
-  /// traps you on a **disabled** plan: the server's `$slaWillDrive` also
-  /// requires `isActive()`, so it would demand a due date the locked field
-  /// can't provide. Otherwise the server's `sla_locked` is authoritative.
+  /// The agent may set the due date only when no SLA plan drives it.
+  ///
+  /// Until the agent picks a plan themselves the server's `sla_locked` is
+  /// authoritative — the web works the same way, locking from the help topic's
+  /// `defaults.sla_id` on load and only recomputing when the dropdown changes
+  /// (`toggleDueDateLock`). Deciding locally from the selection instead gets
+  /// `0` wrong: "System Default" is not "no plan". `Ticket::create()` resolves
+  /// it through `selectSLAId()` — department → help topic → the configured
+  /// default plan — so a due date typed against a wrongly-unlocked row is
+  /// dropped server-side and replaced by the SLA-computed one.
+  ///
+  /// Once the agent picks, the selection wins: the web hands the date back the
+  /// same way when they choose System Default themselves. A **disabled** plan
+  /// still doesn't drive it — the server's `$slaWillDrive` also requires
+  /// `isActive()`, so locking on `id > 0` alone (as the web's JS does) would
+  /// demand a due date the locked field can't provide.
   bool get _canSetDue {
     final form = _form;
     if (form == null) return true;
-    if (_slaOptions.isNotEmpty) return !_slaDrivesDue;
+    if (_slaTouched && _slaOptions.isNotEmpty) return !_slaDrivesDue;
     return form.canSetDuedate;
   }
 
@@ -195,6 +207,8 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     if (picked == null) return;
     setState(() {
       _slaId = int.tryParse(picked);
+      // From here the selection drives the lock, not the server's flag.
+      _slaTouched = true;
       // A plan now computes the due date server-side, so drop any manual value
       // (and vice-versa: switching to System Default re-opens the picker).
       if (!_canSetDue) _due = _form?.duedate;
@@ -389,8 +403,11 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     _pruneCustomValues();
 
     // The SLA plan is echoed back on create; the server derives the due date
-    // (and whether one is required) from it.
+    // (and whether one is required) from it. A new topic re-issues both, so the
+    // lock goes back to the server's word until the agent picks again — the
+    // web's `applyHelpTopicDefaults` re-locks from the new defaults the same way.
     _slaId = form.slaId;
+    _slaTouched = false;
 
     // Source: adopt the server's default only while the agent hasn't picked.
     final defaultSource = form.defaultSource;
@@ -410,9 +427,9 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     if (_department == null && form.deptId != null) {
       _department = _placeholder(form.deptId!);
     }
-    if (_agent == null && form.staffId != null) {
-      _agent = _placeholder(form.staffId!);
-    }
+    // "Assign to agent" is deliberately NOT prefilled. The form's `staff_id`
+    // comes back as the agent requesting it, so adopting it would silently
+    // self-assign every new ticket; the row stays blank until picked.
     if (_team == null && form.teamId != null) {
       _team = _placeholder(form.teamId!);
     }
@@ -479,9 +496,6 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       if (resolved[3] != null) _team = resolved[3];
       if (resolved[4] != null) _topic = resolved[4];
     });
-    // The topic's department is settled now, so the assignment that keeps the
-    // ticket in reach can be worked out.
-    await _defaultAssignee();
   }
 
   /// Drop answers/errors for fields that don't exist under the current topic.
@@ -604,11 +618,8 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
           // The topic's form answers, keyed by field name — exactly the shape
           // POST /tickets accepts under `custom_fields`.
           if (_formAnswers.isNotEmpty) 'custom_fields': _formAnswers,
-          // Assign INSIDE the create. `POST /tickets/{id}/assign` sits behind
-          // the same visibility gate that hides a brand-new ticket from the
-          // agent who opened it (see [_canOpen]), so it 404s in exactly the
-          // case the assignment was needed; the create endpoint applies these
-          // while it still holds the ticket object.
+          // Assign INSIDE the create: one round trip, and the ticket is
+          // assigned the moment it exists rather than a request later.
           if (_agent != null) 'assign_staff_id': _agent!.id,
           if (_team != null) 'assign_team_id': _team!.id,
         },
@@ -671,13 +682,6 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       // tab count badges without waiting for a manual pull-to-refresh.
       ref.read(ticketsChangedProvider.notifier).bump();
 
-      // The detail screen can only open a ticket the server will hand back.
-      // [_defaultAssignee] keeps that true for the ordinary flow; if the agent
-      // deliberately assigned the ticket away from themselves it can still
-      // come back invisible, and then the list is the honest landing place —
-      // never the detail screen's "No such ticket" error page.
-      final canOpen = await _canOpen(ticket.id);
-      if (!mounted) return;
       if (failed.isEmpty) {
         _toast('Ticket #${ticket.number} created');
       } else {
@@ -687,11 +691,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
           'could not be saved.',
         );
       }
-      if (canOpen) {
-        context.pushReplacement(Routes.ticket(ticket.id));
-      } else {
-        context.pop();
-      }
+      context.pushReplacement(Routes.ticket(ticket.id));
     } on ApiException catch (e) {
       // Route each field error to the input that owns it. Custom-field errors
       // arrive keyed by the numeric field id (sometimes by name).
@@ -747,69 +747,11 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     }
   }
 
-  /// Whether the server will actually serve this ticket back to us.
-  ///
-  /// osTicket's `Ticket::checkStaffPerm()` on this install grants a ticket's
-  /// **creator** nothing: visibility needs an admin, a department the agent
-  /// *manages* (`Staff::getVisibilityDepts()`), the assignee, the assigned
-  /// team, a staff collaborator or a referral — plain department membership is
-  /// deliberately not honored. So an agent can file a ticket into a department
-  /// they merely belong to, leave it unassigned, and lose sight of it the
-  /// instant it exists: `GET /tickets/{id}` answers `404 No such ticket`.
-  ///
-  /// Only a 404 counts as "can't open" — a network blip says nothing about
-  /// permission, and the detail screen has its own retry for that.
-  Future<bool> _canOpen(int id) async {
-    try {
-      await ref.read(ticketsRepositoryProvider).get(id);
-      return true;
-    } on ApiException catch (e) {
-      return !e.isNotFound;
-    } catch (_) {
-      return true;
-    }
-  }
-
   /// "the response and the attachments" — a readable list for the partial
   /// success message.
   String _phrase(List<String> items) => items.length == 1
       ? items.single
       : '${items.take(items.length - 1).join(', ')} and ${items.last}';
-
-  /// Keep the new ticket in reach of the agent opening it.
-  ///
-  /// A ticket's creator is granted no visibility on this install (see
-  /// [_canOpen]), so one filed into a department the agent doesn't manage and
-  /// left unassigned is gone the moment it exists. The one thing that always
-  /// grants visibility is being the assignee, so an otherwise-unassigned
-  /// ticket is defaulted to the agent creating it — the same "Assign To" the
-  /// web form offers, just pre-filled where leaving it blank would lose the
-  /// ticket. It stays fully editable: clear it or pick someone else and that
-  /// choice is honored.
-  ///
-  /// Runs when the department resolves (topic defaults, or a manual change).
-  /// Silent throughout: an agent who already has visibility keeps the blank
-  /// "unassigned" the web would give them.
-  Future<void> _defaultAssignee() async {
-    if (_agent != null || _team != null) return;
-    if (!(_form?.canAssign ?? true)) return;
-    final dept = _department;
-    if (dept == null) return;
-    final Me me;
-    try {
-      // Awaited, not peeked: `/me` is usually cached by now, but on a cold
-      // start into this screen it may still be in flight and the default
-      // would be silently skipped.
-      me = await ref.read(meProvider.future);
-    } catch (_) {
-      return; // No profile, no way to tell — leave the field alone.
-    }
-    if (!mounted) return;
-    // The form may have moved on while `/me` answered.
-    if (_agent != null || _team != null || _department?.id != dept.id) return;
-    if (me.canSeeTicket(departmentId: dept.id)) return;
-    setState(() => _agent = MetaItem(id: me.id, name: me.name));
-  }
 
   Future<void> _pickFiles() async {
     // Offer Camera / Photo / File, then pick from the chosen source (mirrors
@@ -931,7 +873,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
       context,
       initial: _due ?? now,
       first: DateTime(now.year, now.month, now.day), // today at the earliest
-      last: now.add(const Duration(days: 365 * 3)),
+      last: DateTime(now.year + 3, now.month, now.day),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
@@ -1148,9 +1090,6 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                       if (m != null) {
                         setState(() => _department = m);
                         await _revalidateAgent();
-                        // The new department may be one we'd lose the ticket
-                        // in — or one we no longer need the default for.
-                        await _defaultAssignee();
                       }
                     },
                   ),

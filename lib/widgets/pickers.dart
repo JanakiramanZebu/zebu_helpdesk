@@ -7,8 +7,11 @@ import 'package:image_picker/image_picker.dart';
 
 import '../core/api/api_exception.dart';
 import '../core/theme/app_text.dart';
+import '../core/validators.dart';
 import '../data/agent_directory.dart';
+import '../data/tasks_repository.dart';
 import '../models/meta.dart';
+import '../models/task.dart';
 import '../models/user.dart';
 import '../providers.dart';
 import 'app_snack.dart';
@@ -751,14 +754,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
               labelText: 'Email address *',
               prefixIcon: Icon(Icons.mail_outline),
             ),
-            validator: (v) {
-              final t = (v ?? '').trim();
-              if (t.isEmpty) return 'Email is required';
-              if (!t.contains('@') || !t.contains('.')) {
-                return 'Enter a valid email';
-              }
-              return null;
-            },
+            validator: Validators.email,
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -769,8 +765,7 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
               labelText: 'Full name *',
               prefixIcon: Icon(Icons.person_outline),
             ),
-            validator: (v) =>
-                (v ?? '').trim().isEmpty ? 'Name is required' : null,
+            validator: (v) => Validators.notEmpty(v, label: 'Name'),
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -805,6 +800,154 @@ class _UserPickerSheetState extends ConsumerState<_UserPickerSheet> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bottom-sheet task search/picker (`GET /tasks?q=`). Used wherever an agent
+/// has to name another task — the parent on create-task, and the blocking task
+/// on a dependency. The internal task id is not something an agent can know
+/// (the UI only ever shows the `#number`), so every such flow picks a real row
+/// rather than asking for the id.
+///
+/// [excludeIds] drops tasks that would be rejected server-side anyway (the task
+/// itself, or a blocker that is already linked).
+Future<Task?> pickTask(
+  BuildContext context, {
+  String title = 'Select task',
+  String hintText = 'Search task by number or title',
+  Set<int> excludeIds = const {},
+}) =>
+    showAppSheet<Task>(
+      context: context,
+      builder: (_) => _TaskPickerSheet(
+        title: title,
+        hintText: hintText,
+        excludeIds: excludeIds,
+      ),
+    );
+
+class _TaskPickerSheet extends ConsumerStatefulWidget {
+  const _TaskPickerSheet({
+    required this.title,
+    required this.hintText,
+    required this.excludeIds,
+  });
+
+  final String title;
+  final String hintText;
+  final Set<int> excludeIds;
+
+  @override
+  ConsumerState<_TaskPickerSheet> createState() => _TaskPickerSheetState();
+}
+
+class _TaskPickerSheetState extends ConsumerState<_TaskPickerSheet> {
+  final _ctrl = TextEditingController();
+  List<Task> _results = [];
+  bool _loading = false;
+  Object? _error;
+  String _lastQuery = '';
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _search('');
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  /// Debounce keystrokes so we issue one `GET /tasks?q=` after the user pauses,
+  /// not one per character.
+  void _onChanged(String q) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _search(q));
+  }
+
+  Future<void> _search(String q) async {
+    _debounce?.cancel(); // a submit/clear should win over a pending debounce
+    _lastQuery = q;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final page = await ref.read(tasksRepositoryProvider).list(
+        TaskQuery(view: 'all', q: q.isEmpty ? null : q, limit: 25),
+      );
+      if (!mounted) return;
+      setState(() {
+        _results = page.items
+            .where((t) => !widget.excludeIds.contains(t.id))
+            .toList();
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppSheet(
+      title: widget.title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SheetSearchField(
+            controller: _ctrl,
+            autofocus: true,
+            hintText: widget.hintText,
+            onChanged: _onChanged,
+            onSubmitted: _search,
+            onClear: () => _search(''),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 320,
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                ? ErrorView(
+                    error: _error!,
+                    compact: true,
+                    onRetry: () => _search(_lastQuery),
+                  )
+                : _results.isEmpty
+                ? Center(child: AppText.subText(context, 'No tasks found'))
+                : ListView.builder(
+                    itemCount: _results.length,
+                    itemBuilder: (_, i) {
+                      final t = _results[i];
+                      return ListTile(
+                        title: AppText.subText(
+                          context,
+                          t.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: AppText.subText(
+                          context,
+                          '#${t.number} · ${t.statusName}',
+                        ),
+                        onTap: () => Navigator.pop(context, t),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

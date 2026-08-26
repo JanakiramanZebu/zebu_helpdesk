@@ -13,8 +13,8 @@ import '../../widgets/glass.dart';
 import '../../widgets/skeleton.dart';
 import '../../widgets/states.dart';
 import '../../widgets/user_avatar.dart';
-import '../reports/widgets/activity_chart_card.dart';
-import '../reports/widgets/report_summary_card.dart';
+import 'widgets/activity_chart_card.dart';
+import 'widgets/activity_summary_card.dart';
 import 'widgets/attention_row.dart';
 import 'widgets/count_chip_row.dart';
 import 'widgets/focus_strip.dart';
@@ -58,12 +58,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   // Null while loading; an empty list means "all caught up".
   List<Ticket>? _attention;
 
-  // Task counts (derived from /tasks list totals — there is no task report
-  // endpoint). Null until loaded; the Tasks section is hidden until then.
-  int? _tasksOpen;
-  int? _tasksOverdue;
-  int? _tasksAll;
-  int? _tasksClosed;
+  // Task counts, from the summary's own `tasks` block. Null until loaded (or
+  // on an install that doesn't publish it); the Tasks section stays hidden.
+  TaskTotals? _tasks;
 
   @override
   void initState() {
@@ -96,10 +93,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       setState(() {
         _summary = results[0] as ReportSummary;
         _volume = results[1] as VolumeReport;
+        _tasks = (results[0] as ReportSummary).tasks;
         _loading = false;
       });
       _entrance.forward(); // reveal the content (no-op once already shown)
-      _loadTaskCounts();
       _loadAttention();
     } catch (e) {
       if (!mounted) return;
@@ -144,29 +141,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   void _openTasks(String view) {
     ref.read(tasksViewRequestProvider.notifier).set(view);
     context.go(Routes.tasks);
-  }
-
-  /// Fetch task counts in parallel (cheap list-total queries).
-  Future<void> _loadTaskCounts() async {
-    try {
-      final repo = ref.read(tasksRepositoryProvider);
-      // Only the views shown as dashboard tiles (web Tasks queue tabs).
-      final totals = await Future.wait([
-        repo.count(view: 'open'),
-        repo.count(view: 'all'),
-        repo.count(view: 'overdue'),
-        repo.count(view: 'closed'),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _tasksOpen = totals[0];
-        _tasksAll = totals[1];
-        _tasksOverdue = totals[2];
-        _tasksClosed = totals[3];
-      });
-    } catch (_) {
-      // Leave counts null — the Tasks section simply stays hidden.
-    }
   }
 
   /// Fetch the top few overdue tickets for the triage list. Independently
@@ -381,7 +355,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
       if (_volume != null) ...[
         const SizedBox(height: 22),
         _sectionLabel('Overview'),
-        ReportSummaryCard(
+        ActivitySummaryCard(
           report: _volume!,
           days: _days,
           onDaysSelected: _selectDays,
@@ -514,6 +488,10 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             if (i > 0) Divider(height: 1, color: Glass.border(context)),
             AttentionRow(
               ticket: list[i],
+              // _loadAttention asks for view: 'overdue', so every row here is
+              // overdue by construction. Say so — the list payload carries no
+              // `isoverdue`, so the ticket itself can't tell.
+              overdue: true,
               onTap: () => context.push(Routes.ticket(list[i].id)),
             ),
           ],
@@ -526,7 +504,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
   /// visually distinct from the tickets focus strip to avoid the old
   /// "two identical grids" repetition.
   Widget _tasksSection() {
-    if (_tasksOpen == null) return const SizedBox.shrink();
+    final tasks = _tasks;
+    if (tasks == null) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -543,13 +522,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           metrics: [
             FocusMetric(
               label: 'Open',
-              value: _tasksOpen ?? 0,
+              value: tasks.open,
               color: AppTheme.open,
               onTap: () => _openTasks('open'),
             ),
             FocusMetric(
               label: 'All',
-              value: _tasksAll ?? 0,
+              value: tasks.all,
               color: Glass.accent,
               onTap: () => _openTasks('all'),
             ),
@@ -560,13 +539,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
           chips: [
             CountChip(
               label: 'Overdue',
-              value: _tasksOverdue ?? 0,
+              value: tasks.overdue,
               color: AppTheme.overdue,
               onTap: () => _openTasks('overdue'),
             ),
             CountChip(
               label: 'Completed',
-              value: _tasksClosed ?? 0,
+              value: tasks.closed,
               color: AppTheme.closed,
               onTap: () => _openTasks('closed'),
             ),

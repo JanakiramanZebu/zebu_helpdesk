@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:fleather/fleather.dart';
@@ -27,14 +29,34 @@ typedef ComposerSender =
       required bool note,
       required String html,
       required List<MultipartFile> files,
+      String? recipient,
     });
+
+/// One choice in the composer's "To:" picker — who a public reply is emailed
+/// to. [value] is the wire value handed back to the host (osTicket's
+/// `reply-to`: `all` for owner + collaborators, `user` for the owner alone).
+class ComposerRecipient {
+  const ComposerRecipient({
+    required this.value,
+    required this.label,
+    this.detail,
+  });
+
+  final String value;
+
+  /// Shown on the chip and as the picker row's title ("All recipients (3)").
+  final String label;
+
+  /// Optional second line in the picker (an email or a CC summary).
+  final String? detail;
+}
 
 /// Modern, WhatsApp/Slack-style bottom message composer.
 ///
 /// A fixed, softly-elevated bottom bar that hosts a rounded [ChatInputField]
-/// with a "+" actions button and emoji picker tucked inside (growing 1â†’5
-/// lines), a premium animated [SendButton], and a compact [InlineModeToggle]
-/// suffix for switching between a public reply and an internal note. The rich
+/// with a "+" actions button tucked inside (growing 1â†’5 lines), a premium
+/// animated [SendButton], and a compact [InlineModeToggle] suffix for
+/// switching between a public reply and an internal note. The rich
 /// body is backed by a [FleatherController] so canned responses / FAQ articles
 /// can still be inserted as formatted HTML.
 ///
@@ -47,6 +69,8 @@ class MessageComposer extends ConsumerStatefulWidget {
     this.replyTo,
     this.onClearReply,
     this.expandCanned,
+    this.recipients = const [],
+    this.initialRecipient,
     this.hintReply = 'Reply to this ticket...',
     this.hintNote = 'Add an internal note...',
     this.keepFocusAfterSend = true,
@@ -65,6 +89,14 @@ class MessageComposer extends ConsumerStatefulWidget {
   /// expanded HTML.
   final Future<String> Function(CannedResponse canned)? expandCanned;
 
+  /// Recipient choices offered above the field on a public reply. Empty hides
+  /// the "To:" chip entirely (tasks have no per-reply recipient selection).
+  final List<ComposerRecipient> recipients;
+
+  /// [ComposerRecipient.value] selected initially; falls back to the first
+  /// entry when null or unknown.
+  final String? initialRecipient;
+
   /// Placeholder shown in reply mode / note mode respectively.
   final String hintReply;
   final String hintNote;
@@ -79,13 +111,23 @@ class MessageComposer extends ConsumerStatefulWidget {
 class _MessageComposerState extends ConsumerState<MessageComposer> {
   final FleatherController _controller = FleatherController();
   final FocusNode _focus = FocusNode();
+
+  /// Shared by the editor and the formatting toolbar. It is the toolbar's only
+  /// way to hand the keyboard back to the editor after a button press, so
+  /// tapping Bold/Italic can't leave the user staring at a closed keyboard.
+  final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
   final List<PlatformFile> _files = [];
   bool _note = false; // false = public reply, true = internal note
   bool _sending = false;
+  bool _tray = false; // attachment tray open (in the keyboard's place)
+  bool _toolbar = false; // formatting pill visible
+  Timer? _toolbarHide;
+  String? _recipient; // selected ComposerRecipient.value, null = host default
 
   @override
   void initState() {
     super.initState();
+    _recipient = widget.initialRecipient;
     _focus.addListener(_onChange);
     _controller.addListener(_onChange);
   }
@@ -102,11 +144,37 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
 
   // Rebuild so the hint, send-enabled state and toolbar track edits/focus.
   void _onChange() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    // The tray and the keyboard occupy the same strip of screen, so focusing
+    // the field (tapping it, or a send that keeps focus) closes the tray.
+    if (_focus.hasFocus && _tray) _tray = false;
+    _syncToolbar();
+    setState(() {});
+  }
+
+  /// The formatting pill follows focus, but *lingers* briefly after focus is
+  /// lost. Toolbar affordances that render in the root overlay (the heading
+  /// dropdown, the link dialog) sit outside the composer's tap region and take
+  /// focus for an instant before handing it back — without the delay the
+  /// toolbar would blink out from under the finger every time one is used.
+  void _syncToolbar() {
+    if (_focus.hasFocus) {
+      _toolbarHide?.cancel();
+      _toolbarHide = null;
+      _toolbar = true;
+      return;
+    }
+    if (!_toolbar || _toolbarHide != null) return;
+    _toolbarHide = Timer(const Duration(milliseconds: 300), () {
+      _toolbarHide = null;
+      if (!mounted || _focus.hasFocus) return;
+      setState(() => _toolbar = false);
+    });
   }
 
   @override
   void dispose() {
+    _toolbarHide?.cancel();
     _focus.removeListener(_onChange);
     _controller.removeListener(_onChange);
     _focus.dispose();
@@ -115,6 +183,30 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
   }
 
   bool get _isEmpty => _controller.document.toPlainText().trim().isEmpty;
+
+  /// The chosen recipient, tolerating a stale selection after the host swaps
+  /// the options (e.g. a collaborator was added while the draft sat open).
+  ComposerRecipient? get _selected {
+    final all = widget.recipients;
+    if (all.isEmpty) return null;
+    return all.firstWhere(
+      (r) => r.value == _recipient,
+      orElse: () => all.first,
+    );
+  }
+
+  /// Opens the "To:" picker and applies the choice.
+  Future<void> _pickRecipient() async {
+    final picked = await showAppSheet<String>(
+      context: context,
+      builder: (_) => _RecipientSheet(
+        options: widget.recipients,
+        selected: _selected?.value,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _recipient = picked);
+  }
 
   void _clearDocument() {
     final len = _controller.document.length;
@@ -128,15 +220,24 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
     }
   }
 
-  /// Opens the "+" actions sheet (attach / canned / FAQ / expand) and runs the
-  /// chosen action. Consolidates every insert/attach entry point behind one
-  /// button, WhatsApp-style.
-  Future<void> _openPlusMenu() async {
-    final action = await showAppSheet<_PlusAction>(
-      context: context,
-      builder: (_) => const _PlusMenuSheet(),
-    );
-    if (action == null || !mounted) return;
+  /// Toggles the "+" tray. It is *inline* — it drops into the space the
+  /// keyboard vacates, directly under the input — rather than a modal sheet,
+  /// which slid over the composer and hid the field, the reply banner and Send
+  /// while the user picked an attachment. WhatsApp behaves the same way.
+  void _toggleTray() {
+    if (_tray) {
+      // Second tap on "+" puts the keyboard back, like closing the tray.
+      setState(() => _tray = false);
+      _focus.requestFocus();
+      return;
+    }
+    setState(() => _tray = true);
+    _focus.unfocus(); // hand the keyboard's space to the tray
+  }
+
+  /// Runs a tray choice and closes the tray behind it.
+  Future<void> _runTrayAction(_PlusAction action) async {
+    setState(() => _tray = false);
     switch (action) {
       case _PlusAction.camera:
         await _pickFrom(AttachSource.camera);
@@ -162,27 +263,6 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
         if (!_files.any((e) => e.name == f.name)) _files.add(f);
       }
     });
-  }
-
-  /// Opens the emoji picker and refocuses the editor when it closes.
-  Future<void> _openEmojiPicker() async {
-    await showAppSheet<void>(
-      context: context,
-      builder: (_) => _EmojiPickerSheet(onSelect: _insertEmoji),
-    );
-    if (mounted) _focus.requestFocus();
-  }
-
-  /// Inserts a plain-text [emoji] at the current cursor position.
-  void _insertEmoji(String emoji) {
-    final doc = _controller.document;
-    final index = _controller.selection.baseOffset.clamp(0, doc.length - 1);
-    _controller.replaceText(
-      index,
-      0,
-      emoji,
-      selection: TextSelection.collapsed(offset: index + emoji.length),
-    );
   }
 
   /// Picks a canned response, optionally expands its variables, and inserts the
@@ -237,7 +317,12 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
       // Prepend the quoted message (if replying) so the reply carries context.
       final reply = widget.replyTo;
       final body = reply != null ? '${quoteReplyHtml(reply)}$typed' : typed;
-      final ok = await widget.onSend(note: _note, html: body, files: files);
+      final ok = await widget.onSend(
+        note: _note,
+        html: body,
+        files: files,
+        recipient: _note ? null : _selected?.value,
+      );
       if (!ok) return false;
       _clearDocument();
       widget.onClearReply?.call();
@@ -271,6 +356,8 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
     final scheme = Theme.of(context).colorScheme;
     final accent = _note ? AppTheme.warning : scheme.primary;
     final canSend = !_isEmpty || _files.isNotEmpty;
+    // Internal notes are never emailed, so the picker is reply-mode only.
+    final showRecipient = !_note && _selected != null;
     final bottomInset = MediaQuery.of(context).padding.bottom;
 
     // Each paragraph in the document ends with a newline, so the newline count
@@ -281,19 +368,15 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
         .length;
     final stacked = lineCount > 2;
 
-    // The leading (+/emoji) and trailing (expand/mode) controls, reused whether
+    // The leading (+) and trailing (expand/mode) controls, reused whether
     // we lay them out in a row (compact) or a column (tall field, [stacked]).
     final addButton = ComposerIconButton(
-      icon: Icons.add_rounded,
-      tooltip: 'Add',
+      // Rotates into a "close" glyph while the tray is open, so the same button
+      // reads as the way back out of it.
+      icon: _tray ? Icons.close_rounded : Icons.add_rounded,
+      tooltip: _tray ? 'Close' : 'Add',
       size: 24,
-      onTap: _openPlusMenu,
-    );
-    final emojiButton = ComposerIconButton(
-      icon: Icons.emoji_emotions_outlined,
-      tooltip: 'Emoji',
-      size: 21,
-      onTap: _openEmojiPicker,
+      onTap: _toggleTray,
     );
     final expandButton = ComposerIconButton(
       icon: Icons.open_in_full_rounded,
@@ -309,6 +392,46 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
     // The composer no longer paints a full-width bar: it floats over the
     // conversation as a rounded glass pill (matching the bottom nav bar), with
     // the formatting toolbar riding on its own floating pill just below.
+    //
+    // Everything is wrapped in a [TextFieldTapRegion] (and a [PopScope] while
+    // the tray is open): the app-wide KeyboardDismisser drops focus on any
+    // pointer that lands outside the focused editable, and the toolbar pill
+    // sits far enough below the field to count as "outside" — which is why
+    // tapping Bold used to close the keyboard *and* the toolbar with it.
+    // Marking the whole composer as field chrome tells the dismisser to leave
+    // focus alone anywhere inside it.
+    return TextFieldTapRegion(
+      child: PopScope(
+        canPop: !_tray,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop && mounted) setState(() => _tray = false);
+        },
+        child: _buildComposer(
+          context,
+          accent: accent,
+          canSend: canSend,
+          showRecipient: showRecipient,
+          bottomInset: bottomInset,
+          stacked: stacked,
+          addButton: addButton,
+          expandButton: expandButton,
+          modeToggle: modeToggle,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildComposer(
+    BuildContext context, {
+    required Color accent,
+    required bool canSend,
+    required bool showRecipient,
+    required double bottomInset,
+    required bool stacked,
+    required Widget addButton,
+    required Widget expandButton,
+    required Widget modeToggle,
+  }) {
     return Padding(
       padding: EdgeInsets.fromLTRB(
         12,
@@ -320,17 +443,31 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // --- Reply-to banner + pending attachments (floating card) --------
-          if (widget.replyTo != null || _files.isNotEmpty)
+          // --- Recipients + reply-to banner + attachments (floating card) ---
+          if (widget.replyTo != null || _files.isNotEmpty || showRecipient)
             _FrostSurface(
               accent: accent,
               tinted: _note,
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              // Tight on purpose: this card sits between the conversation and
+              // the input, so its padding is screen the messages don't get.
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.fromLTRB(10, 6, 8, 6),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (showRecipient) ...[
+                    _RecipientChip(
+                      label: _selected!.label,
+                      accent: accent,
+                      // One option is informational only — nothing to pick.
+                      onTap: widget.recipients.length > 1
+                          ? _pickRecipient
+                          : null,
+                    ),
+                    if (widget.replyTo != null || _files.isNotEmpty)
+                      const SizedBox(height: 6),
+                  ],
                   if (widget.replyTo != null)
                     ReplyQuotePreview(
                       entry: widget.replyTo!,
@@ -338,7 +475,7 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
                       onCancel: () => widget.onClearReply?.call(),
                     ),
                   if (widget.replyTo != null && _files.isNotEmpty)
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                   if (_files.isNotEmpty)
                     Wrap(
                       spacing: 6,
@@ -375,27 +512,14 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
                 child: ChatInputField(
                   controller: _controller,
                   focus: _focus,
+                  editorKey: _editorKey,
                   // Hide the hint the moment any character exists (space/newline
                   // included), not only when there's non-whitespace text.
                   showHint: _controller.document.length <= 1,
                   accent: accent,
                   note: _note,
                   hint: _note ? widget.hintNote : widget.hintReply,
-                  // +/emoji sit side-by-side when compact, but stack into a
-                  // column once the field grows tall so they ride the bottom.
-                  // A Flex with a switched direction (instead of Row↔Column)
-                  // keeps the same element/children, so toggling it doesn't
-                  // remount the subtree and steal focus (which closed the
-                  // keyboard when crossing the line threshold).
-                  leading: Flex(
-                    direction: stacked ? Axis.vertical : Axis.horizontal,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      addButton,
-                      const SizedBox(width: 2, height: 2),
-                      emojiButton,
-                    ],
-                  ),
+                  leading: addButton,
                   // Expand-to-fullscreen lives inside the field, beside the
                   // reply/note toggle — but stacks above it once the field is
                   // tall so both stay reachable without crowding.
@@ -420,17 +544,33 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
               ),
             ],
           ),
-          // --- Formatting toolbar on its own floating pill (while editing) --
+          // --- Attach tray / formatting toolbar (they share this slot) ------
+          // The tray replaces the keyboard; the toolbar rides above it. Only
+          // one can be on screen at a time, so they animate through the same
+          // strip and the composer never grows by both at once.
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
             curve: Curves.easeOut,
             alignment: Alignment.topCenter,
-            child: _focus.hasFocus
+            child: _tray
+                ? _FrostSurface(
+                    accent: accent,
+                    margin: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.fromLTRB(4, 12, 4, 12),
+                    child: _AttachTray(
+                      accent: accent,
+                      onAction: _runTrayAction,
+                    ),
+                  )
+                : _toolbar
                 ? _FrostSurface(
                     accent: accent,
                     margin: const EdgeInsets.only(top: 8),
                     child: FleatherToolbar.basic(
                       controller: _controller,
+                      // Lets a toolbar button pull the keyboard straight back
+                      // if anything does take focus off the editor.
+                      editorKey: _editorKey,
                       hideBackgroundColor: true,
                       hideForegroundColor: true,
                       hideDirection: true,
@@ -537,9 +677,7 @@ class _FrostSurface extends StatelessWidget {
 ///    plain text box, not a document. Fullscreen keeps the normal spacing.
 FleatherThemeData _editorTheme(BuildContext context, {bool compact = false}) {
   final base = FleatherThemeData.fallback(context);
-  final link = base.link.copyWith(
-    color: Theme.of(context).colorScheme.primary,
-  );
+  final link = base.link.copyWith(color: Theme.of(context).colorScheme.primary);
   if (!compact) return base.copyWith(link: link);
   final style = base.paragraph.style.copyWith(fontSize: 14, height: 1.3);
   const none = VerticalSpacing(top: 0, bottom: 0);
@@ -562,6 +700,7 @@ class ChatInputField extends StatefulWidget {
     required this.showHint,
     required this.hint,
     required this.accent,
+    this.editorKey,
     this.note = false,
     this.leading,
     this.trailing,
@@ -569,6 +708,10 @@ class ChatInputField extends StatefulWidget {
 
   final FleatherController controller;
   final FocusNode focus;
+
+  /// Handed to the [FleatherEditor] so a [FleatherToolbar] sharing the same key
+  /// can call `requestKeyboard()` on it after a formatting button press.
+  final GlobalKey<EditorState>? editorKey;
 
   /// Whether the placeholder is visible. Driven by the *raw* document length —
   /// not a trimmed check — so typing a space or pressing Enter (which leaves
@@ -652,7 +795,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
             // isn't enforced under a Row's unbounded vertical constraints, which
             // otherwise lets it fill the screen (and throws "hit test a render
             // box with no size").
-            // Icons ride the BOTTOM line so, as the field grows, the "+"/emoji
+            // Icons ride the BOTTOM line so, as the field grows, the "+" button
             // and the mode toggle stay level with the last row of text (chat
             // style) instead of floating in the vertical centre.
             child: Row(
@@ -700,6 +843,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
                                 builder: (scroll) => FleatherEditor(
                                   controller: controller,
                                   focusNode: focus,
+                                  editorKey: widget.editorKey,
                                   scrollController: scroll,
                                   minHeight: _minEditor,
                                   maxHeight: _maxEditor,
@@ -811,10 +955,7 @@ class _EditorScrollbarState extends State<_EditorScrollbar> {
       },
       child: LayoutBuilder(
         builder: (context, constraints) => Stack(
-          children: [
-            widget.builder(_scroll),
-            _thumb(constraints.maxHeight),
-          ],
+          children: [widget.builder(_scroll), _thumb(constraints.maxHeight)],
         ),
       ),
     );
@@ -833,7 +974,10 @@ class _EditorScrollbarState extends State<_EditorScrollbar> {
     if (maxExtent <= 0 || track <= 0) return const SizedBox.shrink();
 
     final viewport = pos.viewportDimension;
-    final thumb = (viewport / (viewport + maxExtent) * track).clamp(24.0, track);
+    final thumb = (viewport / (viewport + maxExtent) * track).clamp(
+      24.0,
+      track,
+    );
     final t = (pos.pixels / maxExtent).clamp(0.0, 1.0);
     final top = widget.trackMargin.top + t * (track - thumb);
 
@@ -872,7 +1016,7 @@ class _EditorScrollbarState extends State<_EditorScrollbar> {
   }
 }
 
-/// Compact icon button that lives inside the input field (the "+" and emoji
+/// Compact icon button that lives inside the input field (the "+" and expand
 /// affordances). A 32Ã—36 target keeps it tappable while sitting on a single
 /// line of text.
 class ComposerIconButton extends StatelessWidget {
@@ -1066,6 +1210,7 @@ class _FullscreenEditor extends StatefulWidget {
 
 class _FullscreenEditorState extends State<_FullscreenEditor> {
   final FocusNode _focus = FocusNode();
+  final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
   bool _sending = false;
 
   @override
@@ -1143,6 +1288,7 @@ class _FullscreenEditorState extends State<_FullscreenEditor> {
               child: FleatherEditor(
                 controller: widget.controller,
                 focusNode: _focus,
+                editorKey: _editorKey,
                 autofocus: true,
                 expands: true,
                 padding: const EdgeInsets.all(16),
@@ -1153,44 +1299,52 @@ class _FullscreenEditorState extends State<_FullscreenEditor> {
           // divider so its icons read clearly against the (dark) editor
           // background instead of dissolving into it. An explicit icon colour
           // guarantees contrast in both themes.
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHigh,
-              border: Border(top: BorderSide(color: scheme.outlineVariant)),
-            ),
-            child: SafeArea(
-              top: false,
-              child: Theme(
-                data: Theme.of(context).copyWith(
-                  iconTheme: IconThemeData(color: scheme.onSurface),
-                ),
-                // Insert affordances (saved reply / FAQ) sit on their own row
-                // above the formatting toolbar, which stays a full-width child
-                // (its own horizontal scroll). Keeping them here — not in the
-                // AppBar, and not wrapped in a flex around the toolbar's scroll
-                // view — avoids the layout overflow that broke gestures.
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          tooltip: 'Saved replies',
-                          icon: const Icon(Icons.quickreply_outlined),
-                          onPressed: _insertCanned,
-                        ),
-                        IconButton(
-                          tooltip: 'Insert FAQ',
-                          icon: const Icon(Icons.menu_book_outlined),
-                          onPressed: _insertFaq,
-                        ),
-                      ],
-                    ),
-                    Divider(height: 1, color: scheme.outlineVariant),
-                    FleatherToolbar.basic(controller: widget.controller),
-                  ],
+          // Wrapped as field chrome so the app-wide KeyboardDismisser doesn't
+          // treat a tap on the toolbar as a tap outside the editor and close
+          // the keyboard under it.
+          TextFieldTapRegion(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHigh,
+                border: Border(top: BorderSide(color: scheme.outlineVariant)),
+              ),
+              child: SafeArea(
+                top: false,
+                child: Theme(
+                  data: Theme.of(
+                    context,
+                  ).copyWith(iconTheme: IconThemeData(color: scheme.onSurface)),
+                  // Insert affordances (saved reply / FAQ) sit on their own row
+                  // above the formatting toolbar, which stays a full-width child
+                  // (its own horizontal scroll). Keeping them here — not in the
+                  // AppBar, and not wrapped in a flex around the toolbar's scroll
+                  // view — avoids the layout overflow that broke gestures.
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Saved replies',
+                            icon: const Icon(Icons.quickreply_outlined),
+                            onPressed: _insertCanned,
+                          ),
+                          IconButton(
+                            tooltip: 'Insert FAQ',
+                            icon: const Icon(Icons.menu_book_outlined),
+                            onPressed: _insertFaq,
+                          ),
+                        ],
+                      ),
+                      Divider(height: 1, color: scheme.outlineVariant),
+                      FleatherToolbar.basic(
+                        controller: widget.controller,
+                        editorKey: _editorKey,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1204,86 +1358,140 @@ class _FullscreenEditorState extends State<_FullscreenEditor> {
 /// Actions surfaced by the composer's "+" button.
 enum _PlusAction { camera, photo, file, canned, faq }
 
-/// Bottom sheet opened by the "+" button: attachment sources plus the
-/// canned-reply / FAQ inserters and the expand-editor action, all in one place.
-class _PlusMenuSheet extends StatelessWidget {
-  const _PlusMenuSheet();
+/// The inline "+" tray: one row of tap targets that drops into the space the
+/// keyboard vacates, right under the input pill.
+///
+/// It replaces the modal bottom sheet this used to be. A sheet slides *over*
+/// the composer, so while choosing an attachment the user lost sight of the
+/// field they were writing in, the message they were replying to and the Send
+/// button. Laid out inline the whole composer stays put above the tray, which
+/// is how WhatsApp's attach panel behaves.
+class _AttachTray extends StatelessWidget {
+  const _AttachTray({required this.accent, required this.onAction});
+
+  final Color accent;
+  final ValueChanged<_PlusAction> onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: const [
+        (Icons.photo_camera_rounded, 'Camera', _PlusAction.camera),
+        (Icons.image_rounded, 'Photo', _PlusAction.photo),
+        (Icons.attach_file_rounded, 'File', _PlusAction.file),
+        (Icons.quickreply_rounded, 'Saved', _PlusAction.canned),
+        (Icons.menu_book_rounded, 'FAQ', _PlusAction.faq),
+      ].map(_tileOf).toList(),
+    );
+  }
+
+  // Equal-width columns so the five tiles fill the pill on any phone width
+  // without a scroll view.
+  Widget _tileOf((IconData, String, _PlusAction) item) => Expanded(
+    child: _AttachTrayTile(
+      icon: item.$1,
+      label: item.$2,
+      accent: accent,
+      onTap: () => onAction(item.$3),
+    ),
+  );
+}
+
+/// One tray target: a tinted disc with its label underneath.
+class _AttachTrayTile extends StatelessWidget {
+  const _AttachTrayTile({
+    required this.icon,
+    required this.label,
+    required this.accent,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color accent;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return AppSheet(
-      title: 'Add to message',
-      scrollable: false,
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _row(
-            context,
-            icon: Icons.photo_camera_outlined,
-            label: 'Camera',
-            action: _PlusAction.camera,
+    // Its own transparent [Material]: the ripple of an InkWell drawn straight
+    // onto the Scaffold's material would be clipped away by the frosted pill
+    // this tile sits inside, so the tap would give no feedback at all.
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 21, color: accent),
+              ),
+              const SizedBox(height: 6),
+              AppText.captionText(
+                context,
+                label,
+                fw: 1,
+                maxLines: 1,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
           ),
-          _row(
-            context,
-            icon: Icons.image_outlined,
-            label: 'Photo',
-            action: _PlusAction.photo,
-          ),
-          _row(
-            context,
-            icon: Icons.attach_file_rounded,
-            label: 'File',
-            action: _PlusAction.file,
-          ),
-          Divider(
-            height: 1,
-            indent: 20,
-            endIndent: 20,
-            color: scheme.outlineVariant,
-          ),
-          _row(
-            context,
-            icon: Icons.quickreply_outlined,
-            label: 'Saved replies',
-            action: _PlusAction.canned,
-          ),
-          _row(
-            context,
-            icon: Icons.menu_book_outlined,
-            label: 'Insert FAQ',
-            action: _PlusAction.faq,
-          ),
-        ],
+        ),
       ),
     );
   }
+}
 
-  Widget _row(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required _PlusAction action,
-  }) {
+/// Compact `To: <recipient>` row above the input, mirroring the web reply
+/// form's Reply To select. Tapping opens [_RecipientSheet]; with a single
+/// option it renders as plain text.
+class _RecipientChip extends StatelessWidget {
+  const _RecipientChip({required this.label, required this.accent, this.onTap});
+
+  final String label;
+  final Color accent;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
-      onTap: () => Navigator.pop(context, action),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: scheme.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(10),
+            Icon(Icons.alternate_email_rounded, size: 14, color: accent),
+            const SizedBox(width: 6),
+            Flexible(
+              child: AppText.subText(
+                context,
+                'To: $label',
+                fw: 1,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                color: scheme.onSurfaceVariant,
               ),
-              child: Icon(icon, size: 19, color: scheme.primary),
             ),
-            const SizedBox(width: 14),
-            AppText.subText(context, label, fw: 1),
+            if (onTap != null)
+              Icon(
+                Icons.expand_more_rounded,
+                size: 16,
+                color: scheme.onSurfaceVariant,
+              ),
           ],
         ),
       ),
@@ -1291,105 +1499,64 @@ class _PlusMenuSheet extends StatelessWidget {
   }
 }
 
-/// Lightweight emoji picker: a grid of common emojis that insert into the
-/// editor at the cursor. Stays open so several can be tapped in a row.
-class _EmojiPickerSheet extends StatelessWidget {
-  const _EmojiPickerSheet({required this.onSelect});
-  final ValueChanged<String> onSelect;
+/// Picker for the composer's "To:" chip: one row per [ComposerRecipient],
+/// popping the chosen [ComposerRecipient.value].
+class _RecipientSheet extends StatelessWidget {
+  const _RecipientSheet({required this.options, required this.selected});
 
-  static const List<String> _emojis = [
-    '😀',
-    '😃',
-    '😄',
-    '😁',
-    '😆',
-    '😅',
-    '😂',
-    '🙂',
-    '😉',
-    '😊',
-    '😍',
-    '😘',
-    '😗',
-    '🤔',
-    '🤨',
-    '😐',
-    '😴',
-    '😎',
-    '🤩',
-    '🥳',
-    '😏',
-    '😒',
-    '😞',
-    '😔',
-    '😢',
-    '😭',
-    '😤',
-    '😠',
-    '👍',
-    '👎',
-    '👏',
-    '🙌',
-    '🙏',
-    '💪',
-    '👋',
-    '🤝',
-    '✌️',
-    '🤞',
-    '👌',
-    '🔥',
-    '⭐',
-    '✨',
-    '🎉',
-    '✅',
-    '❌',
-    '❗',
-    '❓',
-    '💯',
-    '❤️',
-    '🧡',
-    '💛',
-    '💚',
-    '💙',
-    '💜',
-    '📎',
-    '📌',
-    '📝',
-    '📄',
-    '📈',
-    '⏰',
-    '🚀',
-    '💡',
-    '☑️',
-    '🙃',
-  ];
+  final List<ComposerRecipient> options;
+  final String? selected;
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return AppSheet(
-      title: 'Emoji',
+      title: 'Reply to',
       scrollable: false,
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-      child: SizedBox(
-        height: 260,
-        child: GridView.builder(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 8,
-          ),
-          itemCount: _emojis.length,
-          itemBuilder: (context, i) {
-            final e = _emojis[i];
-            return InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => onSelect(e),
-              child: Center(
-                child: Text(e, style: const TextStyle(fontSize: 24)),
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final o in options)
+            InkWell(
+              onTap: () => Navigator.pop(context, o.value),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 14,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      o.value == selected
+                          ? Icons.radio_button_checked
+                          : Icons.radio_button_unchecked,
+                      size: 20,
+                      color: o.value == selected
+                          ? scheme.primary
+                          : scheme.outline,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          AppText.subText(context, o.label, fw: 1),
+                          if (o.detail != null)
+                            AppText.paraText(
+                              context,
+                              o.detail!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            );
-          },
-        ),
+            ),
+        ],
       ),
     );
   }

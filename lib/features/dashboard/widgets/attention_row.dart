@@ -10,16 +10,30 @@ import '../../../models/ticket.dart';
 /// age/overdue tag on the right. Denser than the full [TicketCard] because the
 /// dashboard shows a short triage list, not the browsable ticket list.
 class AttentionRow extends StatelessWidget {
-  const AttentionRow({super.key, required this.ticket, required this.onTap});
+  const AttentionRow({
+    super.key,
+    required this.ticket,
+    required this.onTap,
+    this.overdue,
+  });
 
   final Ticket ticket;
   final VoidCallback onTap;
+
+  /// Overrides [Ticket.isOverdue] when the caller knows better than the row.
+  ///
+  /// The list serializer publishes neither `isoverdue` nor `due`
+  /// (api/v2/class.serializers.php:66-85), so a ticket parsed from a list row
+  /// always reports `isOverdue == false` and the tag falls through to the age.
+  /// The dashboard queries `view: 'overdue'`, so every row it passes here IS
+  /// overdue and says so explicitly.
+  final bool? overdue;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final rail = AppTheme.priorityAccent(ticket.priority, scheme);
-    final overdue = ticket.isOverdue;
+    final isOverdue = overdue ?? ticket.isOverdue;
 
     return Material(
       color: Colors.transparent,
@@ -29,12 +43,21 @@ class AttentionRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              Container(
-                width: 3,
-                height: 34,
-                decoration: BoxDecoration(
-                  color: rail,
-                  borderRadius: BorderRadius.circular(2),
+              // The priority rail (DB-004). Colour alone can't convey the
+              // priority to a screen reader — or to a test — so the bar
+              // carries the name it stands for.
+              Semantics(
+                container: true,
+                label: ticket.priority == null
+                    ? 'No priority set'
+                    : 'Priority ${ticket.priority}',
+                child: Container(
+                  width: 3,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: rail,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -79,8 +102,8 @@ class AttentionRow extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               _AgeTag(
-                label: overdue ? 'Overdue' : Fmt.ago(ticket.created),
-                danger: overdue,
+                label: isOverdue ? 'Overdue' : Fmt.ago(ticket.created),
+                danger: isOverdue,
               ),
             ],
           ),

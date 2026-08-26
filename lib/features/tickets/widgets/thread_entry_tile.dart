@@ -23,6 +23,8 @@ class ThreadEntryTile extends StatelessWidget {
     super.key,
     required this.entry,
     this.onReply,
+    this.onEdit,
+    this.onHistory,
     this.showHeader = true,
   });
   final ThreadEntry entry;
@@ -31,12 +33,21 @@ class ThreadEntryTile extends StatelessWidget {
   /// Reply action is hidden (Copy is always available).
   final ValueChanged<ThreadEntry>? onReply;
 
+  /// Long-press → "Edit message" rewrites this entry. Null when the agent may
+  /// not edit it (the host applies osTicket's rule), which hides the action.
+  final ValueChanged<ThreadEntry>? onEdit;
+
+  /// Long-press → "View history" lists this entry's earlier versions. Only
+  /// offered for an entry that actually has some.
+  final ValueChanged<ThreadEntry>? onHistory;
+
   /// Whether to show the sender's avatar + name. False for a message that
   /// follows another from the same sender (grouped, WhatsApp-style), so the
   /// avatar/name aren't repeated and the run reads as one conversation turn.
   final bool showHeader;
 
-  /// WhatsApp-style long-press action sheet: Reply (quote) + Copy.
+  /// WhatsApp-style long-press action sheet: Reply (quote), Edit, History,
+  /// Copy — the last always available, the rest wired by the host.
   void _showActions(BuildContext context) {
     final plain = Fmt.stripHtml(entry.bodyHtml ?? entry.body ?? '').trim();
     showModalBottomSheet<void>(
@@ -53,6 +64,24 @@ class ThreadEntryTile extends StatelessWidget {
                 onTap: () {
                   Navigator.pop(sheetCtx);
                   onReply!(entry);
+                },
+              ),
+            if (onEdit != null)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: AppText.subText(sheetCtx, 'Edit message'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  onEdit!(entry);
+                },
+              ),
+            if (onHistory != null && entry.hasHistory)
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: AppText.subText(sheetCtx, 'View history'),
+                onTap: () {
+                  Navigator.pop(sheetCtx);
+                  onHistory!(entry);
                 },
               ),
             ListTile(
@@ -206,13 +235,36 @@ class ThreadEntryTile extends StatelessWidget {
               // Trailing clock time (WhatsApp-style "3:45 PM"). The day is
               // conveyed by the date separators between turns, so the bubble
               // only needs the time-of-day.
-              if (entry.created != null)
+              if (entry.created != null || entry.edited)
                 Align(
                   alignment: Alignment.centerRight,
-                  child: AppText.captionText(
-                    context,
-                    Fmt.time(entry.created),
-                    color: scheme.onSurfaceVariant,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // "Edited", the way the web marks a revised entry; the
+                      // editor and edit time sit in the tooltip so the bubble
+                      // stays uncluttered.
+                      if (entry.edited) ...[
+                        Tooltip(
+                          message: entry.editor != null
+                              ? 'Edited by ${entry.editor} · '
+                                    '${Fmt.dateTime(entry.editedAt)}'
+                              : 'Edited ${Fmt.dateTime(entry.editedAt)}',
+                          child: AppText.captionText(
+                            context,
+                            'Edited',
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                      ],
+                      if (entry.created != null)
+                        AppText.captionText(
+                          context,
+                          Fmt.time(entry.created),
+                          color: scheme.onSurfaceVariant,
+                        ),
+                    ],
                   ),
                 ),
             ],
@@ -329,11 +381,25 @@ class ConversationList extends StatefulWidget {
     super.key,
     required this.thread,
     this.onReply,
+    this.onEdit,
+    this.canEdit,
+    this.onHistory,
     this.bottomReserve = 10,
     this.headerController,
   });
   final List<ThreadEntry> thread;
   final ValueChanged<ThreadEntry>? onReply;
+
+  /// Rewrites an entry; offered only for entries [canEdit] accepts.
+  final ValueChanged<ThreadEntry>? onEdit;
+
+  /// Whether this agent may edit a given entry (osTicket's own rule: not a
+  /// system post, not an agent response, and authored by them / manager /
+  /// `thread.edit`). Null means no entry is editable.
+  final bool Function(ThreadEntry entry)? canEdit;
+
+  /// Shows an entry's earlier versions.
+  final ValueChanged<ThreadEntry>? onHistory;
 
   /// Extra bottom padding so the newest messages clear the floating composer
   /// that overlays the bottom of the list.
@@ -441,7 +507,13 @@ class _ConversationListState extends State<ConversationList> {
           prev.poster == e.poster &&
           _own(prev) == _own(e);
       children.add(
-        ThreadEntryTile(entry: e, onReply: widget.onReply, showHeader: !grouped),
+        ThreadEntryTile(
+          entry: e,
+          onReply: widget.onReply,
+          onEdit: (widget.canEdit?.call(e) ?? false) ? widget.onEdit : null,
+          onHistory: widget.onHistory,
+          showHeader: !grouped,
+        ),
       );
       prev = e;
     }
@@ -524,6 +596,10 @@ final _leadingBlankRe = RegExp(
   caseSensitive: false,
 );
 
+// Collapses the newlines/tabs of a stripped body into single spaces so the
+// one-line reply banner reads as running text.
+final _whitespaceRe = RegExp(r'\s+');
+
 /// Splits a leading quote off [html], or returns null when there isn't one.
 ThreadQuote? splitLeadingQuote(String html) {
   final m = _leadingQuoteRe.firstMatch(html);
@@ -559,8 +635,12 @@ String quoteReplyHtml(ThreadEntry entry) {
       '${esc(excerpt).replaceAll('\n', '<br>')}</blockquote><p></p>';
 }
 
-/// The "replying to …" banner shown above the composer input. Tapping the
-/// close button invokes [onCancel] to drop the quote.
+/// The "replying to …" banner shown above the composer input.
+///
+/// Deliberately **one line tall**: the composer already eats the bottom of the
+/// screen, so the quote is compressed to `rail | ↩ Poster · excerpt | ✕` with
+/// the excerpt running inline after the name instead of wrapping to a second
+/// row. Tapping the close button invokes [onCancel] to drop the quote.
 class ReplyQuotePreview extends StatelessWidget {
   const ReplyQuotePreview({
     super.key,
@@ -576,45 +656,72 @@ class ReplyQuotePreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final excerpt =
-        Fmt.stripHtml(entry.bodyHtml ?? entry.body ?? '').trim();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6, left: 2, right: 2),
-      decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: accent, width: 3)),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  AppText.paraText(context, 'Replying to ${entry.poster}',
-                      fw: 2, color: accent),
-                  const SizedBox(height: 1),
-                  AppText.paraText(
+    final excerpt = Fmt.stripHtml(entry.bodyHtml ?? entry.body ?? '')
+        .replaceAll(_whitespaceRe, ' ')
+        .trim();
+    return Row(
+      children: [
+        // Accent rail — the quote marker, shrunk from a full bordered card to
+        // a 3px bar so it costs no vertical space of its own.
+        Container(
+          width: 3,
+          height: 20,
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Icon(Icons.reply_rounded, size: 13, color: accent),
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(
+                  text: entry.poster,
+                  style: AppText.style(
                     context,
-                    excerpt.isEmpty ? '(attachment)' : excerpt,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    fontSize: 12,
+                    fw: 2,
+                    color: accent,
+                  ),
+                ),
+                TextSpan(
+                  text: '  ${excerpt.isEmpty ? '(attachment)' : excerpt}',
+                  style: AppText.style(
+                    context,
+                    fontSize: 12,
                     color: scheme.onSurfaceVariant,
                   ),
-                ],
+                ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        // A bare 24px tap target instead of an IconButton, whose 40px minimum
+        // was what forced the old banner two lines tall. It carries its own
+        // transparent Material so the ripple isn't clipped away by the frosted
+        // composer card this banner sits inside.
+        Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onCancel,
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.close_rounded,
+                size: 16,
+                color: scheme.onSurfaceVariant,
               ),
             ),
-            IconButton(
-              tooltip: 'Cancel reply',
-              visualDensity: VisualDensity.compact,
-              icon: Icon(Icons.close, size: 18, color: scheme.onSurfaceVariant),
-              onPressed: onCancel,
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

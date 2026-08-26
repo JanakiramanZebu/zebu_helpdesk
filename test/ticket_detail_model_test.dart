@@ -151,4 +151,34 @@ void main() {
       expect(t.dueDateLocked, isFalse);
     });
   });
+
+
+  /// TC_440: an unset priority must stay unset so the UI prompts for it, the
+  /// way the web's ticket page renders a blank inline-edit field. The two
+  /// endpoints spell "none" differently — detail sends an empty string, list
+  /// rows omit the key entirely — and both have to land on null.
+  group('Ticket.priority empty-state', () {
+    test('detail\'s empty string is not a priority', () {
+      final t = Ticket.fromJson({..._base(), 'priority': ''});
+      expect(t.priority, isNull);
+    });
+
+    test('whitespace-only is not a priority either', () {
+      final t = Ticket.fromJson({..._base(), 'priority': '   '});
+      expect(t.priority, isNull);
+    });
+
+    test('a list row omitting the key is not defaulted to Normal', () {
+      final j = _base()..remove('priority');
+      expect(Ticket.fromJson(j).priority, isNull);
+    });
+
+    test('a real priority is preserved verbatim', () {
+      expect(Ticket.fromJson(_base()).priority, 'High');
+      expect(
+        Ticket.fromJson({..._base(), 'priority': 'Normal'}).priority,
+        'Normal',
+      );
+    });
+  });
 }

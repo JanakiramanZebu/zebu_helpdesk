@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import '../../../core/validators.dart';
+
 /// Shared rules for the "email or username" identifier fields on the auth
 /// screens (sign-in and forgot-password). Single source of truth so the two
 /// fields can never drift apart.
@@ -17,35 +19,16 @@ class AuthIdentifier {
   /// emoji — cannot even be typed or pasted.
   static final allowedChars = RegExp(r'[A-Za-z0-9._%+@-]');
 
-  /// Standard practical email charset: letters/digits and `._%+-` before a
-  /// single '@', letters/digits/dots/hyphens after, alphabetic TLD.
-  static final _emailRe = RegExp(
-    r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
-  );
-
   /// Usernames are employee IDs: letters and digits only. Accounts with other
   /// name styles can always sign in with their email instead.
   static final _usernameRe = RegExp(r'^[A-Za-z0-9]+$');
-
-  /// Structural email rules the charset regex can't express: no consecutive
-  /// dots, and no dot/hyphen hugging the '@' or the edges.
-  static bool _validEmailShape(String value) {
-    if (!_emailRe.hasMatch(value)) return false;
-    if (value.contains('..')) return false;
-    final at = value.indexOf('@');
-    final local = value.substring(0, at);
-    final domain = value.substring(at + 1);
-    if (local.startsWith('.') || local.endsWith('.')) return false;
-    if (domain.startsWith('.') || domain.startsWith('-')) return false;
-    return true;
-  }
 
   /// Form validator shared by both auth screens.
   static String? validate(String? v) {
     final value = v?.trim() ?? '';
     if (value.isEmpty) return 'Email/Username is required';
     if (value.contains('@')) {
-      if (!_validEmailShape(value)) return 'Enter a valid email address';
+      if (!Validators.isEmail(value)) return 'Enter a valid email address';
     } else if (!_usernameRe.hasMatch(value)) {
       return 'Username can contain only letters and numbers';
     }

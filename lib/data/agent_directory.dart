@@ -1,6 +1,5 @@
 import '../models/me.dart';
 import '../models/meta.dart';
-import 'me_repository.dart';
 import 'meta_repository.dart';
 
 /// One assignment's agent pick-list, already narrowed to a department.
@@ -27,41 +26,26 @@ class AgentPickList {
 
 /// Department-scoped agent pick-lists for the assign/reassign flows.
 ///
-/// `GET /meta/agents` returns every active agent and carries no department, but
-/// the server only accepts an assignee the ticket's department allows — osTicket
-/// re-checks `Dept::canAssign()` in `Ticket::assign()` and answers 422
-/// ("Permission denied" / "Agent is unavailable for assignment"). Offering the
-/// whole roster therefore means offering picks that cannot succeed.
+/// `GET /meta/agents?dept_id=` runs the server's own `Dept::getAssignees()`
+/// rule — the same one `Ticket::assign()` re-checks before answering 422
+/// ("Permission denied" / "Agent is unavailable for assignment") — so every
+/// agent it returns can genuinely take the assignment, extended `dept_access`
+/// included. The list is exact, not a guess.
 ///
-/// With no bulk endpoint for it, the department comes from `GET /agents/{id}`:
-/// each agent's profile is fetched once per session (a few lookups in flight at
-/// a time) and cached, so only the first assignment of a session pays for it.
-///
-/// That profile only names an agent's *primary* department, so the match can be
-/// narrower than the server's rule (a department set to "all agents", or an
-/// agent with extended access, is assignable without being a primary member).
-/// The list is therefore a default, never a gate: anything unproven stays in,
-/// an empty match falls back to the full roster, and the picker always keeps a
-/// "Show all agents" way out.
+/// The department is whatever the caller holds: an id goes straight to the
+/// server, a bare name is resolved through `/meta/departments` first. With
+/// neither, or when the scoped call fails, the full roster comes back unscoped
+/// rather than a list we can't vouch for.
 class AgentDirectory {
-  AgentDirectory(this._meta, this._me);
+  AgentDirectory(this._meta);
 
   final MetaRepository _meta;
-  final MeRepository _me;
-
-  /// How many `/agents/{id}` lookups are in flight while hydrating.
-  static const _lanes = 6;
-
-  /// Session cache of `GET /agents/{id}`. A null value marks a lookup that
-  /// failed — that agent's department stays unknown.
-  final Map<int, AgentProfile?> _profiles = {};
-  Future<void>? _hydration;
 
   Future<List<MetaItem>> all({bool refresh = false}) =>
       _meta.get(MetaKind.agents, refresh: refresh);
 
   /// The agents assignable in the given department. Pass whichever the caller
-  /// holds — [departmentName] directly, or [departmentId] to resolve the name
+  /// holds — [departmentId] directly, or [departmentName] to resolve the id
   /// from `/meta/departments`. With neither, the full roster comes back
   /// unscoped.
   Future<AgentPickList> assignable({
@@ -69,38 +53,38 @@ class AgentDirectory {
     int? departmentId,
   }) async {
     final agents = await all();
-    final dept = await _departmentName(departmentName, departmentId);
+    final dept = await _department(departmentName, departmentId);
     if (dept == null || agents.isEmpty) {
       return AgentPickList(agents: agents, all: agents, scoped: false);
     }
 
-    await _hydrate(agents);
-    final key = dept.toLowerCase();
-    final scoped = [
-      for (final a in agents)
-        if (_belongs(a.id, key)) a,
-    ];
-    // Nothing matched (or nothing was ruled out) — the filter has told us
-    // nothing useful, so don't pretend it did.
-    if (scoped.isEmpty || scoped.length == agents.length) {
+    final List<MetaItem> scoped;
+    try {
+      scoped = await _meta.agentsInDepartment(dept.id);
+    } catch (_) {
+      // Offline or forbidden — offer the whole roster rather than a list we
+      // can't vouch for, and say it isn't scoped.
       return AgentPickList(
         agents: agents,
         all: agents,
         scoped: false,
-        departmentName: dept,
+        departmentName: dept.name,
       );
     }
+
     return AgentPickList(
       agents: scoped,
       all: agents,
-      scoped: true,
-      departmentName: dept,
+      // An install that ignores the filter hands back the whole roster; saying
+      // "scoped" then would put a department note on an unnarrowed list.
+      scoped: scoped.length != agents.length,
+      departmentName: dept.name,
     );
   }
 
   /// Whether [agentId] survives the department scope — used to re-check a
   /// choice made before the department changed. True whenever the scope
-  /// couldn't be applied, matching [assignable]'s "unproven stays in" rule.
+  /// couldn't be applied.
   Future<bool> isAssignable(
     int agentId, {
     String? departmentName,
@@ -114,19 +98,61 @@ class AgentDirectory {
     return list.agents.any((a) => a.id == agentId);
   }
 
-  void clearCache() => _profiles.clear();
+  /// The agents [me] may see in the **directory**, porting osTicket's
+  /// `Staff::applyDeptVisibility()` (`include/class.staff.php`) — the filter
+  /// behind the web's Agent Directory (`scp/directory.php` ->
+  /// `Staff::getDeptAgents()`). An agent holding `visibility.agents` sees the
+  /// whole roster; everyone else sees only agents belonging to a department
+  /// they themselves can access.
+  ///
+  /// Each `/meta/agents` row now names the agent's **home** department, so the
+  /// match no longer costs a lookup per agent. It is still narrower than the
+  /// web's, which also matches on `dept_access` — published by no endpoint —
+  /// so a colleague with extended access to one of my departments but a
+  /// different home one is not recognized. The rule therefore stays permissive:
+  /// an agent whose department the payload doesn't state stays in, and a filter
+  /// that rules nothing (or everything) out is reported as unscoped rather
+  /// than applied.
+  Future<AgentPickList> visible(Me me) async {
+    final agents = await all();
+    // `applyDeptVisibility` reads the agent's OWN permission set here (osTicket
+    // calls hasPerm() with its default $global=true), not their roles.
+    if (agents.isEmpty || me.can(Me.permViewAgents)) {
+      return AgentPickList(agents: agents, all: agents, scoped: false);
+    }
 
-  /// Resolve the department name, falling back to a `/meta/departments` lookup
-  /// by id (the ticket list rows and the create form only know one or the
-  /// other). Null when neither identifies a department.
-  Future<String?> _departmentName(String? name, int? id) async {
+    final mine = <int>{
+      ...me.permissionsByDepartment.keys,
+      ...me.managedDepartments,
+    };
+    if (mine.isEmpty) {
+      return AgentPickList(agents: agents, all: agents, scoped: false);
+    }
+
+    final scoped = [
+      for (final a in agents)
+        if (a.deptId == null || mine.contains(a.deptId)) a,
+    ];
+    if (scoped.isEmpty || scoped.length == agents.length) {
+      return AgentPickList(agents: agents, all: agents, scoped: false);
+    }
+    return AgentPickList(agents: scoped, all: agents, scoped: true);
+  }
+
+  /// Resolve the department the caller means, by id or by name (the ticket list
+  /// rows and the create form only know one or the other). Null when neither
+  /// identifies a department.
+  Future<({int id, String name})?> _department(String? name, int? id) async {
     final trimmed = name?.trim() ?? '';
-    if (trimmed.isNotEmpty) return trimmed;
-    if (id == null || id == 0) return null;
+    if (id != null && id != 0) {
+      return (id: id, name: trimmed.isNotEmpty ? trimmed : await _nameOf(id));
+    }
+    if (trimmed.isEmpty) return null;
     try {
-      final depts = await _meta.departments();
-      for (final d in depts) {
-        if (d.id == id && d.name.trim().isNotEmpty) return d.name.trim();
+      for (final d in await _meta.departments()) {
+        if (d.name.trim().toLowerCase() == trimmed.toLowerCase()) {
+          return (id: d.id, name: d.name.trim());
+        }
       }
     } catch (_) {
       // Offline or forbidden — treat the department as unknown.
@@ -134,55 +160,14 @@ class AgentDirectory {
     return null;
   }
 
-  /// True unless the agent's profile positively rules them out: only a loaded
-  /// profile naming a different department, or an unavailable agent (inactive /
-  /// on vacation, which `Dept::canAssign()` rejects too), drops out.
-  bool _belongs(int agentId, String deptKey) {
-    if (!_profiles.containsKey(agentId)) return true;
-    final profile = _profiles[agentId];
-    if (profile == null) return true;
-    if (!profile.available) return false;
-    final dept = profile.department?.trim().toLowerCase() ?? '';
-    return dept.isEmpty || dept == deptKey;
-  }
-
-  Future<void> _hydrate(List<MetaItem> agents) async {
-    // A concurrent picker may already be fetching; let it finish first so its
-    // results count towards ours.
-    final running = _hydration;
-    if (running != null) await running;
-
-    final pending = [
-      for (final a in agents)
-        if (!_profiles.containsKey(a.id)) a.id,
-    ];
-    if (pending.isEmpty) return;
-
-    final run = _fetchProfiles(pending);
-    _hydration = run;
+  Future<String> _nameOf(int id) async {
     try {
-      await run;
-    } finally {
-      if (identical(_hydration, run)) _hydration = null;
-    }
-  }
-
-  Future<void> _fetchProfiles(List<int> ids) async {
-    var next = 0;
-    Future<void> lane() async {
-      while (next < ids.length) {
-        final id = ids[next++];
-        try {
-          _profiles[id] = await _me.getAgent(id);
-        } catch (_) {
-          // Remember the failure so one bad id doesn't get retried on every
-          // picker open; the agent simply stays unfiltered.
-          _profiles[id] = null;
-        }
+      for (final d in await _meta.departments()) {
+        if (d.id == id && d.name.trim().isNotEmpty) return d.name.trim();
       }
+    } catch (_) {
+      // Fall through to the id-only label.
     }
-
-    final lanes = ids.length < _lanes ? ids.length : _lanes;
-    await Future.wait([for (var i = 0; i < lanes; i++) lane()]);
+    return '';
   }
 }

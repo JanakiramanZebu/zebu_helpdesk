@@ -86,6 +86,11 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
   /// redundant notifications on rebuilds where the visible items are unchanged.
   List<T>? _lastNotified;
 
+  /// The most recent pagination total this list loaded, remembered so it can be
+  /// re-announced to a host that only just started listening (see
+  /// [didUpdateWidget]).
+  int? _lastTotal;
+
   /// Shallow identity comparison of two item lists.
   bool _sameItems(List<T> a, List<T>? b) {
     if (b == null || a.length != b.length) return false;
@@ -117,6 +122,21 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
     // this one). Forget the last notification whenever this list is handed a
     // listener again, so the next build always re-announces its items.
     if (old.onItems == null && widget.onItems != null) _lastNotified = null;
+    // `onTotalChanged` is gated the same way, and loses the same race: a page
+    // built while inactive (e.g. the incoming page of a swipe) fetches with no
+    // listener attached, so its total is dropped — and once it becomes active
+    // an unchanged [refreshKey] means no refetch, so the host is never told.
+    // Its "N total" header would then keep describing the tab we swiped away
+    // from. Re-announce the remembered total whenever this list is handed a
+    // listener it previously lacked, after the frame so the host may setState.
+    if (old.onTotalChanged == null && widget.onTotalChanged != null) {
+      final total = _lastTotal;
+      if (total != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) widget.onTotalChanged?.call(total);
+        });
+      }
+    }
   }
 
   @override
@@ -153,6 +173,7 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
         _page += 1;
         _initial = false;
       });
+      _lastTotal = result.total;
       widget.onTotalChanged?.call(result.total);
     } catch (e) {
       if (!mounted) return;

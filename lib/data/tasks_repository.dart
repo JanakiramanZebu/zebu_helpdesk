@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../core/api/api_client.dart';
+import '../core/api/api_exception.dart';
 import '../core/api/json.dart';
 import '../core/api/paginated.dart';
 import '../models/common.dart';
@@ -122,11 +123,54 @@ class TasksRepository {
   /// Any [files] are uploaded in a best-effort follow-up note — which does
   /// accept multipart `files[]` — so attachments stay on the task without a
   /// failed upload ever failing the create itself.
+  /// `POST /tasks` reports form-validation failures keyed by osTicket's numeric
+  /// **field id**, not by field name: `Form::isValid()` stores
+  /// `$this->_errors[$field->get('id')]`, and `TaskInternalForm::buildFields()`
+  /// hard-codes those ids (`class.task.php`). So a due date the server refuses
+  /// comes back as `{"3": ["Selected date is earlier than permitted (…)"]}`,
+  /// which no screen can match against a field name — the error was landing
+  /// nowhere and the form looked like it had simply done nothing.
+  ///
+  /// Only the internal form's ids are fixed; the default form's title and
+  /// description are DB-backed and vary per install, so they stay unmapped and
+  /// the screen shows them in its banner instead (see [_renameTaskFormErrors]).
+  static const _internalFormFields = {
+    '1': 'dept_id',
+    '3': 'duedate',
+    '4': 'priority_id',
+    '5': 'parent_id',
+  };
+
+  static ApiException _renameTaskFormErrors(ApiException e) {
+    if (e.fields.isEmpty) return e;
+    final renamed = {
+      for (final entry in e.fields.entries)
+        _internalFormFields[entry.key] ?? entry.key: entry.value,
+    };
+    return ApiException(
+      statusCode: e.statusCode,
+      code: e.code,
+      message: e.message,
+      fields: renamed,
+    );
+  }
+
+  /// [parentId] creates the task as a subtask of that task, through the
+  /// parent-scoped `POST /tasks/{id}/subtasks` — the same shape as the web's
+  /// `#tasks/{id}/subtask/add`, where the parent comes from the URL and every
+  /// other field from the body.
   Future<Task> create(
     Map<String, dynamic> payload, {
+    int? parentId,
     List<MultipartFile> files = const [],
   }) async {
-    final task = _task(await _api.post('/tasks', body: payload));
+    final path = parentId == null ? '/tasks' : '/tasks/$parentId/subtasks';
+    final Task task;
+    try {
+      task = _task(await _api.post(path, body: payload));
+    } on ApiException catch (e) {
+      throw _renameTaskFormErrors(e);
+    }
     if (files.isNotEmpty) {
       try {
         await note(task.id, title: 'Attachments', files: files);
@@ -149,6 +193,32 @@ class TasksRepository {
       query: {'page': page, 'limit': limit},
     );
     return Paginated.fromEnvelope(J.map(body), ThreadEntry.fromJson);
+  }
+
+  /// Prior versions of an edited thread entry, oldest→newest (the current
+  /// version is not included). Empty when the entry was never edited.
+  Future<List<ThreadEntryVersion>> threadHistory(int id, int entryId) async {
+    final body = await _api.get('/tasks/$id/thread/$entryId/history');
+    return J
+        .mapList(J.map(body)['data'])
+        .map(ThreadEntryVersion.fromJson)
+        .toList();
+  }
+
+  /// Rewrites a thread entry's body, mirroring the web's pencil action. The
+  /// server files the edit as a NEW entry (the old one becomes history), so the
+  /// returned entry carries a different id than [entryId].
+  Future<ThreadEntry> editThreadEntry(
+    int id,
+    int entryId, {
+    required String body,
+    String? title,
+  }) async {
+    final res = await _api.post(
+      '/tasks/$id/thread/$entryId',
+      body: {'body': body, if (title != null) 'title': title},
+    );
+    return ThreadEntry.fromJson(J.map(J.map(res)['data']));
   }
 
   Future<List<ThreadEvent>> events(int id) async {
@@ -299,8 +369,11 @@ class TasksRepository {
     return J.mapList(J.map(body)['data']).map(Task.fromJson).toList();
   }
 
-  Future<Task> createSubtask(int id, Map<String, dynamic> payload) async =>
-      _task(await _api.post('/tasks/$id/subtasks', body: payload));
+  // Subtasks are *created* through `POST /tasks` with `parent_id` (see
+  // [create]) — the same path the web uses — because osTicket validates a
+  // subtask like any other staff-created task (department and due date
+  // included). `POST /tasks/{id}/subtasks` carried none of that and always
+  // failed; this endpoint stays read-only here.
 
   // --- Dependencies ---------------------------------------------------------
 

@@ -37,4 +37,19 @@ class AppConfig {
   /// Connect/receive timeouts.
   static const Duration connectTimeout = Duration(seconds: 20);
   static const Duration receiveTimeout = Duration(seconds: 30);
+
+  /// Hard end-to-end deadline for a single JSON API call.
+  ///
+  /// Dio's own timeouts leave a gap: [connectTimeout] only covers opening the
+  /// socket, and [receiveTimeout] measures the pause *between* two response
+  /// chunks. A server that accepts the connection and then spends minutes
+  /// building the response trips neither, which left a ticket whose thread the
+  /// backend renders slowly (a bounce/NDR email, typically) spinning forever.
+  /// Every call is capped by this.
+  static const Duration requestDeadline = Duration(seconds: 45);
+
+  /// Deadline for calls that move real bytes (attachment upload / file
+  /// download). Those legitimately run long on a mobile link, so they get a
+  /// looser cap than the JSON calls - but they are still bounded.
+  static const Duration transferDeadline = Duration(minutes: 5);
 }

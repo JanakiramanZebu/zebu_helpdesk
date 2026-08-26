@@ -145,3 +145,22 @@ class NotificationGroup {
     return out;
   }
 }
+
+/// The inbox's unread totals (`GET /notifications/count`).
+///
+/// The server counts unread **rows**, but both the web inbox and this app list
+/// one card per ticket/task (`GROUP BY type, object_id`), so a ticket with six
+/// unread events is *one* unread conversation. [conversations] is the number
+/// the badges show, so the bell, the More row and the Unread chip all agree
+/// with the list — and with the web's `Unread (n)`.
+class NotificationCounts {
+  const NotificationCounts({required this.rows, required this.conversations});
+
+  /// Unread notification rows (`data.unread`).
+  final int rows;
+
+  /// Unread ticket/task cards — what the inbox actually lists.
+  final int conversations;
+
+  static const empty = NotificationCounts(rows: 0, conversations: 0);
+}

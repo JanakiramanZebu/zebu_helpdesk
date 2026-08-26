@@ -71,3 +71,21 @@ class _AppMenuRow extends StatelessWidget {
     );
   }
 }
+
+/// Flattens menu [groups] into a single entry list, inserting a
+/// [PopupMenuDivider] only *between* non-empty groups — so gating items out by
+/// permission never leaves a dangling or doubled divider (TK-019).
+///
+/// Lives here rather than on a screen so both detail menus share one rule and
+/// it can be tested without pumping a whole screen.
+List<PopupMenuEntry<String>> joinMenuGroups(
+  List<List<PopupMenuEntry<String>>> groups,
+) {
+  final out = <PopupMenuEntry<String>>[];
+  for (final g in groups) {
+    if (g.isEmpty) continue;
+    if (out.isNotEmpty) out.add(const PopupMenuDivider());
+    out.addAll(g);
+  }
+  return out;
+}

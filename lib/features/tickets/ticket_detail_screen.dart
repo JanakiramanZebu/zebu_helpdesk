@@ -1,4 +1,6 @@
-﻿import 'package:dio/dio.dart';
+﻿import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,7 +27,10 @@ import '../../widgets/pickers.dart';
 import '../../widgets/reassign_dialog.dart';
 import '../../widgets/states.dart';
 import '../../widgets/status_chip.dart';
-import 'widgets/dynamic_fields_section.dart';
+import '../../widgets/tags_dialog.dart';
+import '../../widgets/thread_entry_edit.dart';
+import 'widgets/edit_field_dialog.dart';
+import 'widgets/edit_ticket_sheet.dart';
 import 'widgets/thread_entry_tile.dart';
 
 /// Per-agent action gates for a ticket, ported from osTicket's
@@ -96,24 +101,17 @@ class _TicketCaps {
   }
 }
 
-/// Flattens menu [groups] into a single entry list, inserting a
-/// [PopupMenuDivider] only *between* non-empty groups — so gating items out
-/// never leaves a dangling or doubled divider.
-List<PopupMenuEntry<String>> _joinMenuGroups(
-  List<List<PopupMenuEntry<String>>> groups,
-) {
-  final out = <PopupMenuEntry<String>>[];
-  for (final g in groups) {
-    if (g.isEmpty) continue;
-    if (out.isNotEmpty) out.add(const PopupMenuDivider());
-    out.addAll(g);
-  }
-  return out;
-}
-
 class TicketDetailScreen extends ConsumerStatefulWidget {
-  const TicketDetailScreen({super.key, required this.ticketId});
+  const TicketDetailScreen({
+    super.key,
+    required this.ticketId,
+    this.initialTab = 0,
+  });
   final int ticketId;
+
+  /// Tab to open on (0 Conversation, 1 Details, 2 Activity). The inbox's
+  /// "View All Activity" link lands straight on the Activity tab.
+  final int initialTab;
 
   @override
   ConsumerState<TicketDetailScreen> createState() => _TicketDetailScreenState();
@@ -121,7 +119,11 @@ class TicketDetailScreen extends ConsumerStatefulWidget {
 
 class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 3, vsync: this);
+  late final TabController _tabs = TabController(
+    length: 3,
+    vsync: this,
+    initialIndex: widget.initialTab,
+  );
   // Controls the outer (header) scroll view of the NestedScrollView, so its
   // offset tells us exactly how far the collapsing header has scrolled away.
   final ScrollController _headerScroll = ScrollController();
@@ -133,6 +135,11 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   // ticket page, the API serves them from their own endpoints.
   List<Tag> _tags = [];
   int? _collaborators;
+  // The topic's form definition. The ticket payload's `custom_fields` is a flat
+  // {label: value} map, so it can't say which answers are *required* - only
+  // this endpoint does, and the Details tab needs it to flag the blanks the
+  // web marks with a warning triangle.
+  List<TicketField> _fields = const [];
   // Set when the server refuses a due-date edit because an SLA plan drives it
   // - a backend that doesn't publish the lock flag still tells us this way.
   bool _dueLockedByServer = false;
@@ -142,6 +149,14 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   bool? _slaActive;
   Object? _error;
   bool _loading = true;
+  // The conversation and the activity log load independently of the ticket, so
+  // a slow or failing one no longer holds the whole screen on the spinner -
+  // the web's ticket page renders its info panel the same way, without waiting
+  // on the thread. Each carries its own spinner + error/Retry.
+  Object? _threadError;
+  Object? _eventsError;
+  bool _threadLoading = false;
+  bool _eventsLoading = false;
   bool _acting = false;
   bool _subjectInBar = false;
   // Message the composer is quoting (set from a bubble's long-press → Reply).
@@ -198,28 +213,91 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       () => repo.collaborators(widget.ticketId),
       const <Collaborator>[],
     );
+    final fieldsF = _sideLoad(
+      () => repo.fields(widget.ticketId),
+      const <TicketField>[],
+    );
+    final Ticket ticket;
     try {
-      final ticket = await repo.get(widget.ticketId);
-      final thread = await repo.thread(widget.ticketId, limit: 50);
-      final events = await repo.events(widget.ticketId);
-      final tags = await tagsF;
-      final collaborators = await collabF;
-      if (!mounted) return;
-      setState(() {
-        _ticket = ticket;
-        _thread = thread.items;
-        _events = events;
-        _tags = tags;
-        _collaborators = collaborators.length;
-        _slaActive = null;
-        _loading = false;
-      });
-      await _resolveSlaActive(ticket);
+      ticket = await repo.get(widget.ticketId);
     } catch (e) {
+      // Only the ticket itself is fatal to the screen.
       if (!mounted) return;
       setState(() {
         _error = e;
         _loading = false;
+      });
+      return;
+    }
+    if (!mounted) return;
+    // The ticket alone is enough to open the screen, so show it now and let
+    // the conversation / activity fill in behind it.
+    setState(() {
+      _ticket = ticket;
+      _slaActive = null;
+      _loading = false;
+    });
+    unawaited(_loadThread());
+    unawaited(_loadEvents());
+    final tags = await tagsF;
+    final collaborators = await collabF;
+    final fields = await fieldsF;
+    if (!mounted) return;
+    setState(() {
+      _tags = tags;
+      _collaborators = collaborators.length;
+      _fields = fields;
+    });
+    await _resolveSlaActive(ticket);
+  }
+
+  /// Loads the conversation on its own, so the Conversation tab can show a
+  /// spinner or an error + Retry without blocking the rest of the ticket.
+  Future<void> _loadThread() async {
+    if (!mounted) return;
+    setState(() {
+      _threadLoading = true;
+      _threadError = null;
+    });
+    try {
+      final thread = await ref
+          .read(ticketsRepositoryProvider)
+          .thread(widget.ticketId, limit: 50);
+      if (!mounted) return;
+      setState(() {
+        _thread = thread.items;
+        _threadLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _threadError = e;
+        _threadLoading = false;
+      });
+    }
+  }
+
+  /// Loads the activity log, on the same terms as [_loadThread].
+  Future<void> _loadEvents() async {
+    if (!mounted) return;
+    setState(() {
+      _eventsLoading = true;
+      _eventsError = null;
+    });
+    try {
+      final events = await ref
+          .read(ticketsRepositoryProvider)
+          .events(widget.ticketId);
+      if (!mounted) return;
+      setState(() {
+        _events = events;
+        _eventsLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _eventsError = e;
+        _eventsLoading = false;
       });
     }
   }
@@ -235,6 +313,12 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   }
 
   /// Re-reads tags + collaborators after their sheets close.
+  ///
+  /// The activity log goes with them: adding or removing a collaborator writes
+  /// a `collab` thread event server-side (Thread::logCollaboratorEvents), and
+  /// this is the one path that doesn't run the full [_load], so without it the
+  /// Activity tab stayed on the pre-change list until the screen was rebuilt
+  /// from scratch.
   Future<void> _refreshSideData() async {
     final repo = ref.read(ticketsRepositoryProvider);
     final tags = await _sideLoad(() => repo.tags(widget.ticketId), _tags);
@@ -247,6 +331,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       _tags = tags;
       if (collabs != null) _collaborators = collabs.length;
     });
+    unawaited(_loadEvents());
   }
 
   /// True when the due date is SLA-driven and must not be hand-edited: either
@@ -295,6 +380,57 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     return best;
   }
 
+  /// Rewrites a thread entry (the web's pencil action). The server files the
+  /// edit as a new entry and hides the old one, so the whole thread is reloaded
+  /// rather than the single bubble patched in place.
+  Future<void> _editEntry(ThreadEntry entry) async {
+    final html = await showEditEntryDialog(context, entry: entry);
+    // Null means dismissed, or saved with nothing actually changed.
+    if (html == null || !mounted) return;
+    setState(() => _acting = true);
+    try {
+      await ref
+          .read(ticketsRepositoryProvider)
+          .editThreadEntry(widget.ticketId, entry.id, body: html);
+      await _loadThread();
+      _markChanged();
+      if (mounted) _toast('Message updated');
+    } on ApiException catch (e) {
+      if (mounted) AppSnack.error(context, e.message);
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  /// Earlier versions of an edited entry (the web's "View History").
+  Future<void> _entryHistory(ThreadEntry entry) => showEntryHistorySheet(
+    context,
+    load: () => ref
+        .read(ticketsRepositoryProvider)
+        .threadHistory(widget.ticketId, entry.id),
+  );
+
+  /// "To:" options for a public reply, mirroring the web reply form: all
+  /// recipients (owner + collaborators) or the ticket owner alone. Values are
+  /// osTicket's own `reply-to` values.
+  List<ComposerRecipient> _replyRecipients() {
+    final collabs = _collaborators ?? 0;
+    return [
+      ComposerRecipient(
+        value: 'all',
+        label: 'All recipients (${collabs + 1})',
+        detail: collabs > 0
+            ? 'Ticket owner + $collabs collaborator${collabs == 1 ? '' : 's'}'
+            : null,
+      ),
+      ComposerRecipient(
+        value: 'user',
+        label: 'Ticket owner',
+        detail: _ticket?.userEmail,
+      ),
+    ];
+  }
+
   /// Composer transport: post the body (reply or internal note) plus any
   /// attachments, then silently refresh the thread. Returns false on failure so
   /// the composer keeps the draft.
@@ -302,13 +438,20 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     required bool note,
     required String html,
     required List<MultipartFile> files,
+    String? recipient,
   }) async {
     final repo = ref.read(ticketsRepositoryProvider);
     try {
       if (note) {
         await repo.note(widget.ticketId, body: html, files: files);
       } else {
-        await repo.reply(widget.ticketId, body: html, alert: true, files: files);
+        await repo.reply(
+          widget.ticketId,
+          body: html,
+          alert: true,
+          replyTo: recipient,
+          files: files,
+        );
       }
       await _load(silent: true);
       // A reply can reopen a closed ticket and always bumps last activity, both
@@ -359,7 +502,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     // permission the matching /tickets endpoint enforces (checkStaffPerm).
     // Collaborators stays available to everyone: the sheet also *views*
     // collaborators, and its add/remove are enforced server-side.
-    itemBuilder: (context) => _joinMenuGroups([
+    itemBuilder: (context) => joinMenuGroups([
       // Workflow / status.
       [
         if (caps.canChangeStatus)
@@ -397,7 +540,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
         if (caps.canEdit && !_dueLocked)
           appMenuItem(value: 'duedate', asset: Assets.actDuedate, label: 'Set due date'),
         if (caps.canEdit)
-          appMenuItem(value: 'fields', asset: Assets.actEdit, label: 'Edit fields'),
+          appMenuItem(value: 'fields', asset: Assets.actEdit, label: 'Edit ticket'),
         if (caps.canEdit)
           appMenuItem(value: 'tags', asset: Assets.actTag, label: 'Tags'),
       ],
@@ -503,7 +646,18 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                       children: [
                         _ConversationTab(
                           thread: _thread,
+                          loading: _threadLoading,
+                          error: _threadError,
+                          onRetry: _loadThread,
                           onReply: (e) => setState(() => _replyTo = e),
+                          canEdit: (e) =>
+                              me?.canEditThreadEntry(
+                                e,
+                                _ticket?.departmentId,
+                              ) ??
+                              false,
+                          onEdit: _editEntry,
+                          onHistory: _entryHistory,
                           headerController: _headerScroll,
                         ),
                         _DetailsTab(
@@ -511,12 +665,19 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                           caps: caps,
                           onEdit: _onMenu,
                           dueLocked: _dueLocked,
+                          fields: _fields,
+                          onEditField: _editField,
                           tags: _tags,
                           collaborators: _collaborators,
                           lastMessage: _lastMessageAt,
                           lastResponse: _lastResponseAt,
                         ),
-                        _ActivityTab(events: _events),
+                        _ActivityTab(
+                          events: _events,
+                          loading: _eventsLoading,
+                          error: _eventsError,
+                          onRetry: _loadEvents,
+                        ),
                       ],
                     ),
                   ),
@@ -543,6 +704,12 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                       hintReply: 'Reply to this ticket...',
                       replyTo: _replyTo,
                       onClearReply: () => setState(() => _replyTo = null),
+                      recipients: _replyRecipients(),
+                      // With no collaborators both options reach the same
+                      // mailbox, so start on the narrower one.
+                      initialRecipient: (_collaborators ?? 0) > 0
+                          ? 'all'
+                          : 'user',
                       expandCanned: (c) async {
                         final exp = await ref
                             .read(cannedRepositoryProvider)
@@ -550,12 +717,17 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                         return exp.expanded;
                       },
                       onSend:
-                          ({required note, required html, required files}) =>
-                              _sendMessage(
-                                note: note,
-                                html: html,
-                                files: files,
-                              ),
+                          ({
+                            required note,
+                            required html,
+                            required files,
+                            recipient,
+                          }) => _sendMessage(
+                            note: note,
+                            html: html,
+                            files: files,
+                            recipient: recipient,
+                          ),
                     )
                   : const SizedBox.shrink(),
             ),
@@ -636,7 +808,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       case 'duedate':
         await _setDueDate();
       case 'fields':
-        await _editCustomFields();
+        await _editTicket();
       case 'tags':
         await _manageTags();
       case 'refer':
@@ -706,7 +878,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       context,
       initial: initialDate,
       first: firstDate,
-      last: now.add(const Duration(days: 365 * 3)),
+      last: DateTime(now.year + 3, now.month, now.day),
     );
     if (date == null || !mounted) return;
     final time = await showTimePicker(
@@ -784,13 +956,39 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     await _refreshSideData();
   }
 
-  /// Edit the ticket's dynamic custom fields via `GET /tickets/{id}/fields`
-  /// (schema + current values) and `POST /tickets/{id}/edit`. Reloads the
-  /// ticket on a successful save so the Details tab reflects the new values.
-  Future<void> _editCustomFields() async {
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (_) => _CustomFieldsSheet(ticketId: widget.ticketId),
+  /// Open the mobile twin of the web's "Update Ticket" form - Ticket Source,
+  /// Help Topic, SLA Plan, Due Date, Subject, Priority and the topic's custom
+  /// fields - and reload on a successful save.
+  Future<void> _editTicket() async {
+    final t = _ticket;
+    if (t == null) return;
+    final saved = await showEditTicketDialog(
+      context,
+      ticket: t,
+      dueLocked: _dueLocked,
+    );
+    if (saved == true) {
+      _markChanged();
+      await _load();
+    }
+  }
+
+  /// Edit one custom field on its own, the way the web's ticket page does -
+  /// tap the field, change that answer, save. The full "Update Ticket" form
+  /// stays on the menu for editing several at once.
+  Future<void> _editField(TicketField field) async {
+    final t = _ticket;
+    if (t == null) return;
+    // Same refusal the backend gives, said up front rather than as a 422.
+    if (t.isClosed) {
+      _toast('Reopen the ticket to edit it');
+      return;
+    }
+    final saved = await showEditFieldDialog(
+      context,
+      ticketId: widget.ticketId,
+      field: field,
+      fields: _fields,
     );
     if (saved == true) {
       _markChanged();
@@ -799,10 +997,21 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   }
 
   Future<void> _manageTags() async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => _TagsSheet(ticketId: widget.ticketId),
+    final repo = ref.read(ticketsRepositoryProvider);
+    final meta = ref.read(metaRepositoryProvider);
+    final saved = await showTagsDialog(
+      context,
+      loadApplied: () => repo.tags(widget.ticketId),
+      loadShared: () => meta.get(MetaKind.tags),
+      addTag: (tagId) => repo.addTag(widget.ticketId, tagId: tagId),
+      removeTag: (tagId) => repo.removeTag(widget.ticketId, tagId),
     );
+    if (!mounted) return;
+    if (saved != null) {
+      setState(() => _tags = saved);
+      _markChanged();
+      AppSnack.success(context, 'Tags updated');
+    }
     await _refreshSideData();
   }
 
@@ -1054,21 +1263,44 @@ class _ConversationTab extends StatelessWidget {
   const _ConversationTab({
     required this.thread,
     this.onReply,
+    this.onEdit,
+    this.canEdit,
+    this.onHistory,
     this.headerController,
+    this.loading = false,
+    this.error,
+    this.onRetry,
   });
   final List<ThreadEntry> thread;
   final ValueChanged<ThreadEntry>? onReply;
+  final ValueChanged<ThreadEntry>? onEdit;
+  final bool Function(ThreadEntry entry)? canEdit;
+  final ValueChanged<ThreadEntry>? onHistory;
   final ScrollController? headerController;
+
+  /// The thread arrives after the ticket, so the tab owns its load state.
+  final bool loading;
+  final Object? error;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
+    // Messages already on screen stay put through a refresh; the spinner and
+    // the error state only stand in when there is nothing to show.
     if (thread.isEmpty) {
+      if (error != null) {
+        return ErrorView(error: error!, onRetry: onRetry, compact: true);
+      }
+      if (loading) return const LoadingView();
       return const EmptyView(message: 'No messages yet');
     }
     // Reserve room for the floating composer so the newest message clears it.
     return ConversationList(
       thread: thread,
       onReply: onReply,
+      onEdit: onEdit,
+      canEdit: canEdit,
+      onHistory: onHistory,
       headerController: headerController,
       bottomReserve: 104 + MediaQuery.of(context).padding.bottom,
     );
@@ -1081,12 +1313,19 @@ class _DetailsTab extends StatelessWidget {
     required this.caps,
     required this.onEdit,
     required this.dueLocked,
+    this.fields = const [],
+    required this.onEditField,
     this.tags = const [],
     this.collaborators,
     this.lastMessage,
     this.lastResponse,
   });
   final Ticket ticket;
+
+  /// The topic's form definition (`GET /tickets/{id}/fields`), when it loaded.
+  /// Empty on an older backend or a refused read - the flat `custom_fields`
+  /// map then stands in, without the required flags.
+  final List<TicketField> fields;
 
   /// An SLA plan computes the due date, so the row is read-only (padlock).
   final bool dueLocked;
@@ -1104,8 +1343,17 @@ class _DetailsTab extends StatelessWidget {
   /// the agent lacks the matching permission.
   final _TicketCaps caps;
 
+  /// Opens one custom field's own edit dialog (the web's per-field edit).
+  final ValueChanged<TicketField> onEditField;
+
   /// Routes an edit intent (matching the â‹®-menu action keys) back to the host.
   final ValueChanged<String> onEdit;
+
+  /// The topic's answers in form order, marked up for display. Built from
+  /// [fields] whenever the form loaded, since only that carries the required
+  /// flag; the ticket payload's flat map is the fallback.
+  List<TicketFieldRow> get _customRows =>
+      ticketFieldRows(ticket.customFields, fields);
 
   @override
   Widget build(BuildContext context) {
@@ -1269,16 +1517,37 @@ class _DetailsTab extends StatelessWidget {
               ),
           ],
         ),
-        if (ticket.customFields.isNotEmpty) ...[
+        // The topic's own form answers. The payload carries every answered
+        // field, blanks included, so an all-empty form used to render this
+        // section as a bare heading over an empty card. The web instead lists
+        // each field and marks the unset ones with a faded "—Empty—", keeping
+        // them tappable while the agent may edit (ticket-view.inc.php:736) —
+        // here that tap opens the same "Edit fields" sheet as the menu item.
+        if (_customRows.isNotEmpty) ...[
           const SizedBox(height: 16),
           _DetailSection(
             title: 'Ticket details',
             children: [
-              for (final e in ticket.customFields.entries)
+              for (final r in _customRows)
                 _DetailRow(
                   icon: Icons.list_alt_outlined,
-                  label: e.key,
-                  value: e.value,
+                  label: r.label,
+                  value: r.value,
+                  placeholder: '—Empty—',
+                  alwaysShow: true,
+                  // A required answer left blank gets the web's warning
+                  // triangle: osTicket refuses to close (or delete) the ticket
+                  // until it's filled in, so the agent has to be able to see
+                  // which one is holding it up.
+                  warn: r.missing,
+                  // The field's own dialog when we know its definition;
+                  // otherwise the whole form, which is all an older backend
+                  // gives us to work with.
+                  onTap: !caps.canEdit
+                      ? null
+                      : (r.field == null
+                            ? () => onEdit('fields')
+                            : () => onEditField(r.field!)),
                 ),
             ],
           ),
@@ -1311,9 +1580,9 @@ class _DetailSection extends StatelessWidget {
           margin: EdgeInsets.zero,
           child: Column(
             children: [
-              for (var i = 0; i < children.length; i++) ...[
+              for (var i = 0; i < _visible.length; i++) ...[
                 if (i != 0) const Divider(height: 1, indent: 52),
-                children[i],
+                _visible[i],
               ],
             ],
           ),
@@ -1321,6 +1590,14 @@ class _DetailSection extends StatelessWidget {
       ],
     );
   }
+
+  /// Rows that actually render. A static row with nothing to show collapses to
+  /// an empty box, so it has to be dropped here too — otherwise it leaves its
+  /// divider behind as a stray hairline.
+  List<Widget> get _visible => [
+    for (final c in children)
+      if (c is! _DetailRow || c.isVisible) c,
+  ];
 }
 
 /// A single detail row. When [onTap] is set it renders as tappable (chevron +
@@ -1335,12 +1612,20 @@ class _DetailRow extends StatelessWidget {
     this.note,
     this.trailingIcon,
     this.onTap,
+    this.alwaysShow = false,
+    this.warn = false,
   });
 
   final IconData icon;
   final String label;
   final String? value;
   final String? placeholder;
+
+  /// Render the row even with nothing to show. Custom fields set this: the web
+  /// lists every field on the ticket's form and marks the unanswered ones with
+  /// a faded "—Empty—" rather than dropping them, so the agent can see which
+  /// ones still need filling in.
+  final bool alwaysShow;
 
   /// Secondary line under the value (why a row is read-only, typically).
   final String? note;
@@ -1349,12 +1634,23 @@ class _DetailRow extends StatelessWidget {
   final IconData? trailingIcon;
   final VoidCallback? onTap;
 
+  /// Draws a warning triangle beside the value: a required answer that's still
+  /// missing, the way the web marks one.
+  final bool warn;
+
+  /// Whether the row carries a real value. [Fmt.dateTime] and friends render a
+  /// bare em dash for a null date, which is a placeholder, not a value.
+  bool get _has => value != null && value!.isNotEmpty && value != '—';
+
+  /// Whether this row renders anything at all. Static rows with nothing to say
+  /// collapse; [_DetailSection] reads this so it can drop their dividers too.
+  bool get isVisible => _has || onTap != null || note != null || alwaysShow;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final has = value != null && value!.isNotEmpty && value != 'â€”';
-    // Static rows with nothing to say at all render nothing.
-    if (!has && onTap == null && note == null) return const SizedBox.shrink();
+    final has = _has;
+    if (!isVisible) return const SizedBox.shrink();
 
     return InkWell(
       onTap: onTap,
@@ -1377,13 +1673,29 @@ class _DetailRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  AppText.subText(
-                    context,
-                    has ? value! : (placeholder ?? 'â€”'),
-                    fw: has ? 1 : 3,
-                    color: has
-                        ? scheme.onSurface
-                        : (onTap == null ? scheme.onSurfaceVariant : scheme.primary),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: AppText.subText(
+                          context,
+                          has ? value! : (placeholder ?? '—'),
+                          fw: has ? 1 : 3,
+                          color: has
+                              ? scheme.onSurface
+                              : (onTap == null
+                                    ? scheme.onSurfaceVariant
+                                    : scheme.primary),
+                        ),
+                      ),
+                      if (warn) ...[
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: AppTheme.warning,
+                        ),
+                      ],
+                    ],
                   ),
                   if (note != null) ...[
                     const SizedBox(height: 2),
@@ -1408,8 +1720,19 @@ class _DetailRow extends StatelessWidget {
 }
 
 class _ActivityTab extends StatelessWidget {
-  const _ActivityTab({required this.events});
+  const _ActivityTab({
+    required this.events,
+    this.loading = false,
+    this.error,
+    this.onRetry,
+  });
   final List<ThreadEvent> events;
+
+  /// The activity log loads separately from the ticket - same deal as the
+  /// conversation tab.
+  final bool loading;
+  final Object? error;
+  final VoidCallback? onRetry;
 
   /// (icon, colour) for an event, derived from its state slug.
   static (IconData, Color) _style(String state) {
@@ -1435,26 +1758,36 @@ class _ActivityTab extends StatelessWidget {
     if (s.contains('reply') || s.contains('message')) {
       return (Icons.reply, AppTheme.open);
     }
+    // Server state is the bare slug 'collab' for both add and remove; the
+    // description says which. Matches the Collaborators row's icon.
+    if (s.contains('collab')) {
+      return (Icons.group_outlined, AppTheme.brand);
+    }
     return (Icons.fiber_manual_record, AppTheme.brand);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty) return const EmptyView(message: 'No activity');
+    if (events.isEmpty) {
+      if (error != null) {
+        return ErrorView(error: error!, onRetry: onRetry, compact: true);
+      }
+      if (loading) return const LoadingView();
+      return const EmptyView(message: 'No activity');
+    }
     final scheme = Theme.of(context).colorScheme;
-    // Newest first: the API returns events oldest→newest (ordered by
-    // timestamp), so reverse it — this keeps same-second events (e.g. "Created"
-    // then "assigned") in the right relative order and puts "Created" last. A
-    // timestamp sort can't, since same-second ties would shuffle.
-    final ordered = events.reversed.toList();
+    // Newest first, "Created" last — the API's `order_by('timestamp')`
+    // (v2controller.php:128) leaves same-second ties to the database, so the
+    // list is re-sorted on (timestamp, id) before it's reversed.
+    final display = ThreadEvent.newestFirst(events);
     return SafeArea(
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-        itemCount: ordered.length,
+        itemCount: display.length,
         itemBuilder: (context, i) {
-          final e = ordered[i];
+          final e = display[i];
           final (icon, color) = _style(e.state);
-          final isLast = i == ordered.length - 1;
+          final isLast = i == display.length - 1;
           return IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1630,227 +1963,6 @@ class _CollaboratorsSheetState extends ConsumerState<_CollaboratorsSheet> {
                 ),
         ],
       ),
-    );
-  }
-}
-
-// --- Custom fields editor sheet ---------------------------------------------
-
-/// Loads a ticket's editable dynamic form fields and lets the agent edit them,
-/// posting the changed `{name: value}` map to `POST /tickets/{id}/edit`. Pops
-/// `true` when a save succeeds so the caller can reload the ticket.
-class _CustomFieldsSheet extends ConsumerStatefulWidget {
-  const _CustomFieldsSheet({required this.ticketId});
-  final int ticketId;
-
-  @override
-  ConsumerState<_CustomFieldsSheet> createState() => _CustomFieldsSheetState();
-}
-
-class _CustomFieldsSheetState extends ConsumerState<_CustomFieldsSheet> {
-  List<TicketField> _fields = const [];
-  Map<String, dynamic> _values = {};
-  Map<String, String> _errors = const {};
-  bool _loading = true;
-  bool _saving = false;
-  String? _loadError;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final fields = await ref
-          .read(ticketsRepositoryProvider)
-          .fields(widget.ticketId);
-      if (!mounted) return;
-      setState(() {
-        // Only fields the agent may actually change are worth showing.
-        _fields = fields.where((f) => f.editable).toList();
-        _values = {
-          for (final f in _fields)
-            if (f.value != null) f.name: f.value,
-        };
-        _loading = false;
-      });
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _loadError = e.message;
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _save() async {
-    // Send every editable field (empty string clears a value), so the payload
-    // is never the empty map the server rejects with a 422.
-    final payload = {for (final f in _fields) f.name: _values[f.name] ?? ''};
-    setState(() {
-      _saving = true;
-      _errors = const {};
-    });
-    try {
-      await ref.read(ticketsRepositoryProvider).editFields(
-        widget.ticketId,
-        payload,
-      );
-      if (mounted) Navigator.of(context).pop(true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _saving = false;
-        _errors = e.fields;
-        if (e.fields.isEmpty) AppSnack.error(context, e.message);
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final hasFields = _fields.isNotEmpty;
-    return AppDialog(
-      title: 'Edit fields',
-      actionLabel: hasFields ? 'Save' : null,
-      actionBusy: _saving,
-      onAction: _save,
-      child: _loading
-          ? const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : _loadError != null
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: AppText.subText(context, _loadError!),
-            )
-          : !hasFields
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: AppText.subText(context, 'No editable fields'),
-            )
-          : DynamicFieldsSection(
-              fields: _fields,
-              values: _values,
-              errors: _errors,
-              onChanged: (v) => setState(() => _values = v),
-            ),
-    );
-  }
-}
-
-// --- Tags sheet -------------------------------------------------------------
-
-/// Lists a ticket's tags and lets the agent add (from the shared tag list) or
-/// remove them via `GET/POST/DELETE /tickets/{id}/tags`.
-class _TagsSheet extends ConsumerStatefulWidget {
-  const _TagsSheet({required this.ticketId});
-  final int ticketId;
-
-  @override
-  ConsumerState<_TagsSheet> createState() => _TagsSheetState();
-}
-
-class _TagsSheetState extends ConsumerState<_TagsSheet> {
-  List<Tag> _tags = const [];
-  bool _loading = true;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final t = await ref.read(ticketsRepositoryProvider).tags(widget.ticketId);
-      if (mounted) {
-        setState(() {
-          _tags = t;
-          _loading = false;
-        });
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        AppSnack.error(context, e.message);
-      }
-    }
-  }
-
-  Future<void> _add() async {
-    final List<MetaItem> items;
-    try {
-      items = await ref.read(metaRepositoryProvider).get(MetaKind.tags);
-    } on ApiException catch (e) {
-      if (mounted) AppSnack.error(context, e.message);
-      return;
-    }
-    if (!mounted) return;
-    final chosen = await showDialog<int>(
-      context: context,
-      builder: (_) => _MetaPickerDialog(title: 'Add tag', items: items),
-    );
-    if (chosen == null) return;
-    setState(() => _busy = true);
-    try {
-      final t = await ref
-          .read(ticketsRepositoryProvider)
-          .addTag(widget.ticketId, tagId: chosen);
-      if (mounted) setState(() => _tags = t);
-    } on ApiException catch (e) {
-      if (mounted) AppSnack.error(context, e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _remove(int tagId) async {
-    setState(() => _busy = true);
-    try {
-      final t = await ref
-          .read(ticketsRepositoryProvider)
-          .removeTag(widget.ticketId, tagId);
-      if (mounted) setState(() => _tags = t);
-    } on ApiException catch (e) {
-      if (mounted) AppSnack.error(context, e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AppDialog(
-      title: 'Tags',
-      actionLabel: 'Add tag',
-      onAction: _busy ? null : _add,
-      actionEnabled: !_busy,
-      child: _loading
-          ? const Padding(
-              padding: EdgeInsets.all(16),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          : _tags.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: AppText.subText(context, 'No tags'),
-            )
-          : Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final t in _tags)
-                  Chip(
-                    label: Text(t.name),
-                    onDeleted: _busy ? null : () => _remove(t.id),
-                  ),
-              ],
-            ),
     );
   }
 }
@@ -2034,6 +2146,7 @@ class _LinkMergeDialogState extends ConsumerState<_LinkMergeDialog> {
   bool _loading = true;
   bool _busy = false;
   bool _combine = true;
+  String? _numError;
 
   @override
   void initState() {
@@ -2078,10 +2191,13 @@ class _LinkMergeDialogState extends ConsumerState<_LinkMergeDialog> {
   Future<void> _submit() async {
     final nums = _parsed;
     if (nums.isEmpty) {
-      AppSnack.error(context, 'Enter at least one ticket number');
+      setState(() => _numError = 'Enter at least one ticket number');
       return;
     }
-    setState(() => _busy = true);
+    setState(() {
+      _numError = null;
+      _busy = true;
+    });
     try {
       final repo = ref.read(ticketsRepositoryProvider);
       if (widget.merge) {
@@ -2160,9 +2276,13 @@ class _LinkMergeDialogState extends ConsumerState<_LinkMergeDialog> {
                 TextField(
                   controller: _numbers,
                   keyboardType: TextInputType.text,
-                  decoration: const InputDecoration(
+                  onChanged: (_) {
+                    if (_numError != null) setState(() => _numError = null);
+                  },
+                  decoration: InputDecoration(
                     labelText: 'Ticket numbers',
                     hintText: 'e.g. 100234, 100235',
+                    errorText: _numError,
                   ),
                 ),
                 if (widget.merge)

@@ -98,13 +98,6 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   // Per-tab count badges.
   Map<String, int> _counts = const {};
 
-  // Assignee names resolved via the detail endpoint for rows whose list
-  // summary lacks the field (the list API doesn't send `assignee` yet).
-  // Keyed by ticket id, cached for the session — powers search-by-assignee
-  // and the Agent facet until the backend adds the field to list rows.
-  final Map<int, String?> _assignees = {};
-  final Set<int> _assigneeFetching = {};
-
   bool get _selectionMode => _selected.isNotEmpty;
 
   @override
@@ -191,16 +184,16 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
 
   void _toast(String msg) => AppSnack.info(context, msg);
 
-  /// True when [view]'s badge must be counted client-side: My Tickets (server
-  /// view=mine also counts closed assignments), or ANY filter active — the
-  /// backend drops the `view` scope whenever a filter param is present, so its
-  /// per-tab totals are untrustworthy under filters; [_countable]'s membership
-  /// guards + exact date bounds produce the correct numbers instead.
-  bool _clientCounted(String view) =>
-      view == 'mine' ||
-      _dateRange != DateRange.all ||
-      _search.trim().isNotEmpty ||
-      _filters.values.any((v) => v != null);
+  /// True when the tab badges must be counted client-side.
+  ///
+  /// The server composes `view` with the filter params now, so a facet
+  /// selection no longer needs recounting — its per-tab totals are trustworthy
+  /// under a filter. Two narrowings are still ours: the live search text, which
+  /// never reaches the server, and the date window, whose query bounds are
+  /// whole UTC days and therefore a superset of the local range [_countable]
+  /// applies exactly.
+  bool get _clientCounted =>
+      _dateRange != DateRange.all || _search.trim().isNotEmpty;
 
   /// Fetch the count for every tab in parallel, honoring the active facet and
   /// date filters so the badges always match what each tab would show.
@@ -209,11 +202,11 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     final entries = await Future.wait(
       _views.map((v) async {
         try {
-          if (_clientCounted(v.key)) {
-            // _matches = membership + facets + date + live search text, so
-            // the badge counts exactly what the tab would display.
+          if (_clientCounted) {
+            // _matches = the exact date window + the live search text, so the
+            // badge counts exactly what the tab would display.
             final rows = await _gatherAll(_queryFor(v.key));
-            return MapEntry(v.key, rows.where((t) => _matches(t, v.key)).length);
+            return MapEntry(v.key, rows.where(_matches).length);
           }
           return MapEntry(v.key, await repo.count(query: _queryFor(v.key)));
         } catch (_) {
@@ -227,8 +220,16 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
         for (final e in entries)
           if (e.value >= 0) e.key: e.value,
       };
-      // Keep the app-bar total in step with the corrected My Tickets count.
-      if (_view == 'mine' && _counts['mine'] != null) _total = _counts['mine'];
+      // Keep the app-bar total in step with the corrected count for the
+      // ACTIVE view. Applying a filter refetches the
+      // list, but that callback shows `_counts[view]` for a client-counted tab
+      // and `_counts` is still the pre-filter map while this recount is in
+      // flight; without this the header kept the old number until the user
+      // changed tabs. Server-counted tabs (no filter/search/date window) keep
+      // taking the same number from repo.count() over the same query, and the
+      // list keeps `_counts` in step as it loads, so the two never disagree.
+      final activeCount = _counts[_view];
+      if (activeCount != null) _total = activeCount;
     });
   }
 
@@ -323,10 +324,10 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
   // filters for the server.
   TicketQuery _queryFor(String view) {
     final b = _dateBounds;
-    // Send status_id to the server only on All Tickets: the backend lets
-    // status override view (instead of ANDing), so on the other tabs the
-    // status facet is enforced client-side in [_matches] to avoid the leak.
-    final status = view == 'all' ? _filters['status'] : null;
+    // Status rides on every tab: the server ANDs it with the view, so a
+    // contradictory pick (Closed status on the Open tab) answers empty rather
+    // than leaking rows from another tab.
+    final status = _filters['status'];
     final tag = _filters['tag'];
     return TicketQuery(
       view: view,
@@ -343,57 +344,11 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
       deptId: _filters['dept']?.id,
       statusId: status == null ? null : [status.id],
       priorityId: _filters['priority']?.id,
-      // My Tickets always pins the assignee to the signed-in agent (like the
-      // web's assigned-to-me queue): with any filter param present the server
-      // skips view=mine, so without this pin other agents' tickets leak in.
-      // The Agent facet is meaningless on this tab — it's always "me".
-      assigneeId: view == 'mine' ? (_myStaffId ?? _filters['agent']?.id) : _filters['agent']?.id,
+      // `view=mine` is the web's My Tickets queue server-side now — assigned
+      // to me OR to one of my teams, open only — so it needs no assignee pin.
+      assigneeId: _filters['agent']?.id,
       tagId: tag == null ? null : [tag.id],
     );
-  }
-
-  /// The signed-in agent's staff id, from the cached session snapshot.
-  int? get _myStaffId {
-    final raw = ref.read(authControllerProvider).agent['id'];
-    if (raw is num) return raw.toInt();
-    return int.tryParse('$raw');
-  }
-
-  /// The best-known assignee for [t]: the list row's own value, else the
-  /// session-cached detail lookup (see [_resolveAssignees]).
-  String? _assigneeOf(Ticket t) => t.assignee ?? _assignees[t.id];
-
-  /// Resolve missing assignees for freshly loaded [rows] — one detail fetch
-  /// per ticket per session, sequential to stay gentle on the API — then
-  /// rebuild so the search/facet filters see the resolved names.
-  void _resolveAssignees(List<Ticket> rows) {
-    final pending = [
-      for (final t in rows)
-        if (t.assignee == null &&
-            !_assignees.containsKey(t.id) &&
-            !_assigneeFetching.contains(t.id))
-          t.id,
-    ];
-    if (pending.isEmpty) return;
-    _assigneeFetching.addAll(pending);
-    Future(() async {
-      final repo = ref.read(ticketsRepositoryProvider);
-      for (final id in pending) {
-        try {
-          _assignees[id] = (await repo.get(id)).assignee;
-        } catch (_) {
-          // Leave unresolved; a later page load may retry.
-        } finally {
-          _assigneeFetching.remove(id);
-        }
-      }
-      if (!mounted) return;
-      setState(() {});
-      // Newly resolved names can change what an assignee search / Agent facet
-      // matches — settle the badges. Safe from looping: a second pass finds
-      // every id already cached and returns before reaching here.
-      if (_search.trim().isNotEmpty || _filters['agent'] != null) _loadCounts();
-    });
   }
 
   /// Client-side comparator matching the active sort (null for 'thread', which
@@ -569,7 +524,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
       // Export exactly what's visible: the view's rows, narrowed by the active
       // search.
       final tickets = (await _gatherAll(_queryFor(_view)))
-          .where((t) => _matches(t, _view))
+          .where(_matches)
           .toList();
       if (tickets.isEmpty) {
         _toast('No tickets to export');
@@ -617,41 +572,23 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     }
   }
 
-  /// Tab-membership + date-window + facet checks shared by the visible list
-  /// ([_matches]) and the tab count badges — everything except the live search
-  /// text, which narrows the list but not the badges.
+  /// The exact local date window, shared by the visible list ([_matches]) and
+  /// the tab count badges.
   ///
-  /// Open/closed membership IS re-derived here (the status name marks closed
-  /// reliably) because the backend lets filter params override `view`, leaking
-  /// rows across tabs. Overdue/answered membership is still left to the server
-  /// — the list rows don't carry those flags reliably, and re-deriving them
-  /// once emptied the Overdue tab.
-  bool _countable(Ticket t, String view) {
-    // Tab membership guards. "My Tickets" shows only OPEN tickets assigned to
-    // me, matching the web queue (the server's view=mine also returns closed
-    // assignments).
-    if (view == 'mine' && t.isClosed) return false;
-    if (view == 'open' && t.isClosed) return false;
-    if (view == 'closed' && !t.isClosed) return false;
-
+  /// Tab membership and the facet filters are the server's job now: `view`
+  /// composes with the filter params, and `view=mine` is the web's queue
+  /// (assigned to me or one of my teams, open only). What stays here is the
+  /// date range — [_queryFor] can only ask for whole UTC days, so the server
+  /// answers with a superset of the local window.
+  bool _countable(Ticket t) {
     final b = _dateBounds;
-    if (b != null) {
-      final c = t.created;
-      if (c == null || c.isBefore(b.$1) || c.isAfter(b.$2)) return false;
-    }
-
-    // Facet filters (best-effort, by name; tags have no list-row data so they
-    // rely on the server query). Status is enforced here on every tab so it
-    // ANDs with the tab's own membership — a contradictory pick (Closed
-    // status on the Open tab) yields an empty list, never leaked rows.
-    return _facetOk(_filters['dept'], t.departmentName) &&
-        _facetOk(_filters['status'], t.statusName) &&
-        _facetOk(_filters['priority'], t.priority) &&
-        _facetOk(_filters['agent'], _assigneeOf(t));
+    if (b == null) return true;
+    final c = t.created;
+    return c != null && !c.isBefore(b.$1) && !c.isAfter(b.$2);
   }
 
-  bool _matches(Ticket t, String view) {
-    if (!_countable(t, view)) return false;
+  bool _matches(Ticket t) {
+    if (!_countable(t)) return false;
 
     final q = _search.trim();
     if (q.isEmpty) return true;
@@ -661,26 +598,12 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
     return _norm(t.number).contains(needle) ||
         _norm(t.subject).contains(needle) ||
         _norm(t.requester ?? '').contains(needle) ||
-        _norm(_assigneeOf(t) ?? '').contains(needle) ||
+        _norm(t.assignee ?? '').contains(needle) ||
         _norm(t.departmentName ?? '').contains(needle);
   }
 
   static String _norm(String s) =>
       s.toLowerCase().replaceAll(RegExp(r'[#,\s₹]'), '');
-
-  /// True when no facet is selected, or the row's [value] matches the selected
-  /// item's name (case-insensitive).
-  ///
-  /// A row that doesn't carry the field at all (list rows omit `assignee`
-  /// entirely and `priority` when it's Normal) also passes — the server
-  /// already filtered by the facet's id, so unknown must not mean "drop", or
-  /// the Agent/Priority filters wipe out their own results.
-  static bool _facetOk(MetaItem? selected, String? value) {
-    if (selected == null) return true;
-    final v = (value ?? '').trim();
-    if (v.isEmpty) return true;
-    return v.toLowerCase() == selected.name.trim().toLowerCase();
-  }
 
   // --- UI -------------------------------------------------------------------
 
@@ -829,7 +752,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
       skeleton: ListSkeleton(compact: compact),
       separated: compact,
       refreshKey: '$view|${_dateRange.name}|$_sort|$_filterSig|$_refresh|$changed',
-      itemFilter: (t) => _matches(t, view),
+      itemFilter: _matches,
       // 'thread' and 'due' rely on the server's ordering: list rows don't
       // carry those values, and re-sorting locally on all-equal (null) keys
       // scrambles the server's correct order (Dart's sort isn't stable).
@@ -843,7 +766,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
               // Tabs counted client-side (see _clientCounted) show the
               // recounted badge value; the raw server total would ignore the
               // client-enforced narrowing.
-              final clientCounted = _clientCounted(view);
+              final clientCounted = _clientCounted;
               final shown = clientCounted ? (_counts[view] ?? t) : t;
               if (mounted && shown != _total) setState(() => _total = shown);
               // For server-counted tabs the list's total is the freshest
@@ -855,13 +778,7 @@ class _TicketsListScreenState extends ConsumerState<TicketsListScreen> {
           : null,
       emptyMessage: 'No tickets',
       emptyHint: 'Try a different filter or search.',
-      fetch: (page) async {
-        final res = await repo.list(query.copyWith(page: page));
-        // Kick off assignee resolution for rows the list API left blank, so
-        // search-by-assignee and the Agent facet can match them.
-        _resolveAssignees(res.items);
-        return res;
-      },
+      fetch: (page) => repo.list(query.copyWith(page: page)),
       itemBuilder: (context, t) => TicketRow(
         ticket: t,
         compact: compact,

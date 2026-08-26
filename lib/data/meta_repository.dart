@@ -21,6 +21,28 @@ class MetaRepository {
     return items;
   }
 
+  /// The agents assignable in [deptId], straight from the server's own
+  /// `Dept::getAssignees()` rule — the same one `Ticket::assign()` re-checks,
+  /// so every agent that comes back can actually take the assignment. Cached
+  /// per department for the session.
+  Future<List<MetaItem>> agentsInDepartment(
+    int deptId, {
+    bool refresh = false,
+  }) async {
+    final key = '${MetaKind.agents}?dept_id=$deptId';
+    if (!refresh && _cache.containsKey(key)) return _cache[key]!;
+    final body = await _api.get(
+      '/meta/${MetaKind.agents}',
+      query: {'dept_id': deptId},
+    );
+    final items = J
+        .mapList(J.map(body)['data'])
+        .map(MetaItem.fromJson)
+        .toList();
+    _cache[key] = items;
+    return items;
+  }
+
   // Convenience accessors.
   Future<List<MetaItem>> statuses() => get(MetaKind.statuses);
   Future<List<MetaItem>> departments() => get(MetaKind.departments);

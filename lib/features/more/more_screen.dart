@@ -30,6 +30,31 @@ class MoreScreen extends ConsumerWidget {
       orElse: () => null,
     );
 
+    // Permission-gated menu entries. While /me is loading the tile stays
+    // hidden rather than flashing in and out — the screens behind them are
+    // reachable only from here, and the backend is the real guard anyway.
+    final canManageCanned = me.maybeWhen(
+      data: (m) => m.canManageCanned,
+      orElse: () => false,
+    );
+    final canViewReports = me.maybeWhen(
+      data: (m) => m.canViewReports,
+      orElse: () => false,
+    );
+    // The web shows Tags and My Team as their own top-level tabs, to
+    // department managers (`Tag::canManage()` /
+    // `Staff::getManagedDepartments()`). Tags also admits admins here, who on
+    // the web would curate them from the Admin Panel instead — mobile has no
+    // admin panel, so this is their only route to the vocabulary.
+    final canManageTags = me.maybeWhen(
+      data: (m) => m.canManageTags,
+      orElse: () => false,
+    );
+    final managesTeam = me.maybeWhen(
+      data: (m) => m.managesAnyDepartment,
+      orElse: () => false,
+    );
+
     return Scaffold(
       appBar: AppBar(
         // Menu is a root bottom-nav tab, so there's no route to pop — send the
@@ -77,33 +102,32 @@ class MoreScreen extends ConsumerWidget {
                 onTap: () => context.push(Routes.notifications),
               ),
               _MenuTile(
-                icon: Assets.menuUsers,
-                color: AppTheme.open,
-                label: 'Users',
-                onTap: () => context.push(Routes.users),
-              ),
-              _MenuTile(
-                icon: Assets.menuOrgs,
-                color: AppTheme.brandLight,
-                label: 'Organizations',
-                onTap: () => context.push(Routes.organizations),
-              ),
-              _MenuTile(
                 icon: Assets.menuAgents,
                 color: AppTheme.brand,
                 label: 'Agent Directory',
                 onTap: () => context.push(Routes.agents),
               ),
-              _MenuTile(
-                icon: Assets.menuReports,
-                color: AppTheme.warning,
-                label: 'Reports',
-                onTap: () => context.push(Routes.reports),
-              ),
+              if (canViewReports)
+                _MenuTile(
+                  icon: Assets.menuReports,
+                  color: AppTheme.warning,
+                  label: 'Reports',
+                  onTap: () => context.push(Routes.reports),
+                ),
+              if (managesTeam)
+                _MenuTile(
+                  icon: Assets.actCollaborators,
+                  color: AppTheme.brand,
+                  label: 'My Team',
+                  onTap: () => context.push(Routes.team),
+                ),
             ],
           ),
 
           // --- Resources section --------------------------------------------
+          // Knowledgebase is ungated for every agent, matching the web's
+          // `kbase` tab; Canned Responses needs `canned.manage` on one of the
+          // agent's roles, matching that tab's sub-nav (see [Me.canManageCanned]).
           _Section(
             title: 'Resources',
             children: [
@@ -113,18 +137,20 @@ class MoreScreen extends ConsumerWidget {
                 label: 'Knowledgebase',
                 onTap: () => context.push(Routes.faq),
               ),
-              _MenuTile(
-                icon: Assets.menuCanned,
-                color: AppTheme.open,
-                label: 'Canned Responses',
-                onTap: () => context.push(Routes.canned),
-              ),
-              _MenuTile(
-                icon: Assets.menuQueues,
-                color: AppTheme.warning,
-                label: 'Saved Queues',
-                onTap: () => context.push(Routes.queues),
-              ),
+              if (canManageCanned)
+                _MenuTile(
+                  icon: Assets.menuCanned,
+                  color: AppTheme.open,
+                  label: 'Canned Responses',
+                  onTap: () => context.push(Routes.canned),
+                ),
+              if (canManageTags)
+                _MenuTile(
+                  icon: Assets.actTag,
+                  color: AppTheme.warning,
+                  label: 'Tags',
+                  onTap: () => context.push(Routes.tags),
+                ),
             ],
           ),
 

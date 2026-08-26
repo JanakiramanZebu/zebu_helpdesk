@@ -11,24 +11,19 @@ import '../../features/faq/faq_detail_screen.dart';
 import '../../features/faq/faq_screen.dart';
 import '../../features/more/more_screen.dart';
 import '../../features/notifications/notifications_screen.dart';
-import '../../features/organizations/org_detail_screen.dart';
-import '../../features/organizations/orgs_list_screen.dart';
 import '../../features/profile/profile_screen.dart';
-import '../../features/queues/queue_results_screen.dart';
-import '../../features/queues/queues_screen.dart';
 import '../../features/reports/reports_screen.dart';
 import '../../features/settings/server_settings_screen.dart';
 import '../../features/shell/home_shell.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/tasks/create_task_screen.dart';
 import '../../features/tasks/task_detail_screen.dart';
+import '../../features/tags/tags_screen.dart';
 import '../../features/tasks/tasks_list_screen.dart';
+import '../../features/team/team_availability_screen.dart';
 import '../../features/tickets/create_ticket_screen.dart';
 import '../../features/tickets/ticket_detail_screen.dart';
 import '../../features/tickets/tickets_list_screen.dart';
-import '../../features/users/user_detail_screen.dart';
-import '../../features/users/users_list_screen.dart';
-import '../../models/saved_queue.dart';
 import '../../models/task.dart';
 import '../../providers.dart';
 import '../../widgets/keyboard_dismisser.dart';
@@ -134,14 +129,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         parentNavigatorKey: _rootKey,
         path: '/tickets/:id',
-        builder: (_, s) =>
-            TicketDetailScreen(ticketId: int.parse(s.pathParameters['id']!)),
+        builder: (_, s) => TicketDetailScreen(
+          ticketId: int.parse(s.pathParameters['id']!),
+          initialTab: _detailTabIndex(s.uri.queryParameters['tab']),
+        ),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
         path: Routes.taskNew,
         // A "Create task" action on a ticket passes (id, number) as `extra` to
-        // pre-link the new task to that ticket.
+        // pre-link the new task to that ticket; a task's "Add subtask" passes
+        // the parent Task itself, which pre-fills parent + department.
         builder: (_, s) {
           final link = s.extra;
           return CreateTaskScreen(
@@ -149,6 +147,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ticketNumber: link is ({int id, String number})
                 ? link.number
                 : null,
+            parentTask: link is Task ? link : null,
           );
         },
       ),
@@ -157,32 +156,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/tasks/:id',
         builder: (_, s) => TaskDetailScreen(
           taskId: int.parse(s.pathParameters['id']!),
-          // A list/subtask tap passes its row Task so the detail can borrow the
-          // due date the detail endpoint omits.
-          seed: s.extra is Task ? s.extra as Task : null,
+          initialTab: _detailTabIndex(s.uri.queryParameters['tab']),
         ),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootKey,
-        path: Routes.users,
-        builder: (_, __) => const UsersListScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootKey,
-        path: '/users/:id',
-        builder: (_, s) =>
-            UserDetailScreen(userId: int.parse(s.pathParameters['id']!)),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootKey,
-        path: Routes.organizations,
-        builder: (_, __) => const OrgsListScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootKey,
-        path: '/organizations/:id',
-        builder: (_, s) =>
-            OrgDetailScreen(orgId: int.parse(s.pathParameters['id']!)),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
@@ -202,18 +177,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
-        path: Routes.queues,
-        builder: (_, __) => const QueuesScreen(),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootKey,
-        path: Routes.queueResults,
-        // The tapped SavedQueue is passed as `extra` (it carries type + criteria
-        // the results screen needs).
-        builder: (_, s) => QueueResultsScreen(queue: s.extra as SavedQueue),
-      ),
-      GoRoute(
-        parentNavigatorKey: _rootKey,
         path: Routes.reports,
         builder: (_, __) => const ReportsScreen(),
       ),
@@ -221,6 +184,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootKey,
         path: Routes.agents,
         builder: (_, __) => const AgentsDirectoryScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: Routes.tags,
+        builder: (_, __) => const TagsScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: Routes.team,
+        builder: (_, __) => const TeamAvailabilityScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,
@@ -235,3 +208,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// Maps a `?tab=` query value to the tab index shared by the ticket and task
+/// detail screens (Conversation / Details / Activity). Anything unrecognised
+/// falls back to the Conversation tab, so a hand-typed URL still opens.
+int _detailTabIndex(String? tab) => switch (tab) {
+  'details' => 1,
+  'activity' => 2,
+  _ => 0,
+};

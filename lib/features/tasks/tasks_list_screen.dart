@@ -213,8 +213,16 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
         for (final e in entries)
           if (e.value >= 0) e.key: e.value,
       };
-      // Keep the app-bar total in step with the corrected My Tasks count.
-      if (_view == 'mine' && _counts['mine'] != null) _total = _counts['mine'];
+      // Keep the app-bar total in step with the corrected count for the
+      // ACTIVE view — not just My Tasks. Applying a filter refetches the
+      // list, but that callback shows `_counts[view]` for a client-counted tab
+      // and `_counts` is still the pre-filter map while this recount is in
+      // flight; without this the header kept the old number until the user
+      // changed tabs. Server-counted tabs (no filter/search/date window) keep
+      // taking the same number from repo.count() over the same query, and the
+      // list keeps `_counts` in step as it loads, so the two never disagree.
+      final activeCount = _counts[_view];
+      if (activeCount != null) _total = activeCount;
     });
   }
 
@@ -796,7 +804,7 @@ class _TasksListScreenState extends ConsumerState<TasksListScreen> {
         onToggle: () => _toggle(t.id),
         // Pass the row task so the detail can show the due date its own
         // endpoint omits (list summary carries it).
-        onTap: () => context.push(Routes.task(t.id), extra: t),
+        onTap: () => context.push(Routes.task(t.id)),
       ),
     );
   }

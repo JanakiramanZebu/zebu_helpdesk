@@ -16,11 +16,13 @@ import 'data/notifications_repository.dart';
 import 'data/orgs_repository.dart';
 import 'data/password_reset_repository.dart';
 import 'data/push_repository.dart';
-import 'data/queues_repository.dart';
 import 'data/reports_repository.dart';
+import 'data/tags_repository.dart';
 import 'data/tasks_repository.dart';
+import 'data/team_repository.dart';
 import 'data/tickets_repository.dart';
 import 'data/users_repository.dart';
+import 'models/app_notification.dart';
 import 'models/me.dart';
 
 /// Central dependency-injection graph for the app.
@@ -78,6 +80,8 @@ final usersRepositoryProvider = Provider<UsersRepository>(
   (ref) => UsersRepository(ref.watch(apiClientProvider)),
 );
 
+/// Read-only `/organizations` access — the Reports page's Organizations
+/// report is the only thing that still needs it.
 final orgsRepositoryProvider = Provider<OrgsRepository>(
   (ref) => OrgsRepository(ref.watch(apiClientProvider)),
 );
@@ -88,10 +92,6 @@ final cannedRepositoryProvider = Provider<CannedRepository>(
 
 final faqRepositoryProvider = Provider<FaqRepository>(
   (ref) => FaqRepository(ref.watch(apiClientProvider)),
-);
-
-final queuesRepositoryProvider = Provider<QueuesRepository>(
-  (ref) => QueuesRepository(ref.watch(apiClientProvider)),
 );
 
 final notificationsRepositoryProvider = Provider<NotificationsRepository>(
@@ -113,16 +113,24 @@ final reportsRepositoryProvider = Provider<ReportsRepository>(
   (ref) => ReportsRepository(ref.watch(apiClientProvider)),
 );
 
+/// The shared tag catalogue (`/tags`) — create, rename, recolor, enable /
+/// disable, merge, delete.
+final tagsRepositoryProvider = Provider<TagsRepository>(
+  (ref) => TagsRepository(ref.watch(apiClientProvider)),
+);
+
+/// Round-robin availability for the agents a manager is responsible for.
+final teamRepositoryProvider = Provider<TeamRepository>(
+  (ref) => TeamRepository(ref.watch(apiClientProvider)),
+);
+
 final metaRepositoryProvider = Provider<MetaRepository>(
   (ref) => MetaRepository(ref.watch(apiClientProvider)),
 );
 
 /// Department-scoped agent pick-lists for the assign/reassign flows.
 final agentDirectoryProvider = Provider<AgentDirectory>(
-  (ref) => AgentDirectory(
-    ref.watch(metaRepositoryProvider),
-    ref.watch(meRepositoryProvider),
-  ),
+  (ref) => AgentDirectory(ref.watch(metaRepositoryProvider)),
 );
 
 // --- Derived async state ----------------------------------------------------
@@ -135,10 +143,20 @@ final meProvider = FutureProvider<Me>((ref) async {
   return ref.watch(meRepositoryProvider).getMe();
 });
 
-/// Unread notification count, used for the bell badge.
-final unreadCountProvider = FutureProvider<int>((ref) async {
+/// Unread notification totals (`GET /notifications/count`).
+final notificationCountsProvider = FutureProvider<NotificationCounts>((
+  ref,
+) async {
   ref.watch(authControllerProvider);
-  return ref.watch(notificationsRepositoryProvider).count();
+  return ref.watch(notificationsRepositoryProvider).counts();
+});
+
+/// The unread badge shown on the nav bell, the More row and the inbox's Unread
+/// chip: unread **conversations**, not rows, so every badge matches the cards
+/// the inbox lists (and the web's `Unread (n)`).
+final unreadCountProvider = FutureProvider<int>((ref) async {
+  final counts = await ref.watch(notificationCountsProvider.future);
+  return counts.conversations;
 });
 
 // --- UI cross-tab signals ---------------------------------------------------

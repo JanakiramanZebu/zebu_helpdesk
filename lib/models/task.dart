@@ -1,4 +1,5 @@
 import '../core/api/json.dart';
+import 'common.dart';
 
 /// A task. Like tickets, the summary (list) and full (detail/action) shapes
 /// differ slightly; this absorbs both. Priority/parent/progress are an optional
@@ -22,6 +23,7 @@ class Task {
     this.created,
     this.updated,
     this.isOpen = true,
+    this.tags = const [],
     this.customFields = const {},
   });
 
@@ -43,32 +45,13 @@ class Task {
   final DateTime? updated;
   final bool isOpen;
 
+  /// Tags on the task. Served by `GET /tasks/{id}` (and by the dedicated
+  /// `/tasks/{id}/tags` endpoint the edit dialog writes through); empty on a
+  /// list row, which doesn't carry them.
+  final List<Tag> tags;
+
   /// `{ label: value }`.
   final Map<String, String> customFields;
-
-  /// Returns a copy with the given fields overridden. Currently used to graft
-  /// the due date / overdue flag from a list row (which carries them) onto a
-  /// detail task (whose endpoint omits them).
-  Task copyWith({DateTime? duedate, bool? overdue}) => Task(
-    id: id,
-    number: number,
-    title: title,
-    statusName: statusName,
-    departmentName: departmentName,
-    departmentId: departmentId,
-    assignee: assignee,
-    priority: priority,
-    parentId: parentId,
-    progress: progress,
-    subtaskCount: subtaskCount,
-    blocked: blocked,
-    duedate: duedate ?? this.duedate,
-    overdue: overdue ?? this.overdue,
-    created: created,
-    updated: updated,
-    isOpen: isOpen,
-    customFields: customFields,
-  );
 
   factory Task.fromJson(Map<String, dynamic> j) {
     String? deptName;
@@ -108,6 +91,7 @@ class Task {
       isOpen: j.containsKey('isopen')
           ? J.boolOr(j['isopen'], true)
           : J.strOr(j['status'], 'Open').toLowerCase() == 'open',
+      tags: J.mapList(j['tags']).map(Tag.fromJson).toList(),
       customFields: cf,
     );
   }

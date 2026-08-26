@@ -52,6 +52,10 @@ class RichMessageField extends StatefulWidget {
 class _RichMessageFieldState extends State<RichMessageField> {
   final FocusNode _focus = FocusNode();
 
+  /// Shared with the toolbar so its buttons can pull the keyboard back to the
+  /// editor after a press.
+  final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
+
   @override
   void initState() {
     super.initState();
@@ -72,8 +76,7 @@ class _RichMessageFieldState extends State<RichMessageField> {
     if (mounted) setState(() {});
   }
 
-  bool get _isEmpty =>
-      widget.controller.document.toPlainText().trim().isEmpty;
+  bool get _isEmpty => widget.controller.document.toPlainText().trim().isEmpty;
 
   Future<void> _openFullscreen() async {
     _focus.unfocus();
@@ -142,37 +145,43 @@ class _RichMessageFieldState extends State<RichMessageField> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Toolbar + insert/expand row.
-              Row(
-                children: [
-                  Expanded(
-                    child: FleatherToolbar.basic(
-                      controller: widget.controller,
-                      hideBackgroundColor: true,
-                      hideForegroundColor: true,
-                      hideDirection: true,
-                      hideListChecks: true,
-                      hideAlignment: true,
+              // Toolbar + insert/expand row. Marked as field chrome
+              // ([TextFieldTapRegion]) so the app-wide KeyboardDismisser, which
+              // drops focus on any pointer outside the focused editable, leaves
+              // it alone — otherwise tapping Bold closed the keyboard.
+              TextFieldTapRegion(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: FleatherToolbar.basic(
+                        controller: widget.controller,
+                        editorKey: _editorKey,
+                        hideBackgroundColor: true,
+                        hideForegroundColor: true,
+                        hideDirection: true,
+                        hideListChecks: true,
+                        hideAlignment: true,
+                      ),
                     ),
-                  ),
-                  if (widget.onInsertCanned != null ||
-                      widget.onInsertFaq != null)
-                    ComposerActionChips(
-                      onCanned: widget.onInsertCanned ?? () {},
-                      onFaq: widget.onInsertFaq ?? () {},
+                    if (widget.onInsertCanned != null ||
+                        widget.onInsertFaq != null)
+                      ComposerActionChips(
+                        onCanned: widget.onInsertCanned ?? () {},
+                        onFaq: widget.onInsertFaq ?? () {},
+                      ),
+                    IconButton(
+                      tooltip: 'Expand',
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        Icons.open_in_full,
+                        size: 18,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                      onPressed: _openFullscreen,
                     ),
-                  IconButton(
-                    tooltip: 'Expand',
-                    visualDensity: VisualDensity.compact,
-                    icon: Icon(
-                      Icons.open_in_full,
-                      size: 18,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                    onPressed: _openFullscreen,
-                  ),
-                  const SizedBox(width: 4),
-                ],
+                    const SizedBox(width: 4),
+                  ],
+                ),
               ),
               Divider(height: 1, color: scheme.outlineVariant),
               // Editor with a placeholder overlay when empty.
@@ -186,6 +195,7 @@ class _RichMessageFieldState extends State<RichMessageField> {
                     FleatherEditor(
                       controller: widget.controller,
                       focusNode: _focus,
+                      editorKey: _editorKey,
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
                     ),
                     if (_isEmpty && widget.hintText != null)
@@ -233,6 +243,7 @@ class _FullscreenMessageEditor extends StatefulWidget {
 
 class _FullscreenMessageEditorState extends State<_FullscreenMessageEditor> {
   final FocusNode _focus = FocusNode();
+  final GlobalKey<EditorState> _editorKey = GlobalKey<EditorState>();
 
   @override
   void dispose() {
@@ -267,14 +278,22 @@ class _FullscreenMessageEditorState extends State<_FullscreenMessageEditor> {
             child: FleatherEditor(
               controller: widget.controller,
               focusNode: _focus,
+              editorKey: _editorKey,
               autofocus: true,
               expands: true,
               padding: const EdgeInsets.all(16),
             ),
           ),
-          SafeArea(
-            top: false,
-            child: FleatherToolbar.basic(controller: widget.controller),
+          // Same tap-region guard as the inline field: the bottom toolbar is
+          // field chrome, not "outside" the editor.
+          TextFieldTapRegion(
+            child: SafeArea(
+              top: false,
+              child: FleatherToolbar.basic(
+                controller: widget.controller,
+                editorKey: _editorKey,
+              ),
+            ),
           ),
         ],
       ),
