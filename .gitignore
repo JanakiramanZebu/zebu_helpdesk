@@ -50,3 +50,11 @@ app.*.map.json
 /android/key.properties
 **/*.jks
 **/*.keystore
+
+# Internal working docs — kept locally, not versioned in the app repo
+/docs/
+/tools/
+/BACKEND_REQUIREMENTS.md
+/BACKEND_FIX_*.md
+/BRD_SCOPE_UPDATE_*.md
+/DAILY_REPORT_*.md
