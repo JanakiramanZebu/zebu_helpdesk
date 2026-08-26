@@ -33,4 +33,35 @@ class Validators {
   /// Form validator for a plain non-empty field.
   static String? notEmpty(String? v, {required String label}) =>
       (v ?? '').trim().isEmpty ? '$label is required' : null;
+
+  /// The punctuation osTicket allows inside a phone number and strips before
+  /// checking it: parentheses, hyphen, dot, plus and whitespace.
+  static final _phonePunctuation = RegExp(r'[()\-.+\s]');
+
+  static final _digitsOnly = RegExp(r'^[0-9]+$');
+
+  /// Ports `Validator::is_phone()` (`include/class.validator.php:209`), which
+  /// is the rule behind the web profile's "Valid phone number is required":
+  /// strip the punctuation above, then require what's left to be numeric and
+  /// **7 to 16 characters**. Deliberately not a real phone-number parser —
+  /// osTicket's own comment says so — so it accepts international formats like
+  /// `+91 98765 43210` as readily as `(555) 123-4567`.
+  ///
+  /// An empty value is *not* checked by the web (`if ($vars['mobile'] && ...)`),
+  /// so use [phone] rather than this for an optional field.
+  static bool isPhone(String value) {
+    final stripped = value.replaceAll(_phonePunctuation, '');
+    if (!_digitsOnly.hasMatch(stripped)) return false;
+    return stripped.length >= 7 && stripped.length <= 16;
+  }
+
+  /// Form validator for osTicket's phone / mobile fields. Blank passes: both
+  /// are optional on the web profile, which only validates a value that was
+  /// actually typed. The message is the server's own, so a client-side
+  /// rejection and a server-side one read identically.
+  static String? phone(String? v) {
+    final value = (v ?? '').trim();
+    if (value.isEmpty) return null;
+    return isPhone(value) ? null : 'Valid phone number is required';
+  }
 }

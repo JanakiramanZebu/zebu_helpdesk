@@ -5,6 +5,7 @@ import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/timezones.dart';
+import '../../core/validators.dart';
 import '../../models/me.dart';
 import '../../providers.dart';
 import '../../widgets/app_snack.dart';
@@ -439,6 +440,13 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     super.dispose();
   }
 
+  /// Drops a field's error the moment its value changes, so a rejected number
+  /// stops being flagged while it is being corrected.
+  void _clearError(String field) {
+    if (!_fieldErrors.containsKey(field)) return;
+    setState(() => _fieldErrors = {..._fieldErrors}..remove(field));
+  }
+
   /// The web renders this as a `<select>` over `DateTimeZone::listIdentifiers()`
   /// with a blank "System Default" row; the searchable sheet is the same list,
   /// and the same blank option, in the shape the app uses everywhere else.
@@ -456,6 +464,27 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
   }
 
   Future<void> _save() async {
+    final firstname = _firstname.text.trim();
+    final lastname = _lastname.text.trim();
+    final email = _email.text.trim();
+    final phone = _phone.text.trim();
+    final mobile = _mobile.text.trim();
+    // `Validator::is_phone()` on each number that was actually typed — the rule
+    // behind the web's "Valid phone number is required". Everything else on
+    // this form (name required, email valid/unique) stays server-checked and
+    // comes back as a field error, exactly as before.
+    final errors = <String, String>{
+      if (Validators.phone(phone) != null) 'phone': Validators.phone(phone)!,
+      if (Validators.phone(mobile) != null)
+        'mobile': Validators.phone(mobile)!,
+    };
+    if (errors.isNotEmpty) {
+      setState(() {
+        _error = null;
+        _fieldErrors = errors;
+      });
+      return;
+    }
     setState(() {
       _saving = true;
       _error = null;
@@ -463,11 +492,11 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     });
     try {
       await ref.read(meRepositoryProvider).updateMe({
-        'firstname': _firstname.text.trim(),
-        'lastname': _lastname.text.trim(),
-        'email': _email.text.trim(),
-        'phone': _phone.text.trim(),
-        'mobile': _mobile.text.trim(),
+        'firstname': firstname,
+        'lastname': lastname,
+        'email': email,
+        'phone': phone,
+        'mobile': mobile,
         'timezone': _timezone,
         'signature': _signature.text,
       });
@@ -526,6 +555,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
             TextField(
               controller: _phone,
               keyboardType: TextInputType.phone,
+              onChanged: (_) => _clearError('phone'),
               decoration: InputDecoration(
                 labelText: 'Phone',
                 errorText: _fieldErrors['phone'],
@@ -535,8 +565,13 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
             TextField(
               controller: _mobile,
               keyboardType: TextInputType.phone,
+              onChanged: (_) => _clearError('mobile'),
               decoration: InputDecoration(
                 labelText: 'Mobile',
+                // osTicket accepts any 7-16 digit number once its punctuation
+                // is stripped, so say that rather than let an agent guess at a
+                // format that was never required.
+                helperText: '7–16 digits. Spaces, +, -, ( ) and . are fine.',
                 errorText: _fieldErrors['mobile'],
               ),
             ),

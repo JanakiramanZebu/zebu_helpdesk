@@ -999,12 +999,21 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   Future<void> _manageTags() async {
     final repo = ref.read(ticketsRepositoryProvider);
     final meta = ref.read(metaRepositoryProvider);
+    // Typing a new tag is offered to whoever `Tag::canCreate()` allows — an
+    // admin or a department manager, the same set the web's select2 opens
+    // `tags: true` for. Everyone else applies existing tags only.
+    final canCreateTags = ref
+        .read(meProvider)
+        .maybeWhen(data: (m) => m.canCreateTags, orElse: () => false);
     final saved = await showTagsDialog(
       context,
       loadApplied: () => repo.tags(widget.ticketId),
       loadShared: () => meta.get(MetaKind.tags),
       addTag: (tagId) => repo.addTag(widget.ticketId, tagId: tagId),
       removeTag: (tagId) => repo.removeTag(widget.ticketId, tagId),
+      createTag: canCreateTags
+          ? (name) => repo.addTag(widget.ticketId, name: name)
+          : null,
     );
     if (!mounted) return;
     if (saved != null) {

@@ -18,6 +18,7 @@ Tag tag(int id, String name) => Tag(id: id, name: name);
 class _Calls {
   final added = <int>[];
   final removed = <int>[];
+  final created = <String>[];
 }
 
 /// Opens the dialog over a bare app and returns the calls it made plus the
@@ -28,6 +29,8 @@ Future<(_Calls, List<Tag>?)> open(
   required List<Tag> applied,
   required List<MetaItem> options,
   bool rejectAdd = false,
+  bool canCreate = false,
+  bool rejectCreate = false,
 }) async {
   final calls = _Calls();
   var current = [...applied];
@@ -63,6 +66,29 @@ Future<(_Calls, List<Tag>?)> open(
                   current = current.where((t) => t.id != id).toList();
                   return current;
                 },
+                // Only an admin or department manager gets this — the same
+                // `Tag::canCreate()` gate the web's select2 opens `tags: true`
+                // for. `rejectCreate` is the server refusing the name.
+                createTag: canCreate
+                    ? (name) async {
+                        calls.created.add(name);
+                        if (rejectCreate) {
+                          throw ApiException(
+                            statusCode: 422,
+                            code: 'validation',
+                            message: ' ',
+                            fields: const {
+                              'tag': 'Unknown tag, or not allowed to create it',
+                            },
+                          );
+                        }
+                        current = [
+                          ...current,
+                          tag(100 + calls.created.length, name),
+                        ];
+                        return current;
+                      }
+                    : null,
               );
               resolved = true;
             },
@@ -196,6 +222,151 @@ void main() {
 
     expect(
       find.textContaining('No tags are available for your department'),
+      findsOneWidget,
+    );
+  });
+
+  // --- Creating a tag from the dialog (the web's select2 `tags: true`) ------
+
+  testWidgets('a regular agent gets no way to create a tag', (tester) async {
+    await open(
+      tester,
+      applied: const [],
+      options: shared(['Urgent', 'Billing']),
+    );
+
+    // No box to type into at all: the list is short, and without the
+    // permission there is nothing to type for.
+    expect(find.byType(TextField), findsNothing);
+  });
+
+  testWidgets('typing an unknown name offers to create it, and Save mints it', (
+    tester,
+  ) async {
+    final (calls, _) = await open(
+      tester,
+      applied: const [],
+      options: shared(['Urgent', 'Billing']),
+      canCreate: true,
+    );
+
+    await tester.enterText(find.byType(TextField), 'Refund');
+    await tester.pumpAndSettle();
+    expect(find.text('Create "Refund"'), findsOneWidget);
+
+    await tester.tap(find.text('Create "Refund"'));
+    await tester.pumpAndSettle();
+    // Queued, badged, and the box is clear for the next one — nothing sent.
+    expect(find.text('New'), findsOneWidget);
+    expect(find.text('Refund'), findsOneWidget);
+    expect(calls.created, isEmpty);
+
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(calls.created, ['Refund']);
+    expect(calls.added, isEmpty);
+  });
+
+  testWidgets('pressing Enter queues the typed name', (tester) async {
+    final (calls, _) = await open(
+      tester,
+      applied: const [],
+      options: shared(['Urgent']),
+      canCreate: true,
+    );
+
+    await tester.enterText(find.byType(TextField), 'Refund');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+    expect(find.text('New'), findsOneWidget);
+
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(calls.created, ['Refund']);
+  });
+
+  testWidgets('an existing tag is offered as a tick, not a duplicate', (
+    tester,
+  ) async {
+    final (calls, _) = await open(
+      tester,
+      applied: const [],
+      options: shared(['Urgent', 'Billing']),
+      canCreate: true,
+    );
+
+    // Different case: the server dedupes on a normalised slug, so creating
+    // this would be a no-op at best and a confusing error at worst.
+    await tester.enterText(find.byType(TextField), 'urgent');
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Create "'), findsNothing);
+
+    await tester.tap(find.text('Urgent'));
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(calls.created, isEmpty);
+    expect(calls.added, [1]);
+  });
+
+  testWidgets('a queued name can be dropped before Save', (tester) async {
+    final (calls, _) = await open(
+      tester,
+      applied: const [],
+      options: shared(['Urgent']),
+      canCreate: true,
+    );
+
+    await tester.enterText(find.byType(TextField), 'Refund');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create "Refund"'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Refund')); // untick the queued row
+    await tester.pumpAndSettle();
+    expect(find.text('New'), findsNothing);
+
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+    expect(calls.created, isEmpty, reason: 'nothing left to commit');
+  });
+
+  testWidgets('a refused name keeps what was typed, with the reason', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      applied: const [],
+      options: shared(['Urgent']),
+      canCreate: true,
+      rejectCreate: true,
+    );
+
+    await tester.enterText(find.byType(TextField), 'Refund');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create "Refund"'));
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text('Unknown tag, or not allowed to create it'),
+      findsOneWidget,
+    );
+    expect(find.text('Refund'), findsOneWidget, reason: 'still queued');
+  });
+
+  testWidgets('an empty vocabulary invites the first tag when allowed', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      applied: const [],
+      options: const [],
+      canCreate: true,
+    );
+
+    expect(
+      find.textContaining('Type a name above to create the first one'),
       findsOneWidget,
     );
   });

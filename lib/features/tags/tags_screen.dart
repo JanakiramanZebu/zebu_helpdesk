@@ -10,18 +10,29 @@ import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/paged_list_view.dart';
 
-/// The colours osTicket's tag form offers, in its own order
-/// (`include/staff/tags.inc.php`).
+/// The colour a tag gets when nothing else is chosen — osTicket's own default
+/// (`include/staff/tags.inc.php` seeds its picker with it, and
+/// `Tag::resolveOrCreate` stamps it on a tag minted from a ticket).
+const _kDefaultTagColor = '#3b7dd8';
+
+/// Quick picks. The web's field is a free `<input type="color">`, so these are
+/// shortcuts, not the allowed set — the hex box below them takes any
+/// `#rrggbb`, which is exactly what `Tag::update()` validates. The first is
+/// osTicket's default and the last is `Tag::getColor()`'s fallback for a tag
+/// stored without one.
 const _kTagColors = <String>[
+  _kDefaultTagColor,
   '#d9534f',
   '#f0ad4e',
   '#5cb85c',
   '#5bc0de',
   '#337ab7',
   '#9b59b6',
-  '#46d83b',
   '#666666',
 ];
+
+/// What `Tag::update()` accepts: `#` plus six hex digits.
+final _kHexColor = RegExp(r'^#[0-9a-fA-F]{6}$');
 
 /// Status views over the one catalogue fetch, mirroring the web list's
 /// enabled/disabled split.
@@ -484,8 +495,17 @@ class _TagEditorState extends ConsumerState<_TagEditor> {
   late final TextEditingController _name = TextEditingController(
     text: widget.existing?.name ?? '',
   );
-  late String _color = widget.existing?.color ?? _kTagColors.first;
+
+  /// The hex box is the source of truth for the colour; the swatches just
+  /// write into it. A tag recoloured on the web to something outside the quick
+  /// picks therefore opens showing its real colour rather than nothing
+  /// selected.
+  late final TextEditingController _colorCtrl = TextEditingController(
+    text: _normalizeHex(widget.existing?.color) ?? _kDefaultTagColor,
+  );
   late bool _active = widget.existing?.isActive ?? true;
+
+  String get _color => _colorCtrl.text.trim();
 
   bool _saving = false;
   Map<String, String> _fieldErrors = const {};
@@ -496,13 +516,39 @@ class _TagEditorState extends ConsumerState<_TagEditor> {
   @override
   void dispose() {
     _name.dispose();
+    _colorCtrl.dispose();
     super.dispose();
+  }
+
+  /// `#rrggbb` for anything the server or the agent can plausibly hand over
+  /// (with or without the `#`, any case); null when it isn't a colour at all.
+  static String? _normalizeHex(String? raw) {
+    final v = (raw ?? '').trim();
+    if (v.isEmpty) return null;
+    final withHash = v.startsWith('#') ? v : '#$v';
+    return _kHexColor.hasMatch(withHash) ? withHash.toLowerCase() : null;
   }
 
   Future<void> _save() async {
     final name = _name.text.trim();
-    if (name.isEmpty) {
-      setState(() => _fieldErrors = {'name': 'Tag name is required'});
+    final color = _normalizeHex(_color);
+    // `Tag::update()`'s own three rules, worded the way it words them, so a
+    // typo costs no round trip. Uniqueness is the one it can only answer
+    // server-side.
+    final nameError = name.isEmpty
+        ? 'Tag name is required'
+        : name.runes.length > 64
+        ? 'Tag name is too long (64 characters max)'
+        : null;
+    if (nameError != null || color == null) {
+      setState(() {
+        _error = null;
+        _fieldErrors = {
+          if (nameError != null) 'name': nameError,
+          if (color == null)
+            'color': 'Enter a valid hex color, e.g. $_kDefaultTagColor',
+        };
+      });
       return;
     }
     setState(() {
@@ -512,14 +558,21 @@ class _TagEditorState extends ConsumerState<_TagEditor> {
     });
     final repo = ref.read(tagsRepositoryProvider);
     try {
-      final saved = _isEdit
+      var saved = _isEdit
           // Partial update: only what this sheet owns.
           ? await repo.update(widget.existing!.id, {
               'name': name,
-              'color': _color,
+              'color': color,
               'is_active': _active,
             })
-          : await repo.create(name: name, color: _color);
+          : await repo.create(name: name, color: color, isActive: _active);
+      // The web's Add form can create a tag already disabled (its Active box
+      // starts checked but can be unchecked). An install whose POST /tags
+      // ignores `is_active` would silently create it active instead, so make
+      // the state stick with the update call that definitely honours it.
+      if (!_isEdit && !_active && saved.isActive) {
+        saved = await repo.update(saved.id, {'is_active': false});
+      }
       if (mounted) Navigator.pop(context, saved);
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -565,7 +618,10 @@ class _TagEditorState extends ConsumerState<_TagEditor> {
               children: [
                 for (final c in _kTagColors)
                   GestureDetector(
-                    onTap: () => setState(() => _color = c),
+                    onTap: () => setState(() {
+                      _colorCtrl.text = c;
+                      _fieldErrors = {..._fieldErrors}..remove('color');
+                    }),
                     child: Container(
                       width: 32,
                       height: 32,
@@ -583,19 +639,57 @@ class _TagEditorState extends ConsumerState<_TagEditor> {
                   ),
               ],
             ),
-            if (_isEdit) ...[
-              const SizedBox(height: 8),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                value: _active,
-                onChanged: (v) => setState(() => _active = v),
-                title: const Text('Active'),
-                subtitle: const Text(
-                  'A disabled tag stays on what already carries it, but is '
-                  'not offered for new tagging.',
+            const SizedBox(height: 12),
+            // The web's control is a free colour picker, so any hex the server
+            // accepts has to be typeable here too — otherwise a tag can only
+            // ever wear one of eight colours in the app.
+            TextField(
+              controller: _colorCtrl,
+              onChanged: (_) => setState(() {}),
+              maxLength: 7,
+              autocorrect: false,
+              decoration: InputDecoration(
+                labelText: 'Chip colour',
+                counterText: '',
+                helperText: 'Any hex colour, e.g. $_kDefaultTagColor',
+                errorText: _fieldErrors['color'],
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Container(
+                    width: 22,
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: _parseColor(
+                        _normalizeHex(_color) ?? '',
+                        scheme.surfaceContainerHighest,
+                      ),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: scheme.outlineVariant),
+                    ),
+                  ),
+                ),
+                prefixIconConstraints: const BoxConstraints(
+                  minWidth: 46,
+                  minHeight: 42,
                 ),
               ),
-            ],
+            ),
+            const SizedBox(height: 4),
+            // On the web this switch is on the Add form too — an agent can
+            // define a tag now and only open it to tagging later.
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _active,
+              onChanged: (v) => setState(() => _active = v),
+              title: const Text('Active'),
+              subtitle: const Text(
+                'A disabled tag stays on what already carries it, but is '
+                'not offered for new tagging.',
+              ),
+            ),
             const SizedBox(height: 20),
             FilledButton(
               onPressed: _saving ? null : _save,

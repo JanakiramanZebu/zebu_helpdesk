@@ -586,12 +586,20 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   Future<void> _manageTags() async {
     final repo = ref.read(tasksRepositoryProvider);
     final meta = ref.read(metaRepositoryProvider);
+    // Same gate as the ticket screen: `Tag::canCreate()` (admin or department
+    // manager) is what the web opens its "type to create" affordance for.
+    final canCreateTags = ref
+        .read(meProvider)
+        .maybeWhen(data: (m) => m.canCreateTags, orElse: () => false);
     final saved = await showTagsDialog(
       context,
       loadApplied: () => repo.tags(widget.taskId),
       loadShared: () => meta.get(MetaKind.tags),
       addTag: (tagId) => repo.addTag(widget.taskId, tagId: tagId),
       removeTag: (tagId) => repo.removeTag(widget.taskId, tagId),
+      createTag: canCreateTags
+          ? (name) => repo.addTag(widget.taskId, name: name)
+          : null,
     );
     if (!mounted || saved == null) return;
     setState(() => _tags = saved);

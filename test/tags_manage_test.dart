@@ -30,6 +30,38 @@ class _FakeTags extends TagsRepository {
 
   ({int intoId, List<int> sourceIds})? mergeCall;
   final deleted = <int>[];
+  ({String name, String? color, bool? isActive})? createCall;
+  final updates = <(int, Map<String, dynamic>)>[];
+
+  /// Set to have `POST /tags` ignore `is_active` the way an install that
+  /// never implemented the field would, so the follow-up update is exercised.
+  bool ignoresIsActiveOnCreate = false;
+
+  @override
+  Future<Tag> create({
+    required String name,
+    String? color,
+    bool? isActive,
+  }) async {
+    createCall = (name: name, color: color, isActive: isActive);
+    return Tag(
+      id: 99,
+      name: name,
+      color: color ?? '#666666',
+      isActive: ignoresIsActiveOnCreate ? true : (isActive ?? true),
+    );
+  }
+
+  @override
+  Future<Tag> update(int id, Map<String, dynamic> changes) async {
+    updates.add((id, changes));
+    return Tag(
+      id: id,
+      name: changes['name'] as String? ?? 'Refunds',
+      color: changes['color'] as String? ?? '#5bc0de',
+      isActive: changes['is_active'] as bool? ?? true,
+    );
+  }
 
   @override
   Future<Paginated<Tag>> list({int page = 1, int limit = 25}) async =>
@@ -143,6 +175,130 @@ void main() {
 
     expect(repo.deleted, isEmpty);
     expect(find.text('Merge into "Refunds"'), findsOneWidget);
+  });
+
+  // --- The create / edit sheet vs the web's Add New Tag form ---------------
+
+  /// Opens the FAB's create sheet. The name box is first, the colour second.
+  Future<_FakeTags> openCreate(WidgetTester tester) async {
+    tall(tester);
+    final repo = _FakeTags();
+    await tester.pumpWidget(host(repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    return repo;
+  }
+
+  final nameField = find.byType(TextField).at(0);
+  final colourField = find.byType(TextField).at(1);
+  final saveButton = find.widgetWithText(FilledButton, 'Save');
+
+  // The web's Add form starts on osTicket's own default colour, and its
+  // Status checkbox is on the Add form too — not only on the edit form.
+  testWidgets('create offers the web default colour and the Active switch', (
+    tester,
+  ) async {
+    await openCreate(tester);
+
+    expect(find.text('New tag'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(colourField).controller?.text,
+      '#3b7dd8',
+    );
+    expect(find.byType(SwitchListTile), findsOneWidget);
+  });
+
+  testWidgets('a tag can be created already disabled', (tester) async {
+    final repo = await openCreate(tester);
+
+    await tester.enterText(nameField, 'Escalation');
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(repo.createCall?.name, 'Escalation');
+    expect(repo.createCall?.isActive, isFalse);
+    expect(repo.updates, isEmpty, reason: 'the create call already took it');
+  });
+
+  // If POST /tags ignores the field, the tag would come back active and the
+  // agent would never know the switch did nothing.
+  testWidgets('a disabled create is enforced when the server ignores it', (
+    tester,
+  ) async {
+    tall(tester);
+    final repo = _FakeTags()..ignoresIsActiveOnCreate = true;
+    await tester.pumpWidget(host(repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(nameField, 'Escalation');
+    await tester.tap(find.byType(SwitchListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(repo.updates.length, 1);
+    expect(repo.updates.single.$1, 99);
+    expect(repo.updates.single.$2, {'is_active': false});
+  });
+
+  // The web's control is a free colour picker, so a colour outside the quick
+  // picks has to survive the trip.
+  testWidgets('any hex colour can be typed, not just the swatches', (
+    tester,
+  ) async {
+    final repo = await openCreate(tester);
+
+    await tester.enterText(nameField, 'Escalation');
+    await tester.enterText(colourField, '#A1B2C3');
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    expect(repo.createCall?.color, '#a1b2c3');
+  });
+
+  testWidgets('a colour that is not a hex is refused before any request', (
+    tester,
+  ) async {
+    final repo = await openCreate(tester);
+
+    await tester.enterText(nameField, 'Escalation');
+    await tester.enterText(colourField, 'blue');
+    await tester.pumpAndSettle();
+    await tester.tap(saveButton);
+    await tester.pumpAndSettle();
+
+    // The server's own wording, and nothing was sent.
+    expect(
+      find.textContaining('Enter a valid hex color'),
+      findsOneWidget,
+    );
+    expect(repo.createCall, isNull);
+  });
+
+  // Editing a tag recoloured on the web used to show no swatch selected at
+  // all; the hex box states the real colour.
+  testWidgets('editing shows the stored colour even outside the swatches', (
+    tester,
+  ) async {
+    tall(tester);
+    final repo = _FakeTags();
+    await tester.pumpWidget(host(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Refunds'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit tag'), findsOneWidget);
+    expect(
+      tester.widget<TextField>(colourField).controller?.text,
+      '#5bc0de',
+    );
   });
 
   // An unused tag deletes without the merge detour.

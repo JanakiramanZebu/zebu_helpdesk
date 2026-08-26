@@ -14,6 +14,7 @@ import '../../widgets/app_sheet.dart';
 import '../../widgets/app_snack.dart';
 import '../../widgets/paged_list_view.dart';
 import '../../widgets/states.dart';
+import 'faq_editor_sheet.dart';
 
 /// Knowledgebase: browse categories (no query) or search FAQs (query set).
 class FaqScreen extends ConsumerStatefulWidget {
@@ -74,6 +75,20 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
     );
     if (created == null || !mounted) return;
     AppSnack.success(context, 'Category "${created.name}" created');
+    await _loadCategories();
+  }
+
+  /// The web's "Add New FAQ" button. It sits on each category page there
+  /// (`faq.php?cid=N&a=add`), so opening it from a category preselects that
+  /// category; the app-bar action opens it with none picked.
+  Future<void> _addFaq({FaqCategory? into}) async {
+    final created = await showFaqEditorSheet(
+      context,
+      categories: _categories ?? const [],
+      category: into,
+    );
+    if (created == null || !mounted) return;
+    AppSnack.success(context, 'FAQ "${created.question}" added');
     await _loadCategories();
   }
 
@@ -145,6 +160,9 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // An article edited, published or deleted from the detail screen bumps
+    // this; the counts and rows here are what would otherwise go stale.
+    ref.listen<int>(faqChangedProvider, (_, __) => _loadCategories());
     final canManage = ref
         .watch(meProvider)
         .maybeWhen(data: (m) => m.canManageFaq, orElse: () => false);
@@ -152,12 +170,20 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
       appBar: AppBar(
         title: const Text('Knowledgebase'),
         actions: [
-          if (canManage && _q.isEmpty)
+          if (canManage && _q.isEmpty) ...[
+            IconButton(
+              icon: const Icon(Icons.post_add_outlined),
+              tooltip: 'Add new FAQ',
+              // An article needs a category to live in; with none defined the
+              // only thing to do first is create one.
+              onPressed: (_categories ?? const []).isEmpty ? null : _addFaq,
+            ),
             IconButton(
               icon: const Icon(Icons.create_new_folder_outlined),
               tooltip: 'Add new category',
               onPressed: _addCategory,
             ),
+          ],
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(56),
@@ -178,8 +204,10 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
 
   Widget _buildSearch() {
     final repo = ref.watch(faqRepositoryProvider);
+    // The revision rides in the refresh key so an article edited from the
+    // detail screen refetches instead of leaving a stale search row.
     return PagedListView<Faq>(
-      refreshKey: _q,
+      refreshKey: '$_q#${ref.watch(faqChangedProvider)}',
       emptyMessage: 'No articles found',
       emptyHint: 'Try a different search term.',
       emptyIcon: Icons.menu_book_outlined,
@@ -212,8 +240,13 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
         padding: const EdgeInsets.symmetric(vertical: 6),
         itemCount: cats.length,
         itemBuilder: (context, i) => _CategoryTile(
+          // The article count is part of the key so a category that just
+          // gained one rebuilds with a fresh (unexpanded, unstale) article
+          // list instead of showing the list it cached before the create.
+          key: ValueKey('${cats[i].id}:${cats[i].faqCount}'),
           category: cats[i],
           canManage: _canManage,
+          onAddFaq: () => _addFaq(into: cats[i]),
           onEdit: () => _editCategory(cats[i]),
           onSetType: (t) => _setCategoryType(cats[i], t),
           onDelete: () => _deleteCategory(cats[i]),
@@ -226,8 +259,10 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
 /// Expandable category that lazily loads its FAQs when first opened.
 class _CategoryTile extends ConsumerStatefulWidget {
   const _CategoryTile({
+    super.key,
     required this.category,
     required this.canManage,
+    required this.onAddFaq,
     required this.onEdit,
     required this.onSetType,
     required this.onDelete,
@@ -235,6 +270,7 @@ class _CategoryTile extends ConsumerStatefulWidget {
 
   final FaqCategory category;
   final bool canManage;
+  final VoidCallback onAddFaq;
   final VoidCallback onEdit;
   final ValueChanged<String> onSetType;
   final VoidCallback onDelete;
@@ -297,6 +333,8 @@ class _CategoryTileState extends ConsumerState<_CategoryTile> {
                 tooltip: 'Category actions',
                 onSelected: (v) {
                   switch (v) {
+                    case 'add_faq':
+                      widget.onAddFaq();
                     case 'edit':
                       widget.onEdit();
                     case 'delete':
@@ -306,6 +344,11 @@ class _CategoryTileState extends ConsumerState<_CategoryTile> {
                   }
                 },
                 itemBuilder: (_) => [
+                  // The web puts "Add New FAQ" on the category page itself.
+                  const PopupMenuItem(
+                    value: 'add_faq',
+                    child: Text('Add FAQ'),
+                  ),
                   const PopupMenuItem(value: 'edit', child: Text('Edit')),
                   PopupMenuItem(
                     value: cat.public ? 'private' : 'public',
@@ -398,12 +441,14 @@ class _FaqRow extends StatelessWidget {
           spacing: 6,
           runSpacing: 6,
           children: [
+            // The web's article list prints `getVisibilityDescription()` — all
+            // three states, not the `isPublished()` boolean.
             _chip(
               context,
-              faq.published ? 'Public' : 'Internal',
-              faq.published
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.outline,
+              faq.listing.label,
+              faq.listing == FaqListing.internal
+                  ? theme.colorScheme.outline
+                  : theme.colorScheme.primary,
             ),
             if (faq.category != null)
               _chip(context, faq.category!.name, theme.colorScheme.secondary),

@@ -26,10 +26,24 @@ class TagsRepository {
 
   Future<Tag> get(int id) async => _tag(await _api.get('/tags/$id'));
 
-  Future<Tag> create({required String name, String? color}) async => _tag(
+  /// Create a tag — the web's Manage → Tags → "Add New Tag" form.
+  ///
+  /// [isActive] is that form's Status checkbox, which starts checked but can
+  /// be unchecked to define a tag without opening it to tagging yet
+  /// (`Tag::update()`: "New tags default to active unless explicitly
+  /// unchecked"). Omitted, the server's own default stands.
+  Future<Tag> create({
+    required String name,
+    String? color,
+    bool? isActive,
+  }) async => _tag(
     await _api.post(
       '/tags',
-      body: {'name': name, if (color != null) 'color': color},
+      body: {
+        'name': name,
+        if (color != null) 'color': color,
+        if (isActive != null) 'is_active': isActive,
+      },
     ),
   );
 

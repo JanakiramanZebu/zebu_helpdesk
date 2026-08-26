@@ -195,3 +195,9 @@ class Revision extends Notifier<int> {
 
 final tasksChangedProvider = NotifierProvider<Revision, int>(Revision.new);
 final ticketsChangedProvider = NotifierProvider<Revision, int>(Revision.new);
+
+/// Bumped when a knowledgebase article or category is created, edited,
+/// published or deleted. The Knowledgebase screen reloads its categories on
+/// it, so an article edited from the detail screen doesn't leave a stale row
+/// (or a stale article count) on the list behind it.
+final faqChangedProvider = NotifierProvider<Revision, int>(Revision.new);
