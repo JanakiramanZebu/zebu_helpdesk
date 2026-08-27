@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import '../attachment_limits.dart';
 import '../config.dart';
 import '../auth/token_storage.dart';
 import '../format.dart';
@@ -126,6 +127,16 @@ class ApiClient {
     });
     files.forEach((field, list) {
       for (final f in list) {
+        // Backstop for the per-file ceiling the pickers already enforce: no
+        // upload path may spend the user's bandwidth on a file the server
+        // would reject anyway.
+        if (exceedsAttachmentLimit(f.length)) {
+          throw ApiException(
+            statusCode: 413,
+            code: 'attachment_too_large',
+            message: kAttachmentTooLargeError,
+          );
+        }
         form.files.add(MapEntry(field, f));
       }
     });

@@ -265,7 +265,7 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
 
   /// Picks attachments from [source] and appends any new ones.
   Future<void> _pickFrom(AttachSource source) async {
-    final picked = await pickAttachmentsOf(source);
+    final picked = await pickAttachmentsOf(context, source);
     if (picked.isEmpty || !mounted) return;
     setState(() {
       for (final f in picked) {

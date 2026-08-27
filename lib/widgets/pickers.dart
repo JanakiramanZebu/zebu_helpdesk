@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../core/api/api_exception.dart';
+import '../core/attachment_limits.dart';
 import '../core/theme/app_text.dart';
 import '../core/validators.dart';
 import '../data/agent_directory.dart';
@@ -22,21 +24,63 @@ import 'states.dart';
 /// (see `pickAttachSource`).
 enum AttachSource { photos, camera, files }
 
-/// Picks attachment(s) from the given [source] and returns them with bytes,
-/// ready to upload. Empty if the user cancels. No UI of its own — the caller
-/// presents the source choice (e.g. a [PopupMenuButton]).
-Future<List<PlatformFile>> pickAttachmentsOf(AttachSource source) async {
+/// A file the pick dropped because it is over [kMaxAttachmentBytes].
+typedef RejectedAttachment = ({String name, int bytes});
+
+/// Picks attachment(s) from the given [source], drops anything over the
+/// [kMaxAttachmentBytes] ceiling (telling the user which files were skipped),
+/// and returns the rest with their bytes, ready to upload. Empty if the user
+/// cancels or every pick was too big. The caller presents the source choice
+/// (see `pickAttachSource`).
+Future<List<PlatformFile>> pickAttachmentsOf(
+  BuildContext context,
+  AttachSource source,
+) async {
+  final rejected = <RejectedAttachment>[];
+  final files = await _pickWithin(source, rejected);
+  if (rejected.isNotEmpty && context.mounted) {
+    AppSnack.error(context, attachmentsTooLargeMessage(rejected));
+  }
+  return files;
+}
+
+/// The pick itself. Oversize files are recognised from the size the platform
+/// reports and appended to [rejected] **before** their bytes are read, so a
+/// huge pick never lands in memory.
+Future<List<PlatformFile>> _pickWithin(
+  AttachSource source,
+  List<RejectedAttachment> rejected,
+) async {
   switch (source) {
     case AttachSource.files:
-      final res = await FilePicker.platform.pickFiles(
-        allowMultiple: true,
-        withData: true,
-      );
+      final res = await FilePicker.platform.pickFiles(allowMultiple: true);
       if (res == null) return const [];
-      return [
-        for (final f in res.files)
-          if (f.bytes != null) f,
-      ];
+      final out = <PlatformFile>[];
+      for (final f in res.files) {
+        if (exceedsAttachmentLimit(f.size)) {
+          rejected.add((name: f.name, bytes: f.size));
+          continue;
+        }
+        final path = f.path;
+        final bytes =
+            f.bytes ?? (path == null ? null : await File(path).readAsBytes());
+        if (bytes == null) continue;
+        // Re-check against the bytes actually read: the declared size is the
+        // platform's word, the length is ours.
+        if (exceedsAttachmentLimit(bytes.length)) {
+          rejected.add((name: f.name, bytes: bytes.length));
+          continue;
+        }
+        out.add(
+          PlatformFile(
+            name: f.name,
+            size: bytes.length,
+            bytes: bytes,
+            path: path,
+          ),
+        );
+      }
+      return out;
     case AttachSource.photos:
     case AttachSource.camera:
       final picker = ImagePicker();
@@ -49,7 +93,17 @@ Future<List<PlatformFile>> pickAttachmentsOf(AttachSource source) async {
       }
       final out = <PlatformFile>[];
       for (final x in picked) {
+        // XFile.length() is the file on disk; only read the bytes of a photo
+        // that is within the ceiling.
+        if (exceedsAttachmentLimit(await x.length())) {
+          rejected.add((name: x.name, bytes: await x.length()));
+          continue;
+        }
         final bytes = await x.readAsBytes();
+        if (exceedsAttachmentLimit(bytes.length)) {
+          rejected.add((name: x.name, bytes: bytes.length));
+          continue;
+        }
         out.add(PlatformFile(name: x.name, size: bytes.length, bytes: bytes));
       }
       return out;

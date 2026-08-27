@@ -21,14 +21,17 @@ import '../../widgets/skeleton.dart';
 import '../../widgets/states.dart';
 import '../../widgets/user_avatar.dart';
 
-/// Filter tabs. osTicket's Activity Inbox offers exactly two views — All and
-/// Unread (n) — so the mobile inbox carries the same pair and nothing more.
-/// Unread is asked for in the query (`read=0`); the search text stays local,
-/// because it also matches the actor and the event label, which the server's
-/// own `q` does not.
+/// Filter tabs. osTicket's Activity Inbox offers All and Unread (n); the
+/// server groups by object and can filter `type=ticket` / `type=task` with a
+/// real per-type total behind it (`/notifications/count` -> `by_type`), so the
+/// mobile inbox carries those two views as well. Every view narrows in the
+/// query — nothing here filters a loaded page, because a page is now counted in
+/// cards and filtering it locally would hide cards the server never sent.
 const _views = <({String key, String label})>[
   (key: 'all', label: 'All'),
   (key: 'unread', label: 'Unread'),
+  (key: 'ticket', label: 'Tickets'),
+  (key: 'task', label: 'Tasks'),
 ];
 
 /// event => human label, mirroring `$LABELS` in `include/staff/inbox.inc.php`.
@@ -50,22 +53,13 @@ const _eventLabels = <String, String>{
 String _labelFor(AppNotification n) =>
     n.label ?? _eventLabels[n.event] ?? n.event;
 
-/// The card's subject line: the object's stored notification title, falling
-/// back the way inbox.inc.php does when the object no longer exists.
-String _subjectOf(NotificationGroup g) {
-  for (final a in g.activities) {
-    if (a.title.trim().isNotEmpty) return a.title.trim();
-  }
-  return '(no subject)';
-}
-
 /// The agent's notification inbox (`GET /notifications`), ported from the web's
 /// Activity Inbox (`include/staff/inbox.inc.php` + `scp/js/inbox.js`): All /
-/// Unread(n) filters, one card per ticket/task showing `#number`, the subject,
-/// a TICKET/TASK chip and an `actor · label · time` snippet, and a selected
-/// card that expands into the web's recent-activity detail panel. The pill
-/// search field and actor avatars are mobile additions the web has no room
-/// for.
+/// Unread / Tickets / Tasks filters, one card per ticket/task showing
+/// `#number`, the subject, a TICKET/TASK chip and an `actor · label · time`
+/// snippet, and a selected card that expands into the web's recent-activity
+/// detail panel. The pill search field and actor avatars are mobile additions
+/// the web has no room for.
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -77,14 +71,17 @@ class NotificationsScreen extends ConsumerStatefulWidget {
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   int _refreshKey = 0;
   int? _total;
-  // Ids swiped away this session. A dismissed Dismissible must leave the tree
-  // immediately, so we filter these out synchronously (before the network
-  // delete completes) rather than waiting for a refetch.
-  final Set<int> _deleted = {};
+  // Cards swiped away this session, keyed `type:objectId`. A dismissed
+  // Dismissible must leave the tree immediately, so we filter these out
+  // synchronously (before the network delete completes) rather than waiting for
+  // a refetch.
+  final Set<String> _deleted = {};
   String _view = 'all';
+
   /// The selected card, whose recent-activity detail is expanded below it —
   /// the mobile stand-in for the web's right-hand `.inbox-detail` panel.
   String? _expandedKey;
+
   /// Objects marked read in place this session. inbox.js drops `.unread` and
   /// the dot on select without reloading the list, so the card must stay put
   /// (and stay visible under the Unread filter) until the next refresh.
@@ -93,10 +90,17 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
 
+  /// The server filters the list; these map the selected chip to its query.
+  bool? get _readFilter => _view == 'unread' ? false : null;
+  String? get _typeFilter =>
+      _view == 'ticket' || _view == 'task' ? _view : null;
+
   /// Semantic dot color per filter chip: unread = red (attention, matches the
-  /// nav badge), all = neutral grey.
+  /// nav badge), the type views take the card chip's own tint.
   static Color _viewColor(String key) => switch (key) {
     'unread' => AppTheme.overdue,
+    'ticket' => AppTheme.brandLight,
+    'task' => AppTheme.warning,
     _ => AppTheme.closed, // 'all'
   };
 
@@ -121,14 +125,14 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   void _onSearchChanged(String value) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 250), () {
-      final next = value.trim().toLowerCase();
+      final next = value.trim();
       if (next != _search && mounted) setState(() => _search = next);
     });
   }
 
   void _applySearch(String value) {
     _debounce?.cancel();
-    final next = value.trim().toLowerCase();
+    final next = value.trim();
     if (next != _search) setState(() => _search = next);
   }
 
@@ -163,33 +167,35 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     }
   }
 
-  /// Delete every notification for one object (the collapsed card). There is no
-  /// delete-by-object endpoint, so clear each of the object's notifications.
+  /// Delete a card's notifications. There is no delete-by-object endpoint, so
+  /// clear each activity the group carries.
   Future<void> _deleteGroup(NotificationGroup g) async {
-    // Drop the object's rows from the tree this frame — a dismissed Dismissible
-    // must not stay mounted, or Flutter asserts.
+    // Drop the card from the tree this frame — a dismissed Dismissible must not
+    // stay mounted, or Flutter asserts.
     final ids = g.activities.map((a) => a.id).toList();
-    setState(() => _deleted.addAll(ids));
+    setState(() => _deleted.add(g.key));
     try {
       await Future.wait(
-        ids.map((id) =>
-            ref.read(notificationsRepositoryProvider).deleteOne(id)),
+        ids.map(
+          (id) => ref.read(notificationsRepositoryProvider).deleteOne(id),
+        ),
       );
       ref.invalidate(notificationCountsProvider);
       _ok(ids.length == 1
           ? 'Notification deleted'
           : '${ids.length} notifications deleted');
     } on ApiException catch (e) {
-      // Restore the rows so the failed delete isn't silently lost.
-      setState(() => _deleted.removeAll(ids));
+      // Restore the card so the failed delete isn't silently lost.
+      setState(() => _deleted.remove(g.key));
       _toast(e.message);
       _refresh();
     }
   }
 
-  /// Mark a whole object's notifications read without opening it (swipe-right).
+  /// Mark a whole object's notifications read without opening it (swipe-right)
+  /// — one `read-object` call, not one per unread activity.
   Future<void> _markGroupRead(NotificationGroup g) async {
-    if (!g.hasUnread) return;
+    if (!g.hasUnread || _readKeys.contains(g.key)) return;
     try {
       await ref
           .read(notificationsRepositoryProvider)
@@ -221,10 +227,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   /// Open the ticket/task itself — the panel's "Open" / "View All Activity"
-  /// links. Selecting already marked the object read; do it again defensively
-  /// for the case where the card was opened without being selected first.
-  /// [tab] pre-selects a tab on the detail screen: "View All Activity" asks for
-  /// the Activity tab (the object's full event log), "Open" for the default.
+  /// links. The route target is the group's `object_id`, never an activity id
+  /// (that only identifies a notification row, and routing on it is what used
+  /// to land agents on "ticket not available"). Selecting already marked the
+  /// object read; do it again defensively for the case where the card was
+  /// opened without being selected first. [tab] pre-selects a tab on the detail
+  /// screen: "View All Activity" asks for the Activity tab (the object's full
+  /// event log), "Open" for the default.
   Future<void> _openGroup(NotificationGroup g, {String? tab}) async {
     try {
       await ref
@@ -237,32 +246,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     if (!mounted) return;
     // Await the detail route so that on return we refetch — the object is now
     // read on the server, so a refresh clears the card's unread state.
-    if (g.type == 'task') {
+    if (g.isTask) {
       await context.push(Routes.task(g.objectId, tab: tab));
     } else {
       await context.push(Routes.ticket(g.objectId, tab: tab));
     }
     if (mounted) _refresh();
   }
-
-  /// The Unread view's predicate: an object with any unread activity — or one
-  /// marked read in place this session, which stays listed until the next
-  /// refresh (the web only drops the dot, it never removes the card).
-  bool _isUnread(NotificationGroup g) =>
-      g.hasUnread || _readKeys.contains(g.key);
-
-  bool _searchMatches(NotificationGroup g) {
-    if (_search.isEmpty) return true;
-    return '${g.objectId}'.contains(_search) ||
-        _subjectOf(g).toLowerCase().contains(_search) ||
-        g.activities.any((n) =>
-            _labelFor(n).toLowerCase().contains(_search) ||
-            (n.actor ?? '').toLowerCase().contains(_search));
-  }
-
-  /// Client-side tab + search filter, applied per collapsed object card.
-  bool _groupMatches(NotificationGroup g) =>
-      (_view != 'unread' || _isUnread(g)) && _searchMatches(g);
 
   @override
   void dispose() {
@@ -274,11 +264,13 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   Widget build(BuildContext context) {
     final repo = ref.watch(notificationsRepositoryProvider);
-    // The same number the nav bell shows: unread *conversations* off
-    // `/notifications/count`, so the chip no longer drifts as pages load in.
-    final unread = ref
-        .watch(unreadCountProvider)
-        .maybeWhen(data: (c) => c, orElse: () => 0);
+    // Object-based totals: `unread` can no longer contradict the Unread view's
+    // own `pagination.total`, and `by_type` gives the Tickets/Tasks chips a
+    // real number instead of one derived from the pages that happen to be
+    // loaded.
+    final counts = ref
+        .watch(notificationCountsProvider)
+        .maybeWhen(data: (c) => c, orElse: () => NotificationCounts.empty);
     // Bumped by the shell when the app returns to the foreground, and by an
     // incoming push. Part of the list's refresh key below.
     final resumed = ref.watch(notificationsChangedProvider);
@@ -319,11 +311,24 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
               FilterChipTabs(
                 items: _views,
                 selectedKey: _view,
-                // The Unread chip badges the server's unread-conversation
-                // total; All stays count-less.
-                counts: {if (unread > 0) 'unread': unread},
+                // Each chip badges the number of cards its own view lists, so
+                // a chip can be checked against the list it opens.
+                counts: {
+                  if (counts.total > 0) 'all': counts.total,
+                  if (counts.unread > 0) 'unread': counts.unread,
+                  if (counts.totalOf('ticket') > 0)
+                    'ticket': counts.totalOf('ticket'),
+                  if (counts.totalOf('task') > 0)
+                    'task': counts.totalOf('task'),
+                },
                 colorFor: _viewColor,
-                onSelected: (k) => setState(() => _view = k),
+                onSelected: (k) {
+                  if (k == _view) return;
+                  setState(() {
+                    _view = k;
+                    _expandedKey = null;
+                  });
+                },
               ),
             ],
           ),
@@ -331,25 +336,25 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       ),
       body: Glass.listBackdrop(
         context: context,
-        child: _GroupedInbox(
+        child: _InboxList(
           // `resumed` folds in the app-resume signal: alerts that arrived in
           // the tray while we were backgrounded are already on the server, so
           // the list must refetch rather than keep the pre-push page.
-          refreshKey: '$_view|$_refreshKey|$resumed',
-          excludeIds: _deleted,
-          groupFilter: _groupMatches,
-          onGroupCount: (n) {
+          refreshKey: '$_view|$_search|$_refreshKey|$resumed',
+          excludeKeys: _deleted,
+          onTotal: (n) {
             if (mounted && n != _total) setState(() => _total = n);
           },
           onRefreshed: () => ref.invalidate(notificationCountsProvider),
-          // Larger page so an object's recent activity is captured in one
-          // fetch (grouping is done client-side; see [NotificationGroup]).
-          // The Unread tab narrows server-side, so it no longer pulls page
-          // after page hoping for a screenful of unread cards.
+          // A page is a page of cards now — the server does the grouping, the
+          // view filter and the text match, so 25 cards is 25 rows on screen
+          // and nothing is dropped after the fetch.
           fetchPage: (page) => repo.list(
             page: page,
-            limit: 50,
-            read: _view == 'unread' ? false : null,
+            limit: 25,
+            read: _readFilter,
+            type: _typeFilter,
+            q: _search.isEmpty ? null : _search,
           ),
           cardBuilder: (context, g) => _NotificationGroupCard(
             group: g,
@@ -452,49 +457,49 @@ class _InboxMenuButton extends StatelessWidget {
   }
 }
 
-/// Infinite-scroll list that accumulates the flat `/notifications` feed and
-/// renders it **collapsed per ticket/task** — one card per object, newest
-/// activity first — mirroring osTicket's `inbox.inc.php`. Grouping is done over
-/// every loaded page (not per page), so an object whose events straddle a page
-/// boundary still shows as a single card once both pages are loaded.
-class _GroupedInbox extends StatefulWidget {
-  const _GroupedInbox({
+/// Infinite-scroll list of inbox cards. `GET /notifications` returns one entry
+/// per ticket/task with its events nested, already filtered and ordered the way
+/// the staff web inbox orders them, so this only appends pages — there is no
+/// client-side grouping, de-duplication or filtering left to do, and
+/// `pagination.total` is a straight count of cards.
+class _InboxList extends StatefulWidget {
+  const _InboxList({
     required this.fetchPage,
     required this.refreshKey,
-    required this.excludeIds,
-    required this.groupFilter,
+    required this.excludeKeys,
     required this.cardBuilder,
-    required this.onGroupCount,
+    required this.onTotal,
     required this.onRefreshed,
   });
 
-  final Future<Paginated<AppNotification>> Function(int page) fetchPage;
+  final Future<Paginated<NotificationGroup>> Function(int page) fetchPage;
   final Object refreshKey;
 
-  /// Notification ids to drop before grouping (optimistic-delete tombstones).
-  final Set<int> excludeIds;
-  final bool Function(NotificationGroup group) groupFilter;
+  /// Group keys to hide (optimistic-delete tombstones).
+  final Set<String> excludeKeys;
   final Widget Function(BuildContext context, NotificationGroup group)
-      cardBuilder;
-  final ValueChanged<int> onGroupCount;
+  cardBuilder;
+
+  /// The server's card total for the current view.
+  final ValueChanged<int> onTotal;
 
   /// Pull-to-refresh reloads the list in place; the host uses this to refetch
   /// the unread badge alongside it.
   final VoidCallback onRefreshed;
 
   @override
-  State<_GroupedInbox> createState() => _GroupedInboxState();
+  State<_InboxList> createState() => _InboxListState();
 }
 
-class _GroupedInboxState extends State<_GroupedInbox> {
+class _InboxListState extends State<_InboxList> {
   final _scroll = ScrollController();
-  final List<AppNotification> _all = [];
+  final List<NotificationGroup> _groups = [];
   int _page = 1;
   bool _loading = false;
   bool _hasMore = true;
   bool _initial = true;
   Object? _error;
-  int? _lastNotifiedCount;
+  int? _lastNotifiedTotal;
 
   @override
   void initState() {
@@ -504,7 +509,7 @@ class _GroupedInboxState extends State<_GroupedInbox> {
   }
 
   @override
-  void didUpdateWidget(covariant _GroupedInbox old) {
+  void didUpdateWidget(covariant _InboxList old) {
     super.didUpdateWidget(old);
     if (old.refreshKey != widget.refreshKey) _load(reset: true);
   }
@@ -531,24 +536,33 @@ class _GroupedInboxState extends State<_GroupedInbox> {
         _error = null;
         _page = 1;
         _hasMore = true;
-        _all.clear();
+        _groups.clear();
       }
     });
     try {
       final result = await widget.fetchPage(_page);
       if (!mounted) return;
       setState(() {
-        _all.addAll(result.items);
+        _groups.addAll(result.items);
         _hasMore = result.hasMore && result.items.isNotEmpty;
         _page += 1;
         _initial = false;
       });
+      _notifyTotal(result.total);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Surface the server's card total to the host — only when it changes, so we
+  /// don't schedule a redundant setState on every page.
+  void _notifyTotal(int total) {
+    if (total == _lastNotifiedTotal) return;
+    _lastNotifiedTotal = total;
+    widget.onTotal(total);
   }
 
   Future<void> _refresh() async {
@@ -559,30 +573,15 @@ class _GroupedInboxState extends State<_GroupedInbox> {
   @override
   Widget build(BuildContext context) {
     if (_initial && _loading) return const ListSkeleton();
-    if (_error != null && _all.isEmpty) {
+    if (_error != null && _groups.isEmpty) {
       return ErrorView(error: _error!, onRetry: () => _load(reset: true));
     }
 
-    final visible = _all.where((n) => !widget.excludeIds.contains(n.id));
-    final all = NotificationGroup.from(visible).toList(growable: false);
-    final groups = all.where(widget.groupFilter).toList(growable: false);
-
-    // Surface the visible object count to the host — only when it changes, so
-    // we don't schedule a redundant post-frame setState on every rebuild.
-    if (groups.length != _lastNotifiedCount) {
-      _lastNotifiedCount = groups.length;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) widget.onGroupCount(groups.length);
-      });
-    }
-
-    // A client-side filter can hide most of a page — keep pulling pages until
-    // there's a screenful of cards (or we run out).
-    if (_hasMore && !_loading && groups.length < 8) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _load();
-      });
-    }
+    final groups = widget.excludeKeys.isEmpty
+        ? _groups
+        : _groups
+              .where((g) => !widget.excludeKeys.contains(g.key))
+              .toList(growable: false);
 
     final bottomInset = MediaQuery.of(context).padding.bottom;
     final listPadding = EdgeInsets.only(top: 6, bottom: bottomInset + 150);
@@ -636,9 +635,7 @@ class _GroupedInboxState extends State<_GroupedInbox> {
                         height: 1,
                         thickness: 0.3,
                         indent: 66,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .outlineVariant
+                        color: Theme.of(context).colorScheme.outlineVariant
                             .withValues(alpha: 0.4),
                       ),
                     ],
@@ -688,7 +685,7 @@ class _NotificationGroupCard extends StatelessWidget {
   final VoidCallback onDelete;
   final VoidCallback onMarkRead;
 
-  bool get _isTask => group.type == 'task';
+  bool get _isTask => group.isTask;
 
   /// The web panel windows each object's activity to the latest five and offers
   /// "View All Activity" beyond that (`rn <= 5`, `total_count > 5`).
@@ -697,10 +694,10 @@ class _NotificationGroupCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final latest = group.latest;
-    final actor = (latest.actor ?? '').trim();
-    final refLabel =
-        _isTask ? 'Task #${group.objectId}' : 'Ticket #${group.objectId}';
+    final actor = (group.latest?.actor ?? '').trim();
+    final refLabel = _isTask
+        ? 'Task ${group.displayRef}'
+        : 'Ticket ${group.displayRef}';
 
     return Dismissible(
       key: ValueKey('notif-group-${group.key}'),
@@ -787,7 +784,10 @@ class _NotificationGroupCard extends StatelessWidget {
     );
   }
 
-  /// `● #1234  Subject…  [TICKET]` — the web's `.inbox-card-title`.
+  /// `● #009893  Subject…  [TICKET] [3]` — the web's `.inbox-card-title`,
+  /// with the object's `unread_count` badged at the end: one card can stand for
+  /// several unread events, and the count is the server's, not a tally of the
+  /// activities this payload happened to carry.
   Widget _titleRow(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Row(
@@ -805,7 +805,7 @@ class _NotificationGroupCard extends StatelessWidget {
         ],
         AppText.captionText(
           context,
-          '#${group.objectId}',
+          group.displayRef,
           color: scheme.onSurfaceVariant,
           fw: 2,
         ),
@@ -813,7 +813,7 @@ class _NotificationGroupCard extends StatelessWidget {
         Expanded(
           child: AppText.subText(
             context,
-            _subjectOf(group),
+            group.displaySubject,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             fw: unread ? 1 : 2,
@@ -822,6 +822,10 @@ class _NotificationGroupCard extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         _TypeChip(isTask: _isTask),
+        if (unread && group.unreadCount > 1) ...[
+          const SizedBox(width: 4),
+          _UnreadBadge(count: group.unreadCount),
+        ],
       ],
     );
   }
@@ -831,7 +835,7 @@ class _NotificationGroupCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final latest = group.latest;
-    final actor = (latest.actor ?? '').trim();
+    final actor = (latest?.actor ?? '').trim();
     final base = theme.textTheme.bodySmall?.copyWith(
       fontSize: 11.5,
       height: 1.3,
@@ -856,9 +860,11 @@ class _NotificationGroupCard extends StatelessWidget {
             ),
             sep,
           ],
-          TextSpan(text: _labelFor(latest), style: base),
-          sep,
-          TextSpan(text: Fmt.ago(latest.created), style: base),
+          if (latest != null) ...[
+            TextSpan(text: _labelFor(latest), style: base),
+            sep,
+          ],
+          TextSpan(text: Fmt.ago(group.lastActivity), style: base),
         ],
       ),
       maxLines: 1,
@@ -888,7 +894,7 @@ class _NotificationGroupCard extends StatelessWidget {
           const SizedBox(height: 6),
           Row(
             children: [
-              if (group.count > _maxActivities)
+              if (group.count > acts.length)
                 _PanelLink(
                   label: 'View All Activity',
                   onTap: onOpenActivity,
@@ -960,6 +966,35 @@ class _TypeChip extends StatelessWidget {
         fs: 9.5,
         fw: 2,
         color: color,
+      ),
+    );
+  }
+}
+
+/// The card's `unread_count` — a small filled pill, shown only when the object
+/// carries more than one unread event (a single one is already said by the dot).
+class _UnreadBadge extends StatelessWidget {
+  const _UnreadBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      constraints: const BoxConstraints(minWidth: 18),
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.primary,
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: AppText.custmText(
+        context,
+        count > 99 ? '99+' : '$count',
+        fs: 10,
+        fw: 2,
+        color: scheme.onPrimary,
+        align: TextAlign.center,
       ),
     );
   }

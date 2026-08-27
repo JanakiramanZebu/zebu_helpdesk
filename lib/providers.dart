@@ -157,14 +157,15 @@ final notificationCountsProvider = FutureProvider<NotificationCounts>((
 });
 
 /// The unread badge shown on the nav bell, the More row and the inbox's Unread
-/// chip: unread **conversations**, not rows, so every badge matches the cards
-/// the inbox lists (and the web's `Unread (n)`).
+/// chip: unread **conversations**, not notification rows, so every badge
+/// matches the cards the inbox lists (and the web's `Unread (n)`). The server
+/// counts objects now, so this is `data.unread` straight off the payload.
 ///
 /// Read-only view over [notificationCountsProvider] — see the note there before
 /// reaching for `invalidate`.
 final unreadCountProvider = FutureProvider<int>((ref) async {
   final counts = await ref.watch(notificationCountsProvider.future);
-  return counts.conversations;
+  return counts.unread;
 });
 
 // --- UI cross-tab signals ---------------------------------------------------

@@ -14,7 +14,7 @@ class _CountingRepo implements NotificationsRepository {
   @override
   Future<NotificationCounts> counts() async {
     calls++;
-    return NotificationCounts(rows: next, conversations: next);
+    return NotificationCounts(unread: next, total: next);
   }
 
   @override

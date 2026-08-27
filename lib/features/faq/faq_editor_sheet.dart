@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/attachment_limits.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_text.dart';
 import '../../data/faq_repository.dart';
@@ -225,7 +226,7 @@ class _FaqEditorSheetState extends ConsumerState<_FaqEditorSheet> {
     // Same Camera / Photos / Files sheet the reply composer uses.
     final source = await pickAttachSource(context);
     if (source == null || !mounted) return;
-    final picked = await pickAttachmentsOf(source);
+    final picked = await pickAttachmentsOf(context, source);
     if (picked.isEmpty || !mounted) return;
     setState(() {
       for (final f in picked) {
@@ -572,7 +573,7 @@ class _AttachmentsSection extends StatelessWidget {
           ],
         ),
         if (empty)
-          AppText.paraText(context, 'No files attached')
+          AppText.paraText(context, 'No files attached · $kAttachmentSizeHint')
         else
           Wrap(
             spacing: 8,

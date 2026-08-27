@@ -1,12 +1,17 @@
 import '../core/api/json.dart';
 
-/// A per-staff notification (`GET /notifications`). Collaborator events are
-/// excluded server-side.
+/// One activity inside a notification group — a single event on a ticket/task
+/// (`activities[]` of `GET /notifications`). Collaborator events are excluded
+/// server-side.
+///
+/// The server groups the inbox by object now, so this model no longer stands on
+/// its own in a list: [NotificationGroup] is the list row and this is a line
+/// inside it. [id] is still the notification row id, which is what
+/// `POST /notifications/{id}/read` and `DELETE /notifications/{id}` take — it is
+/// **not** a navigation target; route on the group's `objectId`.
 class AppNotification {
   const AppNotification({
     required this.id,
-    required this.type, // ticket | task
-    required this.objectId,
     required this.event, // message|note|assigned|transfer|status|mention|overdue|new_unassigned
     required this.title,
     this.label, // non-null only for "assigned" events
@@ -17,8 +22,6 @@ class AppNotification {
   });
 
   final int id;
-  final String type;
-  final int objectId;
   final String event;
   final String title;
   final String? label;
@@ -32,21 +35,17 @@ class AppNotification {
 
   factory AppNotification.fromJson(Map<String, dynamic> j) => AppNotification(
     id: J.intOr(j['id']),
-    type: J.strOr(j['type'], 'ticket'),
-    objectId: J.intOr(j['object_id']),
     event: J.strOr(j['event']),
     title: J.strOr(j['title']),
-    label: J.str(j['label']),
+    label: J.strNonBlank(j['label']),
     body: J.str(j['body']),
-    actor: J.str(j['actor']),
+    actor: J.strNonBlank(j['actor']),
     created: J.dateTime(j['created']),
     read: J.boolOr(j['read']),
   );
 
   AppNotification copyWith({bool? read}) => AppNotification(
     id: id,
-    type: type,
-    objectId: objectId,
     event: event,
     title: title,
     label: label,
@@ -57,110 +56,138 @@ class AppNotification {
   );
 }
 
-/// All of an agent's notifications for a single ticket/task, collapsed into one
-/// inbox card — mirrors osTicket's `include/staff/inbox.inc.php`, which groups
-/// `GROUP BY type, object_id` and orders by the latest activity so a new update
-/// bumps the object to the top. [activities] are newest-first with consecutive
-/// identical events (same event+actor+body) collapsed, exactly like the SCP
-/// inbox's dedup.
+/// One inbox card = every notification an agent has for a single ticket/task,
+/// as the server now returns it (`GET /notifications` yields one entry per
+/// object, `activities` nested newest-first).
+///
+/// The grouping used to be done here, over the flat feed, which meant a page of
+/// 10 rows could cover only 3 tickets where the web's page covered 10 — seven
+/// tickets simply never appeared. The server does the `GROUP BY type,
+/// object_id` now, exactly as `include/staff/inbox.inc.php` does, so pagination
+/// is counted in cards and objects that no longer exist are dropped before they
+/// reach us.
 class NotificationGroup {
   const NotificationGroup({
     required this.type,
     required this.objectId,
+    this.number,
+    this.subject,
+    required this.unreadCount,
+    required this.totalCount,
+    this.lastActivity,
     required this.activities,
   });
 
-  final String type; // ticket | task
+  /// `ticket` | `task` — with [objectId], the tap target.
+  final String type;
   final int objectId;
 
-  /// Newest-first, consecutive-duplicate-collapsed activities for this object.
+  /// The object's display number (`"009893"`); null when the server could not
+  /// resolve one.
+  final String? number;
+  final String? subject;
+
+  /// Unread / total activities on this object, counted server-side — the badge
+  /// is not limited to what [activities] happens to carry.
+  final int unreadCount;
+  final int totalCount;
+
+  final DateTime? lastActivity;
+
+  /// Newest-first activities for this object.
   final List<AppNotification> activities;
 
+  factory NotificationGroup.fromJson(Map<String, dynamic> j) {
+    final activities = J
+        .mapList(j['activities'])
+        .map(AppNotification.fromJson)
+        .toList(growable: false);
+    return NotificationGroup(
+      type: J.strOr(j['type'], 'ticket'),
+      objectId: J.intOr(j['object_id']),
+      number: J.strNonBlank(j['number']),
+      subject: J.strNonBlank(j['subject']),
+      unreadCount: J.intOr(j['unread_count']),
+      totalCount: J.intOr(j['total_count'], activities.length),
+      lastActivity: J.dateTime(j['last_activity']) ?? _latestOf(activities),
+      activities: activities,
+    );
+  }
+
+  static DateTime? _latestOf(List<AppNotification> acts) {
+    DateTime? best;
+    for (final a in acts) {
+      final c = a.created;
+      if (c != null && (best == null || c.isAfter(best))) best = c;
+    }
+    return best;
+  }
+
   String get key => '$type:$objectId';
-  AppNotification get latest => activities.first;
-  bool get hasUnread => activities.any((a) => !a.read);
-  int get unreadCount => activities.where((a) => !a.read).length;
-  int get count => activities.length;
-  DateTime? get lastActivity => latest.created;
+  bool get isTask => type == 'task';
 
-  /// Collapse a flat, mixed notification list into per-object cards ordered by
-  /// latest activity (newest first). Mirrors inbox.inc.php:
-  ///   GROUP BY type, object_id ORDER BY MAX(created) DESC, object_id DESC
-  static List<NotificationGroup> from(Iterable<AppNotification> items) {
-    final byKey = <String, List<AppNotification>>{};
-    for (final n in items) {
-      (byKey['${n.type}:${n.objectId}'] ??= <AppNotification>[]).add(n);
-    }
-    final groups = <NotificationGroup>[];
-    for (final acts in byKey.values) {
-      acts.sort(_newestFirst);
-      final deduped = _collapseConsecutive(acts);
-      groups.add(NotificationGroup(
-        type: deduped.first.type,
-        objectId: deduped.first.objectId,
-        activities: deduped,
-      ));
-    }
-    groups.sort((a, b) {
-      final at = a.lastActivity, bt = b.lastActivity;
-      if (at != null && bt != null) {
-        final c = bt.compareTo(at);
-        if (c != 0) return c;
-      } else if (at == null && bt != null) {
-        return 1;
-      } else if (at != null && bt == null) {
-        return -1;
-      }
-      return b.objectId.compareTo(a.objectId); // stable tie-break
-    });
-    return groups;
-  }
+  /// A group exists only because it has events, so this is non-null in
+  /// practice; it stays nullable so a malformed payload can't crash the list.
+  AppNotification? get latest => activities.isEmpty ? null : activities.first;
 
-  /// Newest-first: by `created` desc, then `id` desc (mirrors the SCP window
-  /// `ORDER BY created DESC, id DESC`).
-  static int _newestFirst(AppNotification a, AppNotification b) {
-    final at = a.created, bt = b.created;
-    if (at != null && bt != null) {
-      final c = bt.compareTo(at);
-      if (c != 0) return c;
-    } else if (at == null && bt != null) {
-      return 1;
-    } else if (at != null && bt == null) {
-      return -1;
-    }
-    return b.id.compareTo(a.id);
-  }
+  bool get hasUnread => unreadCount > 0;
 
-  /// Drop consecutive identical activities (same event+actor+body) keeping the
-  /// newest of each run — the input must already be newest-first.
-  static List<AppNotification> _collapseConsecutive(List<AppNotification> acts) {
-    final out = <AppNotification>[];
-    String? prev;
-    for (final r in acts) {
-      final k = '${r.event}|${r.actor ?? ''}|${r.body ?? ''}';
-      if (k == prev) continue;
-      out.add(r);
-      prev = k;
+  /// How many activities the object has in total — which can exceed
+  /// `activities.length`, since the payload windows the recent ones.
+  int get count => totalCount;
+
+  /// `#009893` when the server resolved a number, else the raw object id.
+  String get displayRef => '#${number ?? objectId}';
+
+  /// `number` and `subject` may both be null if the object was resolvable when
+  /// the notification was written but not now; `activities.first.title` always
+  /// carries a usable string.
+  String get displaySubject {
+    final s = subject?.trim();
+    if (s != null && s.isNotEmpty) return s;
+    for (final a in activities) {
+      final t = a.title.trim();
+      if (t.isNotEmpty) return t;
     }
-    return out;
+    return '(no subject)';
   }
 }
 
-/// The inbox's unread totals (`GET /notifications/count`).
-///
-/// The server counts unread **rows**, but both the web inbox and this app list
-/// one card per ticket/task (`GROUP BY type, object_id`), so a ticket with six
-/// unread events is *one* unread conversation. [conversations] is the number
-/// the badges show, so the bell, the More row and the Unread chip all agree
-/// with the list — and with the web's `Unread (n)`.
+/// The inbox's totals (`GET /notifications/count`), now counted in **objects**
+/// rather than notification rows — so the badge can no longer contradict the
+/// list. [total] always equals an unfiltered `pagination.total` and [unread]
+/// equals the `read=0` total.
 class NotificationCounts {
-  const NotificationCounts({required this.rows, required this.conversations});
+  const NotificationCounts({
+    required this.unread,
+    required this.total,
+    this.byType = const {},
+  });
 
-  /// Unread notification rows (`data.unread`).
-  final int rows;
+  /// Objects with at least one unread activity.
+  final int unread;
 
-  /// Unread ticket/task cards — what the inbox actually lists.
-  final int conversations;
+  /// Objects in the inbox.
+  final int total;
 
-  static const empty = NotificationCounts(rows: 0, conversations: 0);
+  /// Per-type breakdown keyed by `ticket` / `task`.
+  final Map<String, ({int total, int unread})> byType;
+
+  int unreadOf(String type) => byType[type]?.unread ?? 0;
+  int totalOf(String type) => byType[type]?.total ?? 0;
+
+  factory NotificationCounts.fromJson(Map<String, dynamic> data) {
+    final by = <String, ({int total, int unread})>{};
+    J.map(data['by_type']).forEach((k, v) {
+      final m = J.map(v);
+      by[k] = (total: J.intOr(m['total']), unread: J.intOr(m['unread']));
+    });
+    return NotificationCounts(
+      unread: J.intOr(data['unread']),
+      total: J.intOr(data['total']),
+      byType: by,
+    );
+  }
+
+  static const empty = NotificationCounts(unread: 0, total: 0);
 }

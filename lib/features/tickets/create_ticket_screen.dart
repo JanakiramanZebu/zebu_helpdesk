@@ -8,6 +8,7 @@ import 'package:parchment/codecs.dart';
 
 import '../../core/canned_vars.dart';
 import '../../core/api/api_exception.dart';
+import '../../core/attachment_limits.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
 import '../../core/theme/app_text.dart';
@@ -759,7 +760,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     // the reply composer's "+" attach flow).
     final source = await pickAttachSource(context);
     if (source == null || !mounted) return;
-    final picked = await pickAttachmentsOf(source);
+    final picked = await pickAttachmentsOf(context, source);
     if (picked.isEmpty || !mounted) return;
     setState(() {
       for (final f in picked) {
@@ -1377,7 +1378,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
                         value: _files.isEmpty
                             ? null
                             : '${_files.length} attached',
-                        hint: 'No files added',
+                        hint: 'No files added · $kAttachmentSizeHint',
                         trailing: TextButton.icon(
                           onPressed: _pickFiles,
                           icon: const Icon(Icons.add, size: 18),
