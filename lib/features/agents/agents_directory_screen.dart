@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/format.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/me.dart';
@@ -50,9 +51,12 @@ class _AgentsDirectoryScreenState extends ConsumerState<AgentsDirectoryScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  /// [background] is the pull-to-refresh path: it leaves the rows on screen
+  /// and lets the refresh indicator carry the progress, instead of swapping
+  /// the whole list for a spinner under the user's finger.
+  Future<void> _load({bool background = false}) async {
     setState(() {
-      _loading = true;
+      if (!background) _loading = true;
       _error = null;
     });
     try {
@@ -130,16 +134,26 @@ class _AgentsDirectoryScreenState extends ConsumerState<AgentsDirectoryScreen> {
                   ],
                 ),
               ),
+            // The indicator wraps every state, not just the populated one:
+            // a roster narrowed to nobody, or a failed load, is exactly when
+            // an agent wants to pull for a retry.
             Expanded(
-              child: _loading
-                  ? const LoadingView()
-                  : _error != null
-                  ? ErrorView(error: _error!, onRetry: _load)
-                  : items.isEmpty
-                  ? const EmptyView(message: 'No agents found')
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
+              child: RefreshIndicator(
+                onRefresh: () => _load(background: true),
+                child: _loading
+                    ? const RefreshableState(child: LoadingView())
+                    : _error != null
+                    ? RefreshableState(
+                        child: ErrorView(error: _error!, onRetry: _load),
+                      )
+                    : items.isEmpty
+                    ? const RefreshableState(
+                        child: EmptyView(message: 'No agents found'),
+                      )
+                    : ListView.separated(
+                        // A roster that fits the screen is the normal case
+                        // here, and without this it cannot be pulled at all.
+                        physics: alwaysScrollablePhysics,
                         itemCount: items.length,
                         separatorBuilder: (_, __) => const Divider(
                           height: 1,
@@ -155,7 +169,7 @@ class _AgentsDirectoryScreenState extends ConsumerState<AgentsDirectoryScreen> {
                           );
                         },
                       ),
-                    ),
+              ),
             ),
           ],
         ),
@@ -262,7 +276,11 @@ class _AgentDetailSheetState extends ConsumerState<_AgentDetailSheet> {
                 if (a.email != null)
                   _InfoRow(icon: Icons.email_outlined, label: 'Email', value: a.email!),
                 if (a.phone != null)
-                  _InfoRow(icon: Icons.phone_outlined, label: 'Phone', value: a.phone!),
+                  _InfoRow(
+                    icon: Icons.phone_outlined,
+                    label: 'Phone',
+                    value: Fmt.phone(a.phone),
+                  ),
                 if (a.department != null)
                   _InfoRow(
                     icon: Icons.apartment_outlined,

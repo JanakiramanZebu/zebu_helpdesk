@@ -113,8 +113,11 @@ void main() {
     expect(find.text('Agent Seven'), findsOneWidget);
     expect(find.text('@agent7'), findsOneWidget);
     expect(find.text('a7@example.com'), findsOneWidget);
+    // The landline is too short to be an Indian subscriber number, so it is
+    // shown as stored; the mobile is rendered in Indian form ([Fmt.phone]) —
+    // osTicket hands both back through its own US formatter.
     expect(find.text('044-1234'), findsOneWidget);
-    expect(find.text('9876543210'), findsOneWidget);
+    expect(find.text('+91 98765 43210'), findsOneWidget);
     expect(find.text('Asia/Kolkata'), findsOneWidget);
   });
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/canned_vars.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
 import '../../data/agent_directory.dart';
@@ -100,6 +101,12 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   // scrolled behind the pinned app bar.
   final ScrollController _headerScroll = ScrollController();
 
+  // The NestedScrollView's INNER controller — the one every tab's list rides
+  // (see [ConversationList]). Captured from the body's context because it is
+  // created by the NestedScrollView itself; used to send the incoming tab
+  // back to the top. Never disposed here: it belongs to the NestedScrollView.
+  ScrollController? _innerScroll;
+
   Task? _task;
   List<ThreadEntry> _thread = [];
   List<ThreadEvent> _events = [];
@@ -124,7 +131,30 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
   }
 
   void _onTab() {
-    if (mounted) setState(() {}); // toggle the composer per active tab
+    if (!mounted) return;
+    setState(() {}); // toggle the composer per active tab
+    _resetScroll();
+  }
+
+  /// Puts every tab back at the top when it is opened.
+  ///
+  /// The three tabs share ONE scroll coordinator: the NestedScrollView's outer
+  /// (collapsing-header) offset plus the inner list positions. A conversation
+  /// scrolled deep therefore handed Details and Activity a header that was
+  /// already collapsed and a list parked wherever it had last been left — the
+  /// new tab opened halfway down. Runs after the frame so the incoming tab's
+  /// inner position exists by the time it is reset, and fires again when the
+  /// tab animation settles (the controller notifies at both ends).
+  void _resetScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final p in _innerScroll?.positions ?? const <ScrollPosition>[]) {
+        if (p.hasPixels && p.pixels != 0) p.jumpTo(0);
+      }
+      if (_headerScroll.hasClients && _headerScroll.offset != 0) {
+        _headerScroll.jumpTo(0);
+      }
+    });
   }
 
   /// Whether the composer (only shown for the Conversation tab, index 0) should
@@ -400,6 +430,16 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               ],
               body: Column(
                 children: [
+                  // Zero-sized: it exists only to read the inner scroll
+                  // controller the NestedScrollView injects into its body,
+                  // which [_resetScroll] needs and which is only reachable
+                  // from a context below the NestedScrollView.
+                  Builder(
+                    builder: (context) {
+                      _innerScroll = PrimaryScrollController.maybeOf(context);
+                      return const SizedBox.shrink();
+                    },
+                  ),
                   if (_acting) const LinearProgressIndicator(minHeight: 2),
                   Expanded(
                     child: TabBarView(
@@ -454,6 +494,10 @@ class _TaskDetailScreenState extends ConsumerState<TaskDetailScreen>
               builder: (context, _) => _onConversationTab && caps.canReply
                   ? MessageComposer(
                       hintReply: 'Reply to this task...',
+                      // Tasks have no /expand endpoint (the payload carries no
+                      // ticket id), so this is the only pass — without it a
+                      // saved reply posted its %{…} tokens verbatim.
+                      cannedVars: CannedVars.forTask(_task),
                       replyTo: _replyTo,
                       onClearReply: () => setState(() => _replyTo = null),
                       onSend:

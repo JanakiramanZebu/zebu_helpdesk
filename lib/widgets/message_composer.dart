@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:parchment/codecs.dart';
 
 import '../core/api/api_exception.dart';
+import '../core/canned_vars.dart';
 import '../core/theme/app_text.dart';
 import '../core/theme/app_theme.dart';
 import '../features/tickets/widgets/thread_entry_tile.dart'
@@ -61,7 +62,8 @@ class ComposerRecipient {
 /// can still be inserted as formatted HTML.
 ///
 /// The widget owns its editor, focus, attachments and mode; the host only wires
-/// [onSend] (transport) and, for tickets, [expandCanned] (variable expansion).
+/// [onSend] (transport) and, for variable expansion, [expandCanned] and/or
+/// [cannedVars].
 class MessageComposer extends ConsumerStatefulWidget {
   const MessageComposer({
     super.key,
@@ -69,6 +71,7 @@ class MessageComposer extends ConsumerStatefulWidget {
     this.replyTo,
     this.onClearReply,
     this.expandCanned,
+    this.cannedVars = const {},
     this.recipients = const [],
     this.initialRecipient,
     this.hintReply = 'Reply to this ticket...',
@@ -84,10 +87,16 @@ class MessageComposer extends ConsumerStatefulWidget {
   final ThreadEntry? replyTo;
   final VoidCallback? onClearReply;
 
-  /// Optional hook to expand a canned response's variables before it's inserted
-  /// (tickets expand against the ticket; tasks insert the raw body). Returns the
-  /// expanded HTML.
+  /// Server-side expansion of a canned response's variables, run against the
+  /// real ticket by osTicket's own replacer. Returns the expanded HTML. Only
+  /// tickets can offer it — `GET /canned/{id}/expand` takes a ticket id.
   final Future<String> Function(CannedResponse canned)? expandCanned;
+
+  /// Values for [expandCannedVars], applied to whatever [expandCanned] left
+  /// behind — and used on its own where there is no ticket to expand against
+  /// (a task thread). Without this a surface with no [expandCanned] posted the
+  /// body with its `%{…}` tokens intact, straight to the customer.
+  final Map<String, String?> cannedVars;
 
   /// Recipient choices offered above the field on a public reply. Empty hides
   /// the "To:" chip entirely (tasks have no per-reply recipient selection).
@@ -277,9 +286,13 @@ class _MessageComposerState extends ConsumerState<MessageComposer> {
         final expanded = await expand(canned);
         if (expanded.trim().isNotEmpty) html = expanded;
       } on ApiException {
-        // Fall back to the raw (un-expanded) body.
+        // Server expansion unavailable; the local pass below still resolves
+        // everything the loaded ticket can answer.
       }
     }
+    // Runs either way: it is a no-op once the server has done the work, and
+    // the only pass at all on a surface with no expansion endpoint.
+    html = expandCannedVars(html, widget.cannedVars);
     if (!mounted) return;
     insertRichHtml(_controller, html);
   }

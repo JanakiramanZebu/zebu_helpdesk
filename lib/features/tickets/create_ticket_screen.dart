@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:parchment/codecs.dart';
 
+import '../../core/canned_vars.dart';
 import '../../core/api/api_exception.dart';
 import '../../core/format.dart';
 import '../../core/router/routes.dart';
@@ -826,12 +827,27 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
     }
   }
 
+  /// Canned-response variables, resolved from the form as filled in so far.
+  /// There is no ticket yet, so `GET /canned/{id}/expand` has nothing to expand
+  /// against — without this pass a saved reply carried its `%{ticket.name}`
+  /// tokens into the message the requester receives.
+  Map<String, String?> get _cannedVars => CannedVars.forNewTicket(
+    requester: _user?.name,
+    email: _user?.email,
+    phone: _user?.phone,
+    subject: _effectiveSubject,
+    department: _department?.name,
+    topic: _topic?.name,
+    priority: _priority?.name,
+    due: _due,
+  );
+
   /// Picks a saved reply and splices its (rich) body into the message at the
   /// cursor.
   Future<void> _insertCanned() async {
     final canned = await pickCannedResponse(context, ref);
     if (canned == null || !mounted) return;
-    insertRichHtml(_message, canned.body);
+    insertRichHtml(_message, expandCannedVars(canned.body, _cannedVars));
     setState(() {
       if (_messageError != null) _messageError = null;
     });
@@ -842,7 +858,7 @@ class _CreateTicketScreenState extends ConsumerState<CreateTicketScreen> {
   Future<void> _insertResponseCanned() async {
     final canned = await pickCannedResponse(context, ref);
     if (canned == null || !mounted) return;
-    insertRichHtml(_response, canned.body);
+    insertRichHtml(_response, expandCannedVars(canned.body, _cannedVars));
     setState(() {});
   }
 

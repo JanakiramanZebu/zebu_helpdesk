@@ -18,15 +18,38 @@ class HomeShell extends ConsumerStatefulWidget {
   ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends ConsumerState<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Reaching the shell means we're authenticated: start push (permission
     // prompt + FCM token registration). No-ops if Firebase isn't configured.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(pushServiceProvider).start();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Alerts that land while the app is backgrounded are delivered to the system
+  /// tray, not to `onMessage` — nothing in the running app hears about them. So
+  /// on the way back to the foreground, refetch the badge and signal the Alerts
+  /// list to reload; otherwise both keep showing the pre-push state until the
+  /// user thinks to pull down.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    ref.invalidate(notificationCountsProvider);
+    ref.read(notificationsChangedProvider.notifier).bump();
+    // A denied-then-granted permission, or a token minted while we were away,
+    // only takes effect if we try again.
+    ref.read(pushServiceProvider).start();
   }
 
   void _go(int index) => widget.shell.goBranch(

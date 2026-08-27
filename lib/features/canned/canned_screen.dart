@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:parchment/codecs.dart';
 
 import '../../core/api/api_exception.dart';
+import '../../core/canned_vars.dart';
 import '../../core/format.dart';
 import '../../core/theme/app_text.dart';
 import '../../data/canned_repository.dart';
@@ -30,30 +31,6 @@ const int _kAllDepartments = 0;
 
 /// `Canned::update()` rejects anything shorter than this.
 const int _kMinTitleLength = 3;
-
-/// The osTicket ticket variables a canned body may embed, mirroring the
-/// "Supported Variables" help tip (`include/ajax.content.php::ticket_variables`).
-/// Picking one inserts it at the caret in the Response editor.
-const List<(String, String)> kCannedVariables = [
-  ('%{ticket.number}', 'Ticket number'),
-  ('%{ticket.subject}', 'Subject'),
-  ('%{ticket.name}', 'Requester full name'),
-  ('%{ticket.name.first}', 'Requester first name'),
-  ('%{ticket.email}', 'Requester email'),
-  ('%{ticket.phone}', 'Phone number | ext'),
-  ('%{ticket.status}', 'Status'),
-  ('%{ticket.priority}', 'Priority'),
-  ('%{ticket.assigned}', 'Assigned agent / team'),
-  ('%{ticket.dept}', 'Department'),
-  ('%{ticket.topic}', 'Help topic'),
-  ('%{ticket.create_date}', 'Date created'),
-  ('%{ticket.due_date}', 'Due date'),
-  ('%{ticket.close_date}', 'Date closed'),
-  ('%{ticket.staff}', 'Assigned / closing agent'),
-  ('%{ticket.team}', 'Assigned / closing team'),
-  ('%{recipient.name.first}', 'Recipient first name'),
-  ('%{url}', 'Helpdesk base URL'),
-];
 
 class CannedScreen extends ConsumerStatefulWidget {
   const CannedScreen({super.key});
@@ -680,7 +657,9 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
   /// appending, so agents can drop a variable mid-sentence.
   void _insertVariable(String token) {
     final sel = _response.selection;
-    final len = _response.document.length;
+    // The document always ends in a trailing "\n" and parchment asserts an
+    // insert index strictly inside it, so the last valid offset is length - 1.
+    final len = _response.document.length - 1;
     final start = sel.start.clamp(0, len);
     final end = sel.end.clamp(start, len);
     _response.replaceText(

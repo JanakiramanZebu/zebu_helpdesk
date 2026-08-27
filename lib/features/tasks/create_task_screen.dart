@@ -84,14 +84,44 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
     final parent = widget.parentTask;
     if (parent != null) {
       _parent = parent;
-      // The server does not inherit the parent's department, so seed it here
-      // rather than making the agent re-pick the one it is already looking at.
-      if (parent.departmentId != null) {
-        _department = MetaItem(
-          id: parent.departmentId!,
-          name: parent.departmentName ?? 'Department',
-        );
-      }
+      _seedDepartmentFrom(parent);
+    }
+  }
+
+  /// Copies [parent]'s department onto the form. The server does not inherit
+  /// it, so we seed it here rather than making the agent re-pick the one it is
+  /// already looking at — and the web's subtask form does the same, pre-filled
+  /// from the parent and still editable, so a parent picked later overwrites
+  /// whatever sits on the row. Returns false when the parent carries no
+  /// department id, which is what we have to post.
+  bool _seedDepartmentFrom(Task parent) {
+    if (parent.departmentId == null) return false;
+    _department = MetaItem(
+      id: parent.departmentId!,
+      name: parent.departmentName ?? 'Department',
+    );
+    return true;
+  }
+
+  /// Picks the parent task and inherits its department (TC_789) — the picker
+  /// path used to set the parent alone, so only a subtask started from a task's
+  /// "Add subtask" ever inherited anything. A picked row may serve `department`
+  /// as a bare name with no id, so fall back to the full task before giving up.
+  Future<void> _pickParent() async {
+    final picked = await pickTask(context, title: 'Select parent task');
+    if (picked == null || !mounted) return;
+    setState(() {
+      _parent = picked;
+      _seedDepartmentFrom(picked);
+    });
+    if (picked.departmentId != null) return;
+    try {
+      final full = await ref.read(tasksRepositoryProvider).get(picked.id);
+      if (!mounted || _parent?.id != picked.id) return;
+      setState(() => _seedDepartmentFrom(full));
+    } catch (_) {
+      // The department is required and editable anyway; leaving it unset is
+      // better than failing the pick over it.
     }
   }
 
@@ -253,7 +283,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       // count badges without waiting for a manual pull-to-refresh (TC_150).
       ref.read(tasksChangedProvider.notifier).bump();
       _toast(
-        widget.parentTask == null
+        parentId == null
             ? 'Task #${task.number} created'
             : 'Subtask #${task.number} created',
       );
@@ -418,7 +448,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
       appBar: AppBar(
         title: AppText.titleText(
           context,
-          widget.parentTask == null ? 'New task' : 'New subtask',
+          _parent == null ? 'New task' : 'New subtask',
           fw: 1,
         ),
       ),
@@ -446,12 +476,15 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                       : 'This task will be linked to the ticket',
                 ),
               ],
-              if (widget.parentTask != null) ...[
+              // Keyed off the live parent, not the one handed in: the Parent
+              // task row can clear a seeded parent or set one on a plain new
+              // task, and the banner has to follow it either way (TC_790).
+              if (_parent != null) ...[
                 const SizedBox(height: 8),
                 _LinkBanner(
                   message:
                       'This subtask will be added under '
-                      '#${widget.parentTask!.number}',
+                      '#${_parent!.number}',
                 ),
               ],
 
@@ -619,13 +652,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                           visualDensity: VisualDensity.compact,
                           onPressed: () => setState(() => _parent = null),
                         ),
-                  onTap: () async {
-                    final t = await pickTask(
-                      context,
-                      title: 'Select parent task',
-                    );
-                    if (t != null) setState(() => _parent = t);
-                  },
+                  onTap: _pickParent,
                 ),
               ]),
             ],
@@ -684,9 +711,7 @@ class _CreateTaskScreenState extends ConsumerState<CreateTaskScreen> {
                           ),
                         )
                       : Text(
-                          widget.parentTask == null
-                              ? 'Create task'
-                              : 'Create subtask',
+                          _parent == null ? 'Create task' : 'Create subtask',
                         ),
                 ),
               ],

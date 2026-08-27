@@ -3,6 +3,38 @@ import 'package:flutter/material.dart';
 import '../core/api/api_exception.dart';
 import '../core/theme/app_text.dart';
 
+/// Makes a non-scrolling state view (an [EmptyView], [ErrorView] or
+/// [LoadingView]) pullable underneath a [RefreshIndicator].
+///
+/// A `RefreshIndicator` only fires on an **overscroll**, and on Android the
+/// default `ClampingScrollPhysics` produces none at all when the content fits
+/// the viewport — so a centred empty state, or a list short enough to fit on
+/// screen, silently swallows the gesture. Wrapping the state in a scrollable
+/// that is forced to always accept a drag is what gives the pull something to
+/// act on.
+///
+/// Use it for the states; for the populated list, pass
+/// [alwaysScrollablePhysics] to the `ListView` itself.
+class RefreshableState extends StatelessWidget {
+  const RefreshableState({super.key, required this.child, this.minHeight = 360});
+
+  final Widget child;
+
+  /// Height reserved for the state view inside the scrollable, so it still
+  /// reads as a centred empty/error panel rather than a squashed strip.
+  final double minHeight;
+
+  @override
+  Widget build(BuildContext context) => ListView(
+    physics: alwaysScrollablePhysics,
+    children: [SizedBox(height: minHeight, child: child)],
+  );
+}
+
+/// The physics every scrollable under a [RefreshIndicator] needs: a drag is
+/// accepted even when there is nothing to scroll.
+const alwaysScrollablePhysics = AlwaysScrollableScrollPhysics();
+
 /// Centered loading spinner.
 class LoadingView extends StatelessWidget {
   const LoadingView({super.key, this.message});

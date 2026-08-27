@@ -234,6 +234,10 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
 
     final body = (items.isEmpty)
         ? ListView(
+            // Without this the empty state is a fixed 360px block in a taller
+            // viewport — scrollable, but with no overscroll for the refresh
+            // indicator to catch.
+            physics: alwaysScrollablePhysics,
             children: [
               if (widget.header != null) widget.header!,
               SizedBox(
@@ -248,6 +252,8 @@ class _PagedListViewState<T> extends State<PagedListView<T>> {
           )
         : ListView.builder(
             controller: _scroll,
+            // A short or heavily-filtered page still has to be pullable.
+            physics: alwaysScrollablePhysics,
             padding: listPadding,
             itemCount:
                 items.length +

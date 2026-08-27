@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 
 import '../config.dart';
 import '../auth/token_storage.dart';
+import '../format.dart';
 import 'api_exception.dart';
 
 /// Thin wrapper around Dio that:
@@ -329,11 +330,60 @@ class ApiClient {
         fields: fields,
       );
     }
+    // Not the envelope. That happens more often than it looks: osTicket's
+    // dispatcher answers a route it has no matcher for with a bare, plain-text
+    // `URL not supported` and a 400 (`Dispatcher::resolve()`), and a PHP fatal
+    // or a proxy serves an HTML page. Dropping that body leaves the caller
+    // with only a status code — the reason "Add new FAQ" read as a mystery
+    // 400 until the body was looked at — so surface whatever it says.
+    final detail = _bodyMessage(data);
     return ApiException(
       statusCode: code,
       code: code == 401 ? 'authentication_required' : 'server_error',
-      message: 'Request failed ($code)',
+      message: detail == null ? 'Request failed ($code)' : '$detail ($code)',
     );
+  }
+
+  /// Longest salvaged error body we'll put in front of a user. Enough for a
+  /// dispatcher or gateway line; short of a stack trace.
+  static const _maxErrorBodyChars = 160;
+
+  /// `<script>`/`<style>` blocks, dropped whole — [Fmt.stripHtml] removes the
+  /// tags but would leave their CSS and JS behind as "text".
+  static final _scriptOrStyle = RegExp(
+    r'<(script|style)\b[^>]*>.*?</\1>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+
+  static final _whitespaceRun = RegExp(r'\s+');
+
+  /// One readable line salvaged from a non-envelope error body, or null when
+  /// there is nothing worth showing.
+  ///
+  /// The body is untrusted and unbounded — an HTML error page or a PHP stack
+  /// trace would otherwise land whole in a snackbar — so markup is stripped,
+  /// whitespace collapsed and the result capped at [_maxErrorBodyChars].
+  static String? _bodyMessage(dynamic data) {
+    final Object? raw;
+    if (data is String) {
+      raw = data;
+    } else if (data is Map) {
+      // The envelope was handled above; some layers in front of the API
+      // answer `{"error": "..."}` or `{"message": "..."}` instead.
+      raw = data['error'] ?? data['message'];
+    } else {
+      raw = null;
+    }
+    if (raw is! String) return null;
+
+    final text = Fmt.stripHtml(raw.replaceAll(_scriptOrStyle, ' '))
+        .replaceAll(_whitespaceRun, ' ')
+        .trim();
+    if (text.isEmpty) return null;
+    return text.length <= _maxErrorBodyChars
+        ? text
+        : '${text.substring(0, _maxErrorBodyChars).trimRight()}…';
   }
 
   bool _refreshing = false;

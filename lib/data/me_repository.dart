@@ -50,13 +50,6 @@ class MeRepository {
     body: {'current_password': currentPassword, 'new_password': newPassword},
   );
 
-  /// Re-roll the local avatar; returns the new avatar URL.
-  Future<String?> rerollAvatar() async {
-    final body = await _api.post('/me/avatar');
-    final avatar = J.map(J.map(J.map(body)['data'])['avatar']);
-    return J.str(avatar['url']);
-  }
-
   Future<AgentProfile> getAgent(int id) async {
     final body = await _api.get('/agents/$id');
     return AgentProfile.fromJson(J.map(J.map(body)['data']));

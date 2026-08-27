@@ -265,4 +265,44 @@ void main() {
 
     expect(find.text('opened /tickets/5'), findsOneWidget);
   });
+
+  // Alerts that arrive while the app is backgrounded are delivered to the OS
+  // tray, not to onMessage, so nothing in the running app hears about them.
+  // The shell bumps notificationsChangedProvider on resume; the inbox folds it
+  // into its refresh key so the list refetches instead of sitting on the page
+  // it loaded before the app went away.
+  testWidgets('the inbox refetches when the resume signal is bumped', (
+    tester,
+  ) async {
+    tall(tester);
+    final repo = _FakeNotifications();
+    late WidgetRef ref;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          notificationsRepositoryProvider.overrideWithValue(repo),
+          tokenStorageProvider.overrideWithValue(_NoTokens()),
+        ],
+        child: Consumer(
+          builder: (context, r, _) {
+            ref = r;
+            return MaterialApp.router(routerConfig: router());
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final before = repo.feedQueries.length;
+    expect(before, greaterThan(0));
+
+    ref.read(notificationsChangedProvider.notifier).bump();
+    await tester.pumpAndSettle();
+
+    expect(
+      repo.feedQueries.length,
+      greaterThan(before),
+      reason: 'the resume signal must reload the list',
+    );
+  });
 }

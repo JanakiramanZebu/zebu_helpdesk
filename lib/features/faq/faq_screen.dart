@@ -237,6 +237,9 @@ class _FaqScreenState extends ConsumerState<FaqScreen> {
     return RefreshIndicator(
       onRefresh: _loadCategories,
       child: ListView.builder(
+        // A knowledgebase is a handful of categories — without this the list
+        // fits the screen and the pull never reaches the indicator.
+        physics: alwaysScrollablePhysics,
         padding: const EdgeInsets.symmetric(vertical: 6),
         itemCount: cats.length,
         itemBuilder: (context, i) => _CategoryTile(

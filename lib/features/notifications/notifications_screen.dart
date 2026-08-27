@@ -109,7 +109,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       _readKeys.clear();
       _expandedKey = null;
     });
-    ref.invalidate(unreadCountProvider);
+    ref.invalidate(notificationCountsProvider);
   }
 
   void _toast(String msg) => AppSnack.error(context, msg);
@@ -175,7 +175,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ids.map((id) =>
             ref.read(notificationsRepositoryProvider).deleteOne(id)),
       );
-      ref.invalidate(unreadCountProvider);
+      ref.invalidate(notificationCountsProvider);
       _ok(ids.length == 1
           ? 'Notification deleted'
           : '${ids.length} notifications deleted');
@@ -195,7 +195,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           .read(notificationsRepositoryProvider)
           .readObject(g.type, g.objectId);
       if (mounted) setState(() => _readKeys.add(g.key));
-      ref.invalidate(unreadCountProvider);
+      ref.invalidate(notificationCountsProvider);
     } on ApiException catch (e) {
       _toast(e.message);
     }
@@ -214,7 +214,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       await ref
           .read(notificationsRepositoryProvider)
           .readObject(g.type, g.objectId);
-      ref.invalidate(unreadCountProvider);
+      ref.invalidate(notificationCountsProvider);
     } on ApiException catch (_) {
       if (mounted) setState(() => _readKeys.remove(g.key));
     }
@@ -233,7 +233,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     } on ApiException catch (_) {
       // Best-effort; navigate regardless.
     }
-    ref.invalidate(unreadCountProvider);
+    ref.invalidate(notificationCountsProvider);
     if (!mounted) return;
     // Await the detail route so that on return we refetch — the object is now
     // read on the server, so a refresh clears the card's unread state.
@@ -279,6 +279,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     final unread = ref
         .watch(unreadCountProvider)
         .maybeWhen(data: (c) => c, orElse: () => 0);
+    // Bumped by the shell when the app returns to the foreground, and by an
+    // incoming push. Part of the list's refresh key below.
+    final resumed = ref.watch(notificationsChangedProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -329,13 +332,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       body: Glass.listBackdrop(
         context: context,
         child: _GroupedInbox(
-          refreshKey: '$_view|$_refreshKey',
+          // `resumed` folds in the app-resume signal: alerts that arrived in
+          // the tray while we were backgrounded are already on the server, so
+          // the list must refetch rather than keep the pre-push page.
+          refreshKey: '$_view|$_refreshKey|$resumed',
           excludeIds: _deleted,
           groupFilter: _groupMatches,
           onGroupCount: (n) {
             if (mounted && n != _total) setState(() => _total = n);
           },
-          onRefreshed: () => ref.invalidate(unreadCountProvider),
+          onRefreshed: () => ref.invalidate(notificationCountsProvider),
           // Larger page so an object's recent activity is captured in one
           // fetch (grouping is done client-side; see [NotificationGroup]).
           // The Unread tab narrows server-side, so it no longer pulls page
@@ -584,17 +590,14 @@ class _GroupedInboxState extends State<_GroupedInbox> {
     if (groups.isEmpty) {
       return RefreshIndicator(
         onRefresh: _refresh,
-        child: ListView(
-          children: const [
-            SizedBox(
-              height: 360,
-              child: EmptyView(
-                icon: Icons.notifications_none,
-                message: 'No notifications',
-                hint: 'You are all caught up.',
-              ),
-            ),
-          ],
+        // Scrollable was not enough on its own: 360px inside a taller
+        // viewport still has nothing to overscroll.
+        child: const RefreshableState(
+          child: EmptyView(
+            icon: Icons.notifications_none,
+            message: 'No notifications',
+            hint: 'You are all caught up.',
+          ),
         ),
       );
     }
@@ -606,6 +609,7 @@ class _GroupedInboxState extends State<_GroupedInbox> {
         onRefresh: _refresh,
         child: ListView.builder(
           controller: _scroll,
+          physics: alwaysScrollablePhysics,
           padding: listPadding,
           itemCount: groups.length + (_hasMore ? 1 : 0),
           itemBuilder: (context, index) {

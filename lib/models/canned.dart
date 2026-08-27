@@ -76,9 +76,26 @@ class CannedExpansion {
   final String raw;
   final String expanded;
 
+  /// The expanded body under whichever key the backend uses. Reading only
+  /// `response_expanded` meant a rename served an empty string, which the
+  /// composer could not tell apart from "nothing to expand" — so the raw
+  /// `%{ticket.number}` went into the reply with no error anywhere.
+  static String _firstOf(Map<String, dynamic> j, List<String> keys) {
+    for (final k in keys) {
+      final v = J.strOr(j[k]);
+      if (v.trim().isNotEmpty) return v;
+    }
+    return '';
+  }
+
   factory CannedExpansion.fromJson(Map<String, dynamic> j) => CannedExpansion(
     title: J.strOr(j['title']),
-    raw: J.strOr(j['response_raw']),
-    expanded: J.strOr(j['response_expanded']),
+    raw: _firstOf(j, const ['response_raw', 'raw', 'body']),
+    expanded: _firstOf(j, const [
+      'response_expanded',
+      'expanded',
+      'response',
+      'body',
+    ]),
   );
 }

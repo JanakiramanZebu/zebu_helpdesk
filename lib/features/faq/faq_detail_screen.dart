@@ -67,12 +67,21 @@ class _FaqDetailScreenState extends ConsumerState<FaqDetailScreen> {
     if (faq == null) return;
     // The editor sends the whole form, so it needs the full article — which is
     // exactly what this screen already holds. Categories come from the list
-    // endpoint; a failure there leaves the picker with only the current one.
+    // endpoint.
     var categories = <FaqCategory>[];
     try {
       categories = await ref.read(faqRepositoryProvider).categories();
     } on ApiException {
-      // Non-fatal: fall through with whatever the article itself names.
+      // Non-fatal — the article's own category stands in below.
+    }
+    // The sheet opens its Category dropdown on the article's own category, and
+    // `DropdownButtonFormField` asserts unless that value is among the items.
+    // So whenever the list didn't bring it back — the call above failed, or the
+    // article sits in a category the listing doesn't return — put it in, rather
+    // than handing the sheet a value it cannot render.
+    final own = faq.category;
+    if (own != null && !categories.any((c) => c.id == own.id)) {
+      categories = [...categories, FaqCategory(id: own.id, name: own.name)];
     }
     if (!mounted) return;
     final saved = await showFaqEditorSheet(

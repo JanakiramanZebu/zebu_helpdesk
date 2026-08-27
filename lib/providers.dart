@@ -144,6 +144,11 @@ final meProvider = FutureProvider<Me>((ref) async {
 });
 
 /// Unread notification totals (`GET /notifications/count`).
+///
+/// **This provider owns the fetch — invalidate *this* one to refresh a badge.**
+/// [unreadCountProvider] only derives from it, so invalidating that instead
+/// re-runs the derivation against this provider's still-cached value and
+/// silently changes nothing.
 final notificationCountsProvider = FutureProvider<NotificationCounts>((
   ref,
 ) async {
@@ -154,6 +159,9 @@ final notificationCountsProvider = FutureProvider<NotificationCounts>((
 /// The unread badge shown on the nav bell, the More row and the inbox's Unread
 /// chip: unread **conversations**, not rows, so every badge matches the cards
 /// the inbox lists (and the web's `Unread (n)`).
+///
+/// Read-only view over [notificationCountsProvider] — see the note there before
+/// reaching for `invalidate`.
 final unreadCountProvider = FutureProvider<int>((ref) async {
   final counts = await ref.watch(notificationCountsProvider.future);
   return counts.conversations;
@@ -201,3 +209,11 @@ final ticketsChangedProvider = NotifierProvider<Revision, int>(Revision.new);
 /// it, so an article edited from the detail screen doesn't leave a stale row
 /// (or a stale article count) on the list behind it.
 final faqChangedProvider = NotifierProvider<Revision, int>(Revision.new);
+
+/// Bumped when the inbox may have changed underneath us — a push arrived, or
+/// the app came back to the foreground after alerts landed in the tray while it
+/// was backgrounded. The Alerts screen folds it into its refresh key so the
+/// list reloads instead of showing the pre-push state until a manual pull.
+final notificationsChangedProvider = NotifierProvider<Revision, int>(
+  Revision.new,
+);

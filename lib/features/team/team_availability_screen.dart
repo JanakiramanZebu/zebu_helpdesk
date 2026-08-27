@@ -101,21 +101,27 @@ class _TeamAvailabilityScreenState
   }
 
   Widget _body() {
-    if (_loading) return const LoadingView();
+    // Every branch has to be scrollable, or the pull is swallowed: three of
+    // the four states here are centred panels, and a manager's team is short
+    // enough that even the list fits the screen.
+    if (_loading) return const RefreshableState(child: LoadingView());
     if (_error != null) {
-      return ErrorView(error: _error!, onRetry: _load);
+      return RefreshableState(child: ErrorView(error: _error!, onRetry: _load));
     }
     final members = _members ?? const <TeamMember>[];
     if (members.isEmpty) {
       // Managing nobody is an empty list, not a failure — most agents land
       // here, so it must read as a normal state.
-      return const EmptyView(
-        icon: Icons.groups_outlined,
-        message: 'No team members',
-        hint: 'Only a department manager has employees to opt in here.',
+      return const RefreshableState(
+        child: EmptyView(
+          icon: Icons.groups_outlined,
+          message: 'No team members',
+          hint: 'Only a department manager has employees to opt in here.',
+        ),
       );
     }
     return ListView.builder(
+      physics: alwaysScrollablePhysics,
       padding: const EdgeInsets.symmetric(vertical: 6),
       itemCount: members.length + 1,
       itemBuilder: (context, i) {

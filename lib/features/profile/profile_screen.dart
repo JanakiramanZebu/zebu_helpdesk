@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_exception.dart';
 import '../../core/assets.dart';
+import '../../core/format.dart';
 import '../../core/theme/app_text.dart';
 import '../../core/timezones.dart';
 import '../../core/validators.dart';
@@ -38,19 +39,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     try {
       await ref.read(meRepositoryProvider).setAvailability(available: value);
       ref.invalidate(meProvider);
-    } on ApiException catch (e) {
-      if (mounted) AppSnack.error(context, e.message);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _rerollAvatar() async {
-    setState(() => _busy = true);
-    try {
-      await ref.read(meRepositoryProvider).rerollAvatar();
-      ref.invalidate(meProvider);
-      if (mounted) AppSnack.success(context, 'Avatar regenerated');
     } on ApiException catch (e) {
       if (mounted) AppSnack.error(context, e.message);
     } finally {
@@ -132,12 +120,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               trailing: const Icon(Icons.chevron_right),
               onTap: _busy ? null : _changePassword,
             ),
-            ListTile(
-              leading: const SvgIcon(Assets.profileAvatar, size: 22),
-              title: const Text('Regenerate avatar'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _busy ? null : _rerollAvatar,
-            ),
           ],
         ),
       ],
@@ -159,8 +141,9 @@ class _IdentityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final dept = me.primaryDepartment;
-    final phone = me.profile.phone ?? '';
-    final mobile = me.profile.mobile ?? '';
+    // osTicket echoes numbers back through its US formatter — see [Fmt.phone].
+    final phone = Fmt.phone(me.profile.phone);
+    final mobile = Fmt.phone(me.profile.mobile);
     final timezone = me.profile.timezone ?? '';
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12),
@@ -416,8 +399,12 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     text: widget.profile.lastname ?? '',
   );
   late final _email = TextEditingController(text: widget.email);
-  late final _phone = TextEditingController(text: widget.profile.phone ?? '');
-  late final _mobile = TextEditingController(text: widget.profile.mobile ?? '');
+  // Seeded in the same Indian form the identity card shows, so editing a
+  // number doesn't re-save the US shape osTicket handed back.
+  late final _phone = TextEditingController(text: Fmt.phone(widget.profile.phone));
+  late final _mobile = TextEditingController(
+    text: Fmt.phone(widget.profile.mobile),
+  );
   // Picked from [kTimezones], never typed — see the note on that list. Empty is
   // the web's "System Default" option.
   late String _timezone = widget.profile.timezone ?? kSystemDefaultTimezone;
@@ -467,8 +454,12 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
     final firstname = _firstname.text.trim();
     final lastname = _lastname.text.trim();
     final email = _email.text.trim();
-    final phone = _phone.text.trim();
-    final mobile = _mobile.text.trim();
+    // Normalised before both the check and the request: a pasted number
+    // carries a non-breaking space, which osTicket's own strip does not
+    // remove, so sending it raw earns a server-side rejection of a number
+    // that looks perfectly fine on screen.
+    final phone = Validators.normalizePhone(_phone.text);
+    final mobile = Validators.normalizePhone(_mobile.text);
     // `Validator::is_phone()` on each number that was actually typed — the rule
     // behind the web's "Valid phone number is required". Everything else on
     // this form (name required, email valid/unique) stays server-checked and
@@ -571,7 +562,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                 // osTicket accepts any 7-16 digit number once its punctuation
                 // is stripped, so say that rather than let an agent guess at a
                 // format that was never required.
-                helperText: '7–16 digits. Spaces, +, -, ( ) and . are fine.',
+                // helperText: '7–16 digits. Spaces, +, -, ( ) and . are fine.',
                 errorText: _fieldErrors['mobile'],
               ),
             ),
@@ -587,7 +578,7 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                 ),
                 child: AppText.subText(
                   context,
-                  _timezone.isEmpty ? 'System default' : _timezone,
+                  _timezone.isEmpty ? 'Asia/Kolkata' : _timezone,
                   color: _timezone.isEmpty
                       ? Theme.of(context).colorScheme.onSurfaceVariant
                       : Theme.of(context).colorScheme.onSurface,
