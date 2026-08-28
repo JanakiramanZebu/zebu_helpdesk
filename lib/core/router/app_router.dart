@@ -32,6 +32,11 @@ import 'routes.dart';
 final _rootKey = GlobalKey<NavigatorState>();
 final _shellKey = GlobalKey<NavigatorState>();
 
+/// The root navigator, for code that must present over *everything* — tabs,
+/// pushed detail routes and the login screen alike. Used by the update gate,
+/// whose forced-update sheet has to outrank whatever is on screen.
+GlobalKey<NavigatorState> get rootNavigatorKey => _rootKey;
+
 /// App router with an auth-aware redirect guard and a 4-tab bottom-nav shell.
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);

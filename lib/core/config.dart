@@ -52,4 +52,39 @@ class AppConfig {
   /// download). Those legitimately run long on a mobile link, so they get a
   /// looser cap than the JSON calls - but they are still bounded.
   static const Duration transferDeadline = Duration(minutes: 5);
+
+  /// Shared Strapi entry carrying the published version of both Zebu apps.
+  /// Mynt Plus reads its `version` field; the helpdesk reads [updateField].
+  /// Public — no token required.
+  static const String updateUrl = String.fromEnvironment(
+    'ZEBU_UPDATE_URL',
+    defaultValue: 'https://sess.mynt.in/strapi/appversion?fields=Helpdeskversion',
+  );
+
+  /// The attribute this app reads, so the two apps never overwrite each
+  /// other's version. Shape: `{"and": "1.0.1", "ios": "1.0.1", "mandate": "no"}`.
+  ///
+  /// While the field is null (nobody has filled it in yet) the check simply
+  /// finds no version and never prompts.
+  static const String updateField = String.fromEnvironment(
+    'ZEBU_UPDATE_FIELD',
+    defaultValue: 'Helpdeskversion',
+  );
+
+  /// Optional bearer token, if the collection is ever made non-public.
+  static const String updateToken = String.fromEnvironment(
+    'ZEBU_UPDATE_TOKEN',
+    defaultValue: '',
+  );
+
+  /// Where "Update now" sends staff to fetch a fresh APK — our own server.
+  /// The CMS entry can override this per release with a `url` key.
+  static const String downloadPageUrl = String.fromEnvironment(
+    'ZEBU_DOWNLOAD_URL',
+    defaultValue: '',
+  );
+
+  /// The update check is a background nicety, not a blocking call — keep it
+  /// short so a slow CMS never delays the first screen.
+  static const Duration updateTimeout = Duration(seconds: 8);
 }

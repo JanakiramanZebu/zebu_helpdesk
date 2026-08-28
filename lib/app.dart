@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'core/update/update_gate.dart';
 import 'widgets/glass.dart';
 import 'widgets/keyboard_dismisser.dart';
 import 'widgets/offline_banner.dart';
@@ -36,8 +37,12 @@ class ZebuHelpdeskApp extends ConsumerWidget {
             data: Glass.tint(base),
             child: Glass.canvas(
               brightness: base.brightness,
-              // App-wide offline strip floating above every screen.
-              child: OfflineBanner(child: child ?? const SizedBox.shrink()),
+              // Watches Strapi for a newer native build and raises the update
+              // sheet over everything. Renders nothing of its own.
+              child: UpdateGate(
+                // App-wide offline strip floating above every screen.
+                child: OfflineBanner(child: child ?? const SizedBox.shrink()),
+              ),
             ),
           ),
         );
