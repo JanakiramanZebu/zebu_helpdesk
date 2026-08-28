@@ -13,5 +13,5 @@ app_id: f7f288a9-1794-4e9b-9dce-1e7b5fe5eeef
 # Uncomment the following line to disable automatic updates.
 # auto_update: false
 
-
 # shorebird release android --artifact apk
+# shorebird release android --artifact apk --flutter-version 3.38.6
