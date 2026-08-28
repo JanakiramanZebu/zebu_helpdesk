@@ -12,3 +12,6 @@ app_id: f7f288a9-1794-4e9b-9dce-1e7b5fe5eeef
 # https://pub.dev/packages/shorebird_code_push
 # Uncomment the following line to disable automatic updates.
 # auto_update: false
+
+
+# shorebird release android --artifact apk
