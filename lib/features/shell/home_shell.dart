@@ -52,10 +52,15 @@ class _HomeShellState extends ConsumerState<HomeShell>
     ref.read(pushServiceProvider).start();
   }
 
-  void _go(int index) => widget.shell.goBranch(
-    index,
-    initialLocation: index == widget.shell.currentIndex,
-  );
+  /// Every tab tap opens that branch at its initial route *and* in its initial
+  /// state: bumping the branch's epoch drops the screen's State (see
+  /// [branchEpochProvider]), so Tickets/Tasks/Alerts come up unfiltered,
+  /// unsearched, scrolled to the top and freshly loaded instead of resuming
+  /// wherever the agent left off.
+  void _go(int index) {
+    ref.read(branchEpochProvider.notifier).bump(index);
+    widget.shell.goBranch(index, initialLocation: true);
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -84,7 +84,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: Routes.dashboard,
-                builder: (_, __) => const DashboardScreen(),
+                builder: (_, __) =>
+                    const _TabRoot(branch: 0, child: DashboardScreen()),
               ),
             ],
           ),
@@ -92,7 +93,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: Routes.tickets,
-                builder: (_, __) => const TicketsListScreen(),
+                builder: (_, __) =>
+                    const _TabRoot(branch: 1, child: TicketsListScreen()),
               ),
             ],
           ),
@@ -100,7 +102,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: Routes.tasks,
-                builder: (_, __) => const TasksListScreen(),
+                builder: (_, __) =>
+                    const _TabRoot(branch: 2, child: TasksListScreen()),
               ),
             ],
           ),
@@ -108,7 +111,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: Routes.notifications,
-                builder: (_, __) => const NotificationsScreen(),
+                builder: (_, __) =>
+                    const _TabRoot(branch: 3, child: NotificationsScreen()),
               ),
             ],
           ),
@@ -116,7 +120,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: Routes.more,
-                builder: (_, __) => const MoreScreen(),
+                builder: (_, __) =>
+                    const _TabRoot(branch: 4, child: MoreScreen()),
               ),
             ],
           ),
@@ -222,3 +227,23 @@ int _detailTabIndex(String? tab) => switch (tab) {
   'activity' => 2,
   _ => 0,
 };
+
+/// Root screen of one bottom-nav branch.
+///
+/// The shell keeps all five branches mounted, so a tab's State survives every
+/// switch. Keying the subtree on the branch's epoch (bumped by the nav bar on
+/// each tap, see [branchEpochProvider]) drops that State and inflates the
+/// screen again, so the tab opens in its initial state rather than resuming the
+/// previous search / filters / scroll position.
+class _TabRoot extends ConsumerWidget {
+  const _TabRoot({required this.branch, required this.child});
+
+  final int branch;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final epoch = ref.watch(branchEpochProvider)[branch] ?? 0;
+    return KeyedSubtree(key: ValueKey('branch-$branch-$epoch'), child: child);
+  }
+}

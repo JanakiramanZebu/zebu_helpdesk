@@ -194,23 +194,53 @@ class Me {
   /// Whether this agent may rewrite thread entry [entry] on an object in
   /// [departmentId].
   ///
-  /// Ports `TEA_EditThreadEntry` (`include/class.thread_actions.php`), the same
-  /// action that draws the web's pencil: system posts (no poster) and agent
-  /// **responses** are never editable, and beyond that it takes authoring the
-  /// post, managing the department, or a role holding `thread.edit`.
+  /// Ports `TEA_EditThreadEntry::isVisible()` + `isEnabled()`
+  /// (`include/class.thread_actions.php`), which both draws the web's pencil
+  /// and guards the endpoint — `POST /tickets|tasks/{id}/thread/{entryId}`
+  /// runs `isVisible()` first and 403s when it fails. The rule:
   ///
-  /// One approximation: the thread payload carries the poster's *name*, not
-  /// their staff id, so "I wrote this" is a name match. It only ever widens the
-  /// menu — the endpoint runs the real check and 403s a mismatch.
+  ///  * system posts (no staff/user behind them) are never editable;
+  ///  * everything else takes authoring the post, managing the object's
+  ///    department, or a role holding `thread.edit` **in that department**.
+  ///
+  /// Agent **responses** are included. `TEA_EditThreadEntry` skips them
+  /// (`type != 'R'`), but `ThreadEntry::getActions()` offers every action whose
+  /// `isVisible()` passes and a second one — `TEA_EditAndResendThreadEntry` —
+  /// covers exactly the responses, under the same `isEnabled()` test. That is
+  /// the "Edit and Resend" the web draws on a sent reply.
+  ///
+  /// Note there is no admin shortcut: `isEnabled()` asks the department's role
+  /// object (`Staff::getRole(deptId)->hasPerm(...)`), and `Role::hasPerm` has
+  /// no `isAdmin()` bypass — an admin with no role in that department gets no
+  /// pencil on the web either.
+  ///
+  /// Two things the client cannot resolve, which is why [ThreadEntry.canEdit]
+  /// wins whenever the backend publishes it:
+  ///
+  ///  * the payload carries the poster's *name*, not their staff id, so
+  ///    "I wrote this" is a name match;
+  ///  * `getRole($dept, $assigned)` falls back to the agent's **primary** role
+  ///    when the ticket is assigned to them and `def_assn_role` is set — and
+  ///    that attribute defaults to TRUE (`Staff::usePrimaryRoleOnAssignment`).
+  ///    Assignment isn't reliably knowable here (a ticket assigned to one of
+  ///    the agent's teams counts too), so the primary role's permission —
+  ///    [can], i.e. `global_permissions` — stands in as the last check. It errs
+  ///    toward showing the action; the endpoint runs the real test and 403s,
+  ///    which the screen surfaces.
   bool canEditThreadEntry(ThreadEntry entry, int? departmentId) {
-    if (entry.isResponse || entry.poster.trim().isEmpty) return false;
+    // The server already answered — never second-guess it.
+    if (entry.canEdit != null) return entry.canEdit!;
+    if (entry.poster.trim().isEmpty) return false;
     if (entry.poster.trim().toLowerCase() == name.trim().toLowerCase()) {
       return true;
     }
-    if (departmentId != null && managedDepartments.contains(departmentId)) {
-      return true;
+    if (departmentId != null) {
+      if (managedDepartments.contains(departmentId)) return true;
+      if ((permissionsByDepartment[departmentId]?['thread.edit'] ?? 0) == 1) {
+        return true;
+      }
     }
-    return canOn('thread.edit', departmentId);
+    return can('thread.edit');
   }
 
   factory Me.fromJson(Map<String, dynamic> j) {

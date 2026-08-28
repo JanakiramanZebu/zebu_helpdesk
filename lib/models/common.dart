@@ -119,6 +119,7 @@ class ThreadEntry {
     this.editedAt,
     this.editor,
     this.hasHistory = false,
+    this.canEdit,
   });
 
   final int id;
@@ -142,6 +143,14 @@ class ThreadEntry {
   /// A prior version exists behind `/thread/{id}/history`.
   final bool hasHistory;
 
+  /// The server's own verdict on "may this agent edit this entry?", when the
+  /// backend publishes it (`TEA_EditThreadEntry::isVisible()`). Null on a
+  /// backend that doesn't, which leaves [Me.canEditThreadEntry] to approximate
+  /// the rule client-side. Always prefer this when it is set: only the server
+  /// can resolve the parts of `isEnabled()` that depend on the object (who is
+  /// assigned, which role that implies).
+  final bool? canEdit;
+
   bool get isNote => type == 'N';
   bool get isResponse => type == 'R';
   bool get isMessage => type == 'M';
@@ -160,6 +169,9 @@ class ThreadEntry {
     editedAt: J.dateTime(j['edited_at']),
     editor: J.str(j['editor']),
     hasHistory: J.boolOr(j['has_history']),
+    // Absent on a backend that doesn't publish the verdict — null, not false,
+    // so the client heuristic still runs instead of hiding every Edit action.
+    canEdit: j['can_edit'] == null ? null : J.boolOr(j['can_edit']),
   );
 }
 

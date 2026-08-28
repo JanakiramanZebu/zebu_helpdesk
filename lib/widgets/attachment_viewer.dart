@@ -11,6 +11,8 @@ import 'package:pdfx/pdfx.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../core/config.dart';
+import '../core/network/server_config.dart';
 import '../core/theme/app_text.dart';
 import '../models/common.dart';
 import '../providers.dart';
@@ -361,8 +363,14 @@ class _TextAttachmentViewState extends ConsumerState<TextAttachmentView>
 // Video viewer
 // ---------------------------------------------------------------------------
 
-/// In-app video player rendering bytes from [url] (downloaded to a temp file,
-/// since the player needs a file/URL source).
+/// In-app video player for [url].
+///
+/// Plays straight from the authed stream URL (`VideoPlayerController.networkUrl`
+/// with the bearer token as a request header) so playback starts on the first
+/// buffered chunk. The whole-file download is only a fallback for servers that
+/// don't serve the stream in a way the platform player accepts - buffering a
+/// 30-60 MB clip into memory before the first frame is what made large videos
+/// hang or die on Android.
 class VideoAttachmentView extends ConsumerStatefulWidget {
   const VideoAttachmentView({super.key, required this.url, this.title});
   final String url;
@@ -377,6 +385,7 @@ class _VideoAttachmentViewState extends ConsumerState<VideoAttachmentView> {
   VideoPlayerController? _video;
   ChewieController? _chewie;
   Object? _error;
+  File? _tempFile;
 
   @override
   void initState() {
@@ -387,25 +396,28 @@ class _VideoAttachmentViewState extends ConsumerState<VideoAttachmentView> {
   Future<void> _load() async {
     setState(() => _error = null);
     try {
-      final data = await ref.read(apiClientProvider).getBytes(widget.url);
-      final dir = await getTemporaryDirectory();
-      final file = File('${dir.path}/video_${widget.url.hashCode}.tmp');
-      await file.writeAsBytes(data, flush: true);
-      final video = VideoPlayerController.file(file);
-      await video.initialize();
+      VideoPlayerController controller;
+      try {
+        controller = await _streamController();
+      } catch (_) {
+        // Stream source rejected (no range support, redirect that drops the
+        // Authorization header, container the player won't sniff off the wire)
+        // - fall back to downloading the bytes and playing the local file.
+        controller = await _fileController();
+      }
       if (!mounted) {
-        await video.dispose();
+        await controller.dispose();
         return;
       }
       setState(() {
-        _video = video;
+        _video = controller;
         _chewie = ChewieController(
-          videoPlayerController: video,
+          videoPlayerController: controller,
           autoPlay: true,
           looping: false,
-          aspectRatio: video.value.aspectRatio == 0
+          aspectRatio: controller.value.aspectRatio == 0
               ? 16 / 9
-              : video.value.aspectRatio,
+              : controller.value.aspectRatio,
         );
       });
     } catch (e) {
@@ -414,10 +426,50 @@ class _VideoAttachmentViewState extends ConsumerState<VideoAttachmentView> {
     }
   }
 
+  /// Progressive playback from the API, authed with the bearer token.
+  Future<VideoPlayerController> _streamController() async {
+    final token = await ref.read(tokenStorageProvider).readAccessToken();
+    final controller = VideoPlayerController.networkUrl(
+      _absoluteUri(ref, widget.url),
+      httpHeaders: {
+        if (token != null) 'Authorization': 'Bearer $token',
+      },
+    );
+    try {
+      await controller.initialize();
+    } catch (_) {
+      await controller.dispose();
+      rethrow;
+    }
+    return controller;
+  }
+
+  /// Fallback: download the bytes to a temp file that keeps a real video
+  /// extension (AVFoundation picks the container off the file name, and a
+  /// `.tmp` file never initializes).
+  Future<VideoPlayerController> _fileController() async {
+    final data = await ref.read(apiClientProvider).getBytes(widget.url);
+    final dir = await getTemporaryDirectory();
+    final file = File(
+      '${dir.path}/video_${widget.url.hashCode}.${_videoExt(widget.title, widget.url)}',
+    );
+    await file.writeAsBytes(data, flush: true);
+    _tempFile = file;
+    final controller = VideoPlayerController.file(file);
+    try {
+      await controller.initialize();
+    } catch (_) {
+      await controller.dispose();
+      rethrow;
+    }
+    return controller;
+  }
+
   @override
   void dispose() {
     _chewie?.dispose();
     _video?.dispose();
+    _tempFile?.delete().ignore();
     super.dispose();
   }
 
@@ -438,6 +490,33 @@ class _VideoAttachmentViewState extends ConsumerState<VideoAttachmentView> {
       ),
     );
   }
+}
+
+/// Resolves an API [url] to an absolute URI the platform player can fetch.
+/// Relative paths are joined onto the configured API root, matching how Dio
+/// resolves them for [ApiClient].
+Uri _absoluteUri(WidgetRef ref, String url) {
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return Uri.parse(url);
+  }
+  final root = AppConfig.apiRootFor(ref.read(serverConfigProvider));
+  return Uri.parse('$root${url.startsWith('/') ? '' : '/'}$url');
+}
+
+/// Best-guess container extension for the temp file, from the attachment name
+/// or the URL. Defaults to `mp4` - the only wrong outcome is a fallback that
+/// still can't play, which the error state already covers.
+String _videoExt(String? name, String url) {
+  for (final candidate in [name ?? '', url]) {
+    final path = Uri.tryParse(candidate)?.path ?? candidate;
+    final dot = path.lastIndexOf('.');
+    if (dot < 0) continue;
+    final ext = path.substring(dot + 1).toLowerCase();
+    if (const {'mp4', 'mov', 'm4v', 'webm', '3gp', 'mkv'}.contains(ext)) {
+      return ext;
+    }
+  }
+  return 'mp4';
 }
 
 // ---------------------------------------------------------------------------

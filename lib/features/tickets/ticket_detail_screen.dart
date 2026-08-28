@@ -142,6 +142,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
   // ticket page, the API serves them from their own endpoints.
   List<Tag> _tags = [];
   int? _collaborators;
+  // Parent/child ticket links (`GET /tickets/{id}/relations`). The web shows
+  // these on the ticket page; here they become tappable rows on Details and
+  // hyperlinked numbers in the Activity log.
+  TicketRelations? _relations;
   // The topic's form definition. The ticket payload's `custom_fields` is a flat
   // {label: value} map, so it can't say which answers are *required* - only
   // this endpoint does, and the Details tab needs it to flag the blanks the
@@ -247,6 +251,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       () => repo.fields(widget.ticketId),
       const <TicketField>[],
     );
+    final relationsF = _sideLoad(
+      () => repo.relations(widget.ticketId),
+      const TicketRelations(),
+    );
     final Ticket ticket;
     try {
       ticket = await repo.get(widget.ticketId);
@@ -272,11 +280,13 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
     final tags = await tagsF;
     final collaborators = await collabF;
     final fields = await fieldsF;
+    final relations = await relationsF;
     if (!mounted) return;
     setState(() {
       _tags = tags;
       _collaborators = collaborators.length;
       _fields = fields;
+      _relations = relations;
     });
     await _resolveSlaActive(ticket);
   }
@@ -431,6 +441,10 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
       if (mounted) setState(() => _acting = false);
     }
   }
+
+  /// Opens another ticket from a link/merge row or an Activity line. Pushed,
+  /// not replaced, so back returns to this ticket.
+  void _openTicket(int id) => context.push('/tickets/$id');
 
   /// Earlier versions of an edited entry (the web's "View History").
   Future<void> _entryHistory(ThreadEntry entry) => showEntryHistorySheet(
@@ -709,6 +723,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                           onEditField: _editField,
                           tags: _tags,
                           collaborators: _collaborators,
+                          relations: _relations,
+                          onOpenTicket: _openTicket,
                           lastMessage: _lastMessageAt,
                           lastResponse: _lastResponseAt,
                         ),
@@ -717,6 +733,8 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen>
                           loading: _eventsLoading,
                           error: _eventsError,
                           onRetry: _loadEvents,
+                          relations: _relations,
+                          onOpenTicket: _openTicket,
                         ),
                       ],
                     ),
@@ -1370,6 +1388,8 @@ class _DetailsTab extends StatelessWidget {
     required this.onEditField,
     this.tags = const [],
     this.collaborators,
+    this.relations,
+    required this.onOpenTicket,
     this.lastMessage,
     this.lastResponse,
   });
@@ -1386,6 +1406,13 @@ class _DetailsTab extends StatelessWidget {
   /// Side-data loaded alongside the ticket (own endpoints).
   final List<Tag> tags;
   final int? collaborators;
+
+  /// Tickets linked to (or merged with) this one. The web lists them on the
+  /// ticket page; null until `/relations` answers, or when it refused.
+  final TicketRelations? relations;
+
+  /// Opens one of those tickets.
+  final ValueChanged<int> onOpenTicket;
 
   /// Last inbound message / last agent response, served by the API when it
   /// publishes them, otherwise derived from the loaded thread.
@@ -1407,6 +1434,12 @@ class _DetailsTab extends StatelessWidget {
   /// flag; the ticket payload's flat map is the fallback.
   List<TicketFieldRow> get _customRows =>
       ticketFieldRows(ticket.customFields, fields);
+
+  /// Parent first, then children — the order the web lists them in.
+  List<RelatedTicket> get _related => [
+    if (relations?.parent != null) relations!.parent!,
+    ...?relations?.children,
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -1570,6 +1603,26 @@ class _DetailsTab extends StatelessWidget {
               ),
           ],
         ),
+        // Linked / merged tickets, the mobile stand-in for the web's own
+        // listing: `/relations` hands back each related ticket's real id, so
+        // every row here opens that ticket instead of just naming it.
+        if (_related.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          _DetailSection(
+            title: relations?.mergeType != null
+                ? 'Merged tickets'
+                : 'Linked tickets',
+            children: [
+              for (final r in _related)
+                _DetailRow(
+                  icon: Icons.link,
+                  label: '#${r.number}',
+                  value: r.subject.isEmpty ? 'Open ticket' : r.subject,
+                  onTap: () => onOpenTicket(r.ticketId),
+                ),
+            ],
+          ),
+        ],
         // The topic's own form answers. The payload carries every answered
         // field, blanks included, so an all-empty form used to render this
         // section as a bare heading over an empty card. The web instead lists
@@ -1778,8 +1831,15 @@ class _ActivityTab extends StatelessWidget {
     this.loading = false,
     this.error,
     this.onRetry,
+    this.relations,
+    required this.onOpenTicket,
   });
   final List<ThreadEvent> events;
+
+  /// Known ticket links, used to turn the number in a "linked this ticket
+  /// with 071620" line into something the agent can open.
+  final TicketRelations? relations;
+  final ValueChanged<int> onOpenTicket;
 
   /// The activity log loads separately from the ticket - same deal as the
   /// conversation tab.
@@ -1817,6 +1877,26 @@ class _ActivityTab extends StatelessWidget {
       return (Icons.group_outlined, AppTheme.brand);
     }
     return (Icons.fiber_manual_record, AppTheme.brand);
+  }
+
+  /// The related ticket an event's sentence names, when we can resolve it.
+  ///
+  /// osTicket writes these lines with the number already wrapped in an
+  /// `<a href="tickets.php?id={data.id}">` (LinkedEvent / MergedEvent /
+  /// UnlinkEvent in `include/class.thread.php`), but `V2EventSerializer::item`
+  /// runs the sentence through `strip_tags()`, so the id never reaches the app.
+  /// `/relations` is what puts it back: match the number the sentence mentions
+  /// against the tickets we know are linked to this one.
+  RelatedTicket? _linked(ThreadEvent e) {
+    final rel = relations;
+    if (rel == null) return null;
+    final state = e.state.toLowerCase();
+    if (!state.contains('link') && !state.contains('merge')) return null;
+    final text = e.description ?? '';
+    for (final r in [if (rel.parent != null) rel.parent!, ...rel.children]) {
+      if (r.number.isNotEmpty && text.contains(r.number)) return r;
+    }
+    return null;
   }
 
   @override
@@ -1879,6 +1959,34 @@ class _ActivityTab extends StatelessWidget {
                           fw: 1,
                           lineHeight: 1.3,
                         ),
+                        if (_linked(e) case final link?) ...[
+                          const SizedBox(height: 4),
+                          InkWell(
+                            onTap: () => onOpenTicket(link.ticketId),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.open_in_new,
+                                    size: 14,
+                                    color: scheme.primary,
+                                  ),
+                                  const SizedBox(width: 5),
+                                  AppText.subText(
+                                    context,
+                                    '#${link.number}',
+                                    color: scheme.primary,
+                                    fw: 1,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 2),
                         AppText.paraText(
                           context,

@@ -875,7 +875,7 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
             controller: _title,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
-              hintText: 'e.g. Password reset instructions',
+              hintText: 'Tittle',
               errorText: _fieldErrors['title'],
             ),
           ),
@@ -898,7 +898,7 @@ class _CannedEditorState extends ConsumerState<_CannedEditor> {
           const SizedBox(height: 6),
           RichMessageField(
             controller: _response,
-            hintText: 'Write the response agents will insert…',
+            hintText: 'Write the response',
             errorText: _fieldErrors['response'],
             minHeight: 140,
             maxHeight: 260,

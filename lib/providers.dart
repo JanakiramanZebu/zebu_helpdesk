@@ -218,3 +218,22 @@ final faqChangedProvider = NotifierProvider<Revision, int>(Revision.new);
 final notificationsChangedProvider = NotifierProvider<Revision, int>(
   Revision.new,
 );
+
+/// Per-branch reset counters for the bottom-nav shell, keyed by branch index.
+///
+/// `StatefulShellRoute.indexedStack` keeps every branch mounted, so a tab
+/// resumed wherever the agent left it — mid-search, filtered, scrolled down.
+/// Tapping a tab bumps that branch's counter and the router rebuilds its root
+/// screen under a fresh key, discarding the old State: the tab always opens in
+/// its initial state, with search cleared, filters/sort back to defaults and
+/// the list refetched.
+class BranchEpochs extends Notifier<Map<int, int>> {
+  @override
+  Map<int, int> build() => const {};
+
+  void bump(int branch) => state = {...state, branch: (state[branch] ?? 0) + 1};
+}
+
+final branchEpochProvider = NotifierProvider<BranchEpochs, Map<int, int>>(
+  BranchEpochs.new,
+);
