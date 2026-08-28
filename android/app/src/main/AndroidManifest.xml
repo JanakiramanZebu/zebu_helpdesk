@@ -3,7 +3,7 @@
     <!-- Android 13+ runtime permission for showing notifications (FCM/local). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="zebu_helpdesk"
+        android:label="Zebu Helpdesk"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

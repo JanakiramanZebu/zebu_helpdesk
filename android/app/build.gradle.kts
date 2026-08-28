@@ -4,8 +4,8 @@ import java.io.FileInputStream
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // Firebase Cloud Messaging (google-services.json present — live project
-    // signin-226ac). See docs/PUSH_SETUP.md.
+    // Firebase Cloud Messaging (google-services.json present — dedicated
+    // project zebuhelpdesk).
     id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -40,10 +40,11 @@ android {
     }
 
     defaultConfig {
-        // Must match the package registered in google-services.json (the shared
-        // live Firebase project signin-226ac). The Dart/Kotlin namespace stays
-        // in.mynt.zebu_helpdesk; only the published applicationId is aligned.
-        applicationId = "in.mynt.osticket"
+        // Must match the package registered in google-services.json (the
+        // dedicated Firebase project zebuhelpdesk). The Dart/Kotlin namespace
+        // stays in.mynt.zebu_helpdesk; only the published applicationId is
+        // aligned.
+        applicationId = "zebuhelpdesk.com"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         // Firebase Messaging requires minSdk >= 23; take the higher of the two.

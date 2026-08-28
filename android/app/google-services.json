@@ -1,36 +1,26 @@
 {
   "project_info": {
-    "project_number": "55922781779",
-    "project_id": "signin-226ac",
-    "storage_bucket": "signin-226ac.firebasestorage.app"
+    "project_number": "323669358231",
+    "project_id": "zebuhelpdesk",
+    "storage_bucket": "zebuhelpdesk.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:55922781779:android:6e4e72243ccfa507e3a0a6",
+        "mobilesdk_app_id": "1:323669358231:android:7b8a3737eb97a8bb965bd2",
         "android_client_info": {
-          "package_name": "in.mynt.osticket"
+          "package_name": "zebuhelpdesk.com"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "55922781779-fcl6vdi2327c5i82287vnr004dh91qtm.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyAh_ushS3IKiqeChK69YY8Gwl6pYVIoWsA"
+          "current_key": "AIzaSyBELzuWHMhr8H9sWR2NfPCZwobybSg784E"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "55922781779-dqaqnevlbkjlcm6vmhggipe0ahkpa3c1.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }
