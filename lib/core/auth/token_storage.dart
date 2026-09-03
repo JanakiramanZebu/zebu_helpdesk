@@ -13,6 +13,8 @@ class TokenStorage {
   static const _kAccess = 'access_token';
   static const _kRefresh = 'refresh_token';
   static const _kAgent = 'agent_snapshot';
+  static const _kSavedUser = 'remembered_username';
+  static const _kSavedPass = 'remembered_password';
 
   Future<void> saveTokens({
     required String accessToken,
@@ -46,6 +48,31 @@ class TokenStorage {
   }
 
   Future<bool> hasSession() async => (await readAccessToken()) != null;
+
+  /// Store the credentials behind "Remember me". Kept in the same encrypted
+  /// store as the tokens, and deliberately *outside* [clear] so signing out
+  /// (or a session expiring) still leaves them available to sign back in.
+  Future<void> saveCredentials({
+    required String username,
+    required String password,
+  }) async {
+    await _storage.write(key: _kSavedUser, value: username);
+    await _storage.write(key: _kSavedPass, value: password);
+  }
+
+  /// The remembered credentials, or null when nothing usable is stored.
+  Future<({String username, String password})?> readCredentials() async {
+    final username = await _storage.read(key: _kSavedUser);
+    final password = await _storage.read(key: _kSavedPass);
+    if (username == null || username.trim().isEmpty) return null;
+    if (password == null || password.isEmpty) return null;
+    return (username: username, password: password);
+  }
+
+  Future<void> clearCredentials() async {
+    await _storage.delete(key: _kSavedUser);
+    await _storage.delete(key: _kSavedPass);
+  }
 
   Future<void> clear() async {
     await _storage.delete(key: _kAccess);

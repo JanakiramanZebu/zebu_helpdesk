@@ -47,11 +47,19 @@ class AuthController extends Notifier<AuthState> {
     );
   }
 
+  /// True once the user has signed out by hand in this app run. The remembered
+  /// credentials survive a sign-out (they stay prefilled), but the login screen
+  /// must not silently sign the user straight back in — that would make the
+  /// "Sign out" button look broken.
+  bool get signedOutByUser => _signedOutByUser;
+  bool _signedOutByUser = false;
+
   Future<void> login({
     required String username,
     required String password,
   }) async {
     final result = await _auth.login(username: username, password: password);
+    _signedOutByUser = false;
     state = AuthState(status: AuthStatus.authenticated, agent: result.agent);
   }
 
@@ -60,6 +68,7 @@ class AuthController extends Notifier<AuthState> {
     // then clear local credentials.
     await ref.read(pushServiceProvider).stop();
     await _auth.logout();
+    _signedOutByUser = true;
     state = const AuthState(status: AuthStatus.unauthenticated);
   }
 

@@ -47,8 +47,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   /// Drives the staggered fade-and-rise entrance of the card's contents.
   late final AnimationController _entrance;
 
-  /// SharedPreferences key for the remembered (lowercase) username.
-  static const _kRememberedUser = 'remembered_username';
+  /// Guards the unattended sign-in so a rejected credential can't loop.
+  bool _autoLoginTried = false;
+
+  /// Pre-upgrade SharedPreferences key: only the username lived here (the
+  /// password was never stored). Read once for prefill, then dropped in favour
+  /// of the encrypted copy in [TokenStorage].
+  static const _kLegacyRememberedUser = 'remembered_username';
 
   @override
   void initState() {
@@ -68,31 +73,69 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     super.dispose();
   }
 
-  /// Prefill and tick "Remember me" if a username was saved on a prior sign-in.
-  /// Stored lowercase; shown with the same case rule as typing (staff codes
-  /// uppercase, emails lowercase — see [UsernameCaseFormatter]).
+  /// Prefill both fields and tick "Remember me" from the credentials saved on a
+  /// prior sign-in, then sign in unattended. The username is stored lowercase;
+  /// it is shown with the same case rule as typing (staff codes uppercase,
+  /// emails lowercase — see [UsernameCaseFormatter]).
   Future<void> _loadRemembered() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_kRememberedUser);
-    if (!mounted || saved == null || saved.trim().isEmpty) return;
+    final saved = await ref.read(tokenStorageProvider).readCredentials();
+    if (!mounted) return;
+    if (saved == null) {
+      await _loadLegacyRemembered();
+      return;
+    }
     setState(() {
-      _username.text = AuthIdentifier.display(saved);
+      _username.text = AuthIdentifier.display(saved.username);
+      _password.text = saved.password;
+      _remember = true;
+    });
+
+    // Sign straight in on a cold start or after a session expired, but never
+    // right after the user tapped "Sign out" — that would bounce them back in.
+    if (_autoLoginTried) return;
+    if (ref.read(authControllerProvider.notifier).signedOutByUser) return;
+    _autoLoginTried = true;
+    await _submit(auto: true);
+  }
+
+  /// Builds that predate secure credential storage remembered the username
+  /// only; honour it as a prefill so the upgrade isn't a regression.
+  Future<void> _loadLegacyRemembered() async {
+    final prefs = await SharedPreferences.getInstance();
+    final legacy = prefs.getString(_kLegacyRememberedUser);
+    if (!mounted || legacy == null || legacy.trim().isEmpty) return;
+    setState(() {
+      _username.text = AuthIdentifier.display(legacy);
       _remember = true;
     });
   }
 
-  /// Persist (or clear) the remembered username per the checkbox state. The
-  /// password is never stored.
+  /// Persist (or clear) the remembered credentials per the checkbox state.
+  /// They live in the platform's encrypted store alongside the session tokens.
   Future<void> _persistRemembered() async {
-    final prefs = await SharedPreferences.getInstance();
+    final tokens = ref.read(tokenStorageProvider);
     if (_remember) {
-      await prefs.setString(
-        _kRememberedUser,
-        _username.text.trim().toLowerCase(),
+      await tokens.saveCredentials(
+        username: AuthIdentifier.canonical(_username.text),
+        password: _password.text,
       );
     } else {
-      await prefs.remove(_kRememberedUser);
+      await tokens.clearCredentials();
     }
+    // The old plaintext prefs copy is superseded either way.
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kLegacyRememberedUser);
+  }
+
+  /// Drop credentials the server has just rejected so the next launch asks for
+  /// them instead of retrying a stale password forever.
+  Future<void> _forgetRemembered() async {
+    await ref.read(tokenStorageProvider).clearCredentials();
+    if (!mounted) return;
+    setState(() {
+      _password.clear();
+      _remember = false;
+    });
   }
 
   /// Surface a login failure as an error SnackBar rather than an inline banner.
@@ -100,7 +143,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     AppSnack.error(context, message);
   }
 
-  Future<void> _submit() async {
+  /// [auto] marks the unattended sign-in with remembered credentials: a
+  /// rejection there discards them rather than leaving the user stuck.
+  Future<void> _submit({bool auto = false}) async {
+    if (_busy) return;
     setState(() => _fieldErrors = {});
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
@@ -113,12 +159,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
             username: AuthIdentifier.canonical(_username.text),
             password: _password.text,
           );
-      // Remember the username only once the credentials are known good.
+      // Remember the credentials only once they are known good.
       await _persistRemembered();
       // Router redirect handles navigation on auth state change.
     } on ApiException catch (e) {
+      if (!mounted) return;
+      // A stored password the server actually rejected must not be replayed;
+      // an outage or a flaky connection is no reason to forget it.
+      if (auto && !e.isNetworkError && e.statusCode < 500) {
+        await _forgetRemembered();
+      }
+      if (!mounted) return;
       setState(() => _fieldErrors = e.fields);
-      if (e.fields.isEmpty && mounted) _showError(e.message);
+      if (e.fields.isEmpty) _showError(e.message);
     } catch (_) {
       if (mounted) _showError('Unexpected error. Please try again.');
     } finally {
